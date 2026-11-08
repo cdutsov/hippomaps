@@ -1,0 +1,77 @@
+# hippomaps
+
+A map app: a search box with suggestions, the results and the page of a place in a side bar, and the map beside it. Pictures of
+places and logos of chains come from Wikimedia Commons. On a phone the side bar is a sheet over the lower part of the map.
+
+It is a client of [overpass-search](https://gitlab.com/cdutsov/overpass-search): the browser calls its API for the reading, the
+results and the completions. This server serves the page and its files, and reads pictures from Wikidata and Commons, so that
+the browser of a visitor asks only the site it is on.
+
+```
+go run ./cmd/hippomaps            # :8096, the page on /labs/maps
+```
+
+## What it does
+
+- Suggestions while typing: words of the list, chains and places (`/complete`).
+- The reading of the search at once (`/query`), then the results (`/search`), named first, 40 at a time.
+- A card per result: name, kind, chain, address, distance from the visitor once known, open or closed with the next change
+  (opening_hours.js, loaded when a result has hours), and a thumbnail: the photo of the place, else the logo of the chain, else
+  a letter.
+- The page of a place: the picture with its credit, open or closed, directions (OpenStreetMap), website, phone, e-mail, address,
+  opening hours, wheelchair access, Wikipedia, and all tags.
+- The map: results as points and shapes, the lines of the answer (a border, a road, a river, the circles around the places of a
+  chain), hover and selection in step with the list.
+- "Search this area": after the visitor moves the map, the same search in the view (`view=1`; the place of the sentence goes).
+- The location of the visitor: a button that asks the browser once, shows a dot with its accuracy and moves the map there; the
+  searches with "near me" and "nearest" ask for it too.
+- The address holds the search and the place shown: `?q=…&sel=node/1#map=15/47.37/8.54`; Back goes from a place to the list.
+- Light and dark, with the choice of the site (`localStorage` `theme`).
+
+## Pictures
+
+`GET {base}/api/picture?wikidata=Q…&brand=Q…&commons=File:…&w=120|500` answers the thumbnail of the first that has one:
+
+1. `commons`: the file of `wikimedia_commons`, or of an `image` tag on Commons (the page passes it): a photo
+2. `wikidata`: the image (P18) of the item of the place: a photo
+3. `brand`: the logo (P154), else the small logo (P8972), of the item of the chain
+4. `wikidata`: the logo of the item of the place
+
+The answer is the bytes (PNG, JPEG, GIF or WebP; SVG files come as the PNG that Commons draws, never as SVG), with
+`X-Picture-Kind` (`photo` or `logo`), `X-Picture-Credit` (author and licence, URL-encoded) and `X-Picture-Page` (the page of
+the file on Commons). 204 when the place does not have one, 400 when the request does not name one, 429 over the limit of a
+visitor, 503 when the calls to Wikimedia stay taken, 502 when Wikimedia failed. Four calls to Wikimedia at a time; the answers
+of Wikidata and Commons and the thumbnails are kept in memory for a day.
+
+## Settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `LISTEN` | `:8096` | address of the server |
+| `BASE_PATH` | `/labs/maps` | the path of the page; its files are under `{base}/static/`, the pictures under `{base}/api/picture` |
+| `SEARCH_API` | `/labs/search/api` | the API of overpass-search, as the browser reaches it: `{api}/complete`, `{api}/query`, `{api}/search` |
+| `TILES_URL` | `https://api.overpass.ch` | the map tiles; the style is `{tiles}/v1/{key}/maps/styles/light.json` (or `dark`) |
+| `MAPS_KEY` | | a key of the tiles API for the page |
+| `PICTURES` | `true` | pictures from Wikimedia Commons |
+| `PICTURES_PER_IP` | `600` | pictures a visitor gets in 10 minutes |
+| `PICTURE_CACHE_MB` | `64` | memory for the answers of Wikimedia and the thumbnails |
+| `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia, which asks for a way to reach the operator |
+
+The page sends a Content-Security-Policy that allows this site and the tiles API, `noindex`, and `geolocation=(self)`. The
+proxy in front sets `X-Forwarded-For`, which the limit of pictures counts by.
+
+`hippomaps healthcheck` asks the running server for `/healthz`.
+
+## Layout
+
+```
+cmd/hippomaps/   settings from the environment, listen, healthcheck
+server/          the page, its files, the pictures; tests with a fake Wikimedia
+web/             index.html, app.js, app.css, icon.svg, and vendor/
+```
+
+`web/vendor/` holds maplibre-gl 6.13.0 (BSD-3-Clause, `LICENSE.txt`) and opening_hours 3.15.0 (LGPL-3.0-only) with suncalc
+2.0.1 (BSD-2-Clause), unchanged from npm except that opening_hours imports `./suncalc.mjs`. The directories carry the version:
+browsers keep their files for a year.
+
+Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons, each under the licence its credit names.
