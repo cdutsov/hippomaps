@@ -23,7 +23,9 @@ import (
 // (at, i, end), the spoken texts for navigation (alert before, pre at the turn, post after),
 // the street, and what a sign shows (exit number and name, route numbers, toward). limits are
 // the speed limits along the line by car (indexes of line), from a second call to Valhalla
-// (trace_attributes); without them when that call fails.
+// (trace_attributes); without them when that call fails. By bike and on foot, elev is the
+// height profile from the elevation API of overpass.ch (ElevationURL, ElevationKey); without it
+// when that call fails or there is no key.
 
 // modes are the modes of the page, as Valhalla costings, with the longest trip in a line (km).
 var modes = map[string]struct {
@@ -64,6 +66,18 @@ type routeAnswer struct {
 	Line   [][2]float64 `json:"line"`
 	Steps  []routeStep  `json:"steps"`
 	Limits [][3]int     `json:"limits,omitempty"`
+	Elev   *routeElev   `json:"elev,omitempty"`
+}
+
+// routeElev is the height profile of a route by bike or on foot, from the elevation API of
+// overpass.ch: up and down in metres, the lowest and highest point, and the heights along the
+// line as [km from the start, metres].
+type routeElev struct {
+	Up   float64      `json:"up"`
+	Down float64      `json:"down"`
+	Min  float64      `json:"min"`
+	Max  float64      `json:"max"`
+	Pts  [][2]float64 `json:"pts"`
 }
 
 type signElement struct {
@@ -223,10 +237,68 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	}
 	if mode.costing == "auto" {
 		a.Limits = s.speedLimits(ctx, leg.Shape)
+	} else if s.cfg.ElevationKey != "" {
+		a.Elev = s.heights(ctx, a.Line, a.Km)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(a)
+}
+
+// heights asks the elevation API for the profile of a line of km, in about 300 samples (one
+// every 10 m at least); nil when the call fails.
+func (s *Server) heights(ctx context.Context, line [][2]float64, km float64) *routeElev {
+	if len(line) < 2 {
+		return nil
+	}
+	path := make([][2]float64, len(line))
+	for i, p := range line {
+		path[i] = [2]float64{p[1], p[0]}
+	}
+	samples := int(math.Min(300, math.Max(2, km*100)))
+	body, _ := json.Marshal(map[string]any{"path": path, "samples": samples})
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.ElevationURL, "/")+"/v1/elevation/profile", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", s.cfg.ElevationKey)
+	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	resp, err := s.routeClient.Do(req)
+	if err != nil {
+		s.cfg.Log.Warn("elevation", "err", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		s.cfg.Log.Warn("elevation", "status", resp.StatusCode)
+		return nil
+	}
+	var v struct {
+		Results []struct {
+			Elevation *float64 `json:"elevation"`
+			Distance  *float64 `json:"distance"`
+		} `json:"results"`
+		Profile *struct {
+			Ascent  float64  `json:"ascent_m"`
+			Descent float64  `json:"descent_m"`
+			Min     *float64 `json:"min_m"`
+			Max     *float64 `json:"max_m"`
+		} `json:"profile"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&v); err != nil || v.Profile == nil || v.Profile.Min == nil || v.Profile.Max == nil {
+		s.cfg.Log.Warn("elevation", "err", "unreadable answer")
+		return nil
+	}
+	e := &routeElev{Up: math.Round(v.Profile.Ascent), Down: math.Round(v.Profile.Descent), Min: math.Round(*v.Profile.Min), Max: math.Round(*v.Profile.Max)}
+	for _, r := range v.Results {
+		if r.Elevation != nil && r.Distance != nil {
+			e.Pts = append(e.Pts, [2]float64{round(*r.Distance/1000, 3), round(*r.Elevation, 1)})
+		}
+	}
+	if len(e.Pts) < 2 {
+		return nil
+	}
+	return e
 }
 
 func round(v float64, places int) float64 {

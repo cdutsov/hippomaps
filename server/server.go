@@ -37,10 +37,12 @@ type Config struct {
 	ThumbHosts    []string      // hosts of thumbnails: upload.wikimedia.org, thumb.wikimedia.org
 	UserAgent     string        // for Wikimedia, with a way to reach the operator
 
-	RoutingURL  string        // Valhalla, for directions; empty: no directions
-	RoutesPerIP int           // directions a visitor gets in RouteWindow
-	RouteWindow time.Duration //
-	Log         *slog.Logger
+	RoutingURL   string        // Valhalla, for directions; empty: no directions
+	ElevationURL string        // the elevation API of overpass.ch, for height profiles of routes by bike and on foot
+	ElevationKey string        // a key for it (a maps key does not do); empty: no height profiles
+	RoutesPerIP  int           // directions a visitor gets in RouteWindow
+	RouteWindow  time.Duration //
+	Log          *slog.Logger
 }
 
 // DefaultConfig is the configuration without the environment.
@@ -50,7 +52,7 @@ func DefaultConfig() Config {
 		Pictures: true, PicturesPerIP: 600, PictureWindow: 10 * time.Minute, CacheMB: 64,
 		WikidataAPI: "https://www.wikidata.org/w/api.php", CommonsAPI: "https://commons.wikimedia.org/w/api.php",
 		ThumbHosts: []string{"upload.wikimedia.org", "thumb.wikimedia.org"}, UserAgent: "hippomaps (+https://gitlab.com/cdutsov/hippomaps)",
-		RoutesPerIP: 120, RouteWindow: 10 * time.Minute,
+		RoutesPerIP: 120, RouteWindow: 10 * time.Minute, ElevationURL: "https://api.overpass.ch",
 		Log: slog.Default(),
 	}
 }

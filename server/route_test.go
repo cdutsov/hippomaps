@@ -46,6 +46,20 @@ var routeLine = [][2]float64{{8.5403, 47.3779}, {8.2, 47.2}, {7.4391, 46.949}}
 func fakeValhalla(t *testing.T, calls *atomic.Int32, last *map[string]any) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/elevation/profile" {
+			var req struct {
+				Path    [][2]float64 `json:"path"`
+				Samples int          `json:"samples"`
+			}
+			json.NewDecoder(r.Body).Decode(&req)
+			if r.Header.Get("X-API-Key") != "ek_test" || len(req.Path) != 3 || req.Path[0] != [2]float64{routeLine[0][1], routeLine[0][0]} || req.Samples < 2 || req.Samples > 300 {
+				w.WriteHeader(400)
+				return
+			}
+			io.WriteString(w, `{"status":"OK","results":[{"elevation":408.2,"distance":0},{"elevation":null,"distance":500},{"elevation":540,"distance":1000.4}],`+
+				`"profile":{"distance_m":1000.4,"ascent_m":140.4,"descent_m":8.6,"min_m":405,"max_m":541}}`)
+			return
+		}
 		if r.Method == http.MethodPost && r.URL.Path == "/trace_attributes" {
 			var req map[string]any
 			json.NewDecoder(r.Body).Decode(&req)
@@ -84,7 +98,7 @@ func TestRoute(t *testing.T) {
 	var calls atomic.Int32
 	var last map[string]any
 	v := fakeValhalla(t, &calls, &last)
-	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL + "/" })
+	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL + "/"; c.ElevationURL = v.URL; c.ElevationKey = "ek_test" })
 	if w := get(s, "/labs/maps"); !strings.Contains(w.Body.String(), `data-route="/labs/maps/api/route"`) {
 		t.Fatalf("page has no data-route")
 	}
@@ -115,6 +129,9 @@ func TestRoute(t *testing.T) {
 	if len(a.Limits) != 2 || a.Limits[0] != [3]int{0, 1, 50} || a.Limits[1] != [3]int{1, 2, 120} {
 		t.Errorf("limits: %v", a.Limits)
 	}
+	if a.Elev != nil {
+		t.Errorf("heights by car: %+v", a.Elev)
+	}
 	if last["costing"] != "auto" || last["language"] != "de-DE" || last["units"] != "kilometers" {
 		t.Errorf("request: %v", last)
 	}
@@ -122,8 +139,14 @@ func TestRoute(t *testing.T) {
 	if last["costing"] != "pedestrian" || last["language"] != "en-US" {
 		t.Errorf("walk: %v", last)
 	}
-	if w := get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk"); strings.Contains(w.Body.String(), `"limits"`) {
+	w = get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk")
+	if strings.Contains(w.Body.String(), `"limits"`) {
 		t.Errorf("limits on foot: %s", w.Body)
+	}
+	var b routeAnswer
+	json.Unmarshal(w.Body.Bytes(), &b)
+	if e := b.Elev; e == nil || e.Up != 140 || e.Down != 9 || e.Min != 405 || e.Max != 541 || len(e.Pts) != 2 || e.Pts[1] != [2]float64{1, 540} {
+		t.Errorf("heights on foot: %+v", b.Elev)
 	}
 
 	n := calls.Load()
@@ -153,7 +176,7 @@ func TestRouteLimit(t *testing.T) {
 	var calls atomic.Int32
 	var last map[string]any
 	v := fakeValhalla(t, &calls, &last)
-	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL; c.RoutesPerIP = 2 })
+	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL; c.ElevationURL = v.URL; c.ElevationKey = "ek_test"; c.RoutesPerIP = 2 })
 	u := "/labs/maps/api/route?from=47.3779,8.5403&to=46.949,7.4391&mode=bike"
 	for i, want := range []int{200, 200, 429} {
 		if w := get(s, u, "X-Forwarded-For", "203.0.113.9"); w.Code != want {
@@ -178,8 +201,20 @@ func TestRouteOff(t *testing.T) {
 func TestRouteUpstreamDown(t *testing.T) {
 	v := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(502) }))
 	t.Cleanup(v.Close)
-	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL })
+	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL; c.ElevationURL = v.URL; c.ElevationKey = "ek_test" })
 	if w := get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=46.949,7.4391&mode=car"); w.Code != 502 || !strings.Contains(w.Body.String(), `"failed"`) {
 		t.Errorf("down: %d %s", w.Code, w.Body)
+	}
+}
+
+// a route on foot without heights, when the elevation API fails
+func TestRouteHeightsDown(t *testing.T) {
+	var calls atomic.Int32
+	var last map[string]any
+	v := fakeValhalla(t, &calls, &last)
+	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL; c.ElevationURL = v.URL; c.ElevationKey = "wrong" })
+	w := get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk")
+	if w.Code != 200 || strings.Contains(w.Body.String(), `"elev"`) {
+		t.Errorf("heights down: %d %s", w.Code, w.Body)
 	}
 }

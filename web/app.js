@@ -85,6 +85,10 @@ const T = {
   then: "Then",
   exit: "Exit",
   speedLimit: (v) => `Speed limit ${v}`,
+  heights: "Height profile",
+  up: (m) => `${m.toLocaleString("en")} m up`,
+  down: (m) => `${m.toLocaleString("en")} m down`,
+  climbLeft: (m) => `${m.toLocaleString("en")} m still to climb`,
   duration: (s) => {
     const m = Math.max(1, Math.round(s / 60));
     return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
@@ -266,6 +270,8 @@ const foot = el("div", "lm-foot", {}, T.credit);
 side.append(sheetBtn, top, form, status, body, foot);
 
 // ------------------------------------------------------------------ the map
+// a link with a place on the map (#map=) opens there; otherwise the map starts where the visitor is
+const linkedView = /(^|&)map=/.test(location.hash.slice(1));
 const map = new maplibregl.Map({
   container: mapEl,
   style: styleURL(),
@@ -691,25 +697,29 @@ function meAt(pos) {
   ] });
   return state.me.v;
 }
-// the button asks the browser, which asks the visitor the first time
-locBtn.addEventListener("click", () => {
-  if (!navigator.geolocation) return say(T.locMissing, true);
+// the button asks the browser, which asks the visitor the first time; quiet: at the start of the
+// page, without a message when the visitor says no, and not after they moved the map or searched
+function showMe(quiet) {
+  if (!navigator.geolocation) return quiet || say(T.locMissing, true);
   locBtn.classList.add("lm-busy");
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       locBtn.classList.remove("lm-busy");
       locBtn.classList.add("lm-on");
       meAt(pos);
+      if (quiet && (state.touched || state.text || !routeView.hidden || nav.on)) return;
       if (status.classList.contains("lm-bad")) say("");
       fit(() => map.flyTo({ center: state.me.at2, zoom: Math.max(map.getZoom(), 15), duration: 900, padding: pad() }));
     },
     (err) => {
       locBtn.classList.remove("lm-busy");
-      say(err.code === 1 ? T.locBlocked : T.locFailed, true);
+      if (!quiet) say(err.code === 1 ? T.locBlocked : T.locFailed, true);
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
   );
-});
+}
+locBtn.addEventListener("click", () => showMe(false));
+map.once("dragstart", () => { state.touched = true; });
 
 // run searches a text; extra holds place, place2, region and what, as the API takes them
 async function run(text, extra = {}, { push = true, bbox = null, sel = null } = {}) {
@@ -1464,6 +1474,8 @@ async function findRoute() {
   routeSum.textContent = "";
   routeSteps.innerHTML = "";
   routeView.querySelector(".lm-nav-go")?.remove();
+  routeView.querySelector(".lm-elev")?.remove();
+  showOnRoute(null);
   route.answer = null;
   drawEnds(null);
   let d;
@@ -1491,6 +1503,8 @@ async function findRoute() {
   simBtn.addEventListener("click", () => navStart(true));
   go.append(startBtn, simBtn);
   routeSum.after(go);
+  if (d.elev?.pts?.length > 1) go.after(heightChart(d.elev, { onPoint: showOnRoute }).node);
+  loadAvatar();
   for (const st of d.steps) {
     const li = el("li", "lm-step");
     const b = el("button", "", { type: "button" });
@@ -1503,6 +1517,119 @@ async function findRoute() {
   drawEnds(d.line);
   const b = extent({ type: "LineString", coordinates: d.line });
   if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 700 }));
+}
+
+// ------------------------------------------------------------------ height profile
+// The heights along a route by bike or on foot (elev of the route answer: up, down, min, max, and
+// pts as [km, m]), coloured by how steep each part is. Under a finger or the mouse it shows the
+// height and the distance there, and the point on the map.
+const GRADES = [[3, "#37b24d"], [6, "#f2b705"], [10, "#f08c00"], [Infinity, "#e03131"]];
+let chartN = 0;
+function heightChart(e, { compact = false, onPoint } = {}) {
+  const pts = e.pts, km = pts[pts.length - 1][0] || 1;
+  const lo = e.min - Math.max(5, (e.max - e.min) * 0.12), hi = e.max + Math.max(5, (e.max - e.min) * 0.08);
+  const W = 1000, H = 100, X = (k) => (k / km) * W, Y = (h) => H - ((h - lo) / (hi - lo)) * H;
+  // the steepness over at least 100 m, for the colour of each part
+  const stops = [];
+  let j = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    while (j < pts.length - 1 && pts[j][0] - pts[i][0] < 0.1) j++;
+    const dk = (pts[j][0] - pts[i][0]) * 1000;
+    const g = dk > 0 ? Math.abs(pts[j][1] - pts[i][1]) / dk * 100 : 0;
+    const c = GRADES.find(([max]) => g < max)[1];
+    const at = ((pts[i][0] / km) * 100).toFixed(2), next = ((pts[i + 1][0] / km) * 100).toFixed(2);
+    stops.push(`<stop offset="${at}%" stop-color="${c}"/><stop offset="${next}%" stop-color="${c}"/>`);
+  }
+  const id = `lm-elev-${++chartN}`;
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join("");
+  const box = el("div", `lm-elev${compact ? " lm-elev-compact" : ""}`);
+  const plot = el("div", "lm-elev-plot", { role: "img", "aria-label": `${T.heights}: ${T.up(e.up)}, ${T.down(e.down)}, ${e.min}–${e.max} m` });
+  plot.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" x2="1" y1="0" y2="0">${stops.join("")}</linearGradient></defs>` +
+    `<path d="${line}L${W} ${H}L0 ${H}Z" fill="url(#${id})" fill-opacity=".38"/>` +
+    `<path d="${line}" fill="none" stroke="url(#${id})" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+  const cursor = el("div", "lm-elev-cursor"), dot = el("div", "lm-elev-dot");
+  cursor.hidden = dot.hidden = true;
+  plot.append(cursor, dot);
+  const heightAt = (k) => {
+    let i = 0;
+    while (i < pts.length - 2 && pts[i + 1][0] < k) i++;
+    const a = pts[i], b = pts[i + 1], t = b[0] > a[0] ? Math.max(0, Math.min(1, (k - a[0]) / (b[0] - a[0]))) : 0;
+    return a[1] + (b[1] - a[1]) * t;
+  };
+  const mark = (k) => { // a point of the profile, km from the start; null hides it
+    cursor.hidden = dot.hidden = k == null;
+    if (k == null) return;
+    k = Math.max(0, Math.min(km, k));
+    const x = `${(k / km) * 100}%`;
+    cursor.style.left = dot.style.left = x;
+    dot.style.top = `${(Y(heightAt(k)) / H) * 100}%`;
+    return heightAt(k);
+  };
+  if (compact) {
+    const left = el("div", "lm-elev-left");
+    box.append(plot, left);
+    // the climb from a point to the end
+    const rest = [0];
+    for (let i = pts.length - 2; i >= 0; i--) rest.unshift(rest[0] + Math.max(0, pts[i + 1][1] - pts[i][1]));
+    return { node: box, km, mark(k) {
+      mark(k);
+      let i = 0;
+      while (i < pts.length - 1 && pts[i][0] < k) i++;
+      const m = Math.round(rest[i] * (e.up / (rest[0] || 1)) / 10) * 10; // scaled to the climb of the API
+      left.textContent = m > 0 ? T.climbLeft(m) : "";
+    } };
+  }
+  const head = el("div", "lm-elev-head");
+  const read = el("span", "lm-elev-read");
+  head.append(el("span", "lm-elev-up", {}, `↗ ${T.up(e.up)}`), el("span", "lm-elev-down", {}, `↘ ${T.down(e.down)}`), read);
+  const axis = el("div", "lm-elev-axis");
+  axis.append(el("span", "", {}, "0"), el("span", "", {}, fmtKm(km)));
+  const scale = el("div", "lm-elev-scale");
+  scale.append(el("span", "", {}, `${e.max} m`), el("span", "", {}, `${e.min} m`));
+  const frame = el("div", "lm-elev-frame");
+  frame.append(scale, plot);
+  box.append(head, frame, axis);
+  const at = (ev) => {
+    const r = plot.getBoundingClientRect();
+    const k = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * km;
+    const h = mark(k);
+    read.textContent = `${Math.round(h)} m · ${fmtKm(k)}`;
+    onPoint?.(k / km);
+  };
+  plot.addEventListener("pointermove", at);
+  plot.addEventListener("pointerdown", at);
+  plot.addEventListener("pointerleave", () => {
+    mark(null);
+    read.textContent = "";
+    onPoint?.(null);
+  });
+  return { node: box, km, mark };
+}
+// the distance along a line at each of its points, in metres
+function cumOf(line) {
+  const cum = [0];
+  for (let i = 1; i < line.length; i++) {
+    const [ax, ay] = flat(line[i - 1], line[i][1]), [bx, by] = flat(line[i], line[i][1]);
+    cum.push(cum[i - 1] + Math.hypot(bx - ax, by - ay));
+  }
+  return cum;
+}
+// the point at a distance along a line
+function pointOn(line, cum, along, from = 0) {
+  let i = Math.max(0, Math.min(from, cum.length - 2));
+  while (i < cum.length - 2 && cum[i + 1] < along) i++;
+  const seg = cum[i + 1] - cum[i] || 1, t = Math.max(0, Math.min(1, (along - cum[i]) / seg));
+  const a = line[i], b = line[i + 1];
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+let elevMarker = null;
+function showOnRoute(frac) {
+  const d = route.answer;
+  if (frac == null || !d) { elevMarker?.remove(); elevMarker = null; return; }
+  d.cum ||= cumOf(d.line);
+  const ll = pointOn(d.line, d.cum, frac * d.cum[d.cum.length - 1]);
+  if (!elevMarker) elevMarker = new maplibregl.Marker({ element: el("div", "lm-elev-pin") });
+  elevMarker.setLngLat(ll).addTo(map);
 }
 
 // ------------------------------------------------------------------ navigation
@@ -1525,6 +1652,21 @@ const SPRITE = {
     '<path d="M20 4 25 11h-10z" fill="#1a73e8"/><ellipse cx="20" cy="21" rx="9" ry="5" fill="#1a73e8" stroke="#fff" stroke-width="2"/>' +
     '<circle cx="20" cy="21" r="4" fill="#f2c9a0" stroke="#fff" stroke-width="1.5"/></svg>',
 };
+// the traveller on the map: in 3D (avatar.js, three.js) where WebGL lets it, else the sprite
+let AVATAR = null, avatarLoading = null;
+const loadAvatar = () => (avatarLoading ||= import("./avatar.js").then((m) => { AVATAR = m; }).catch(() => {}));
+function makeAvatar(mode) {
+  if (AVATAR) {
+    try {
+      const a = AVATAR.avatar(map, maplibregl, mode);
+      return { is3d: true, set(ll, h, ms, sp) { this.at = ll; this.heading = h; a.set(ll, h, ms, sp); }, remove: () => a.remove() };
+    } catch {}
+  }
+  const sprite = el("div", "lm-sprite");
+  sprite.innerHTML = SPRITE[mode];
+  const m = new maplibregl.Marker({ element: sprite, rotationAlignment: "map", pitchAlignment: "map" });
+  return { is3d: false, set(ll, h) { this.at = ll; this.heading = h; m.setLngLat(ll).setRotation(h).addTo(map); }, remove: () => m.remove() };
+}
 // arrows for the maneuver types of Valhalla
 const ARROW = {
   straight: "M12 21V4M6 10l6-6 6 6",
@@ -1566,6 +1708,8 @@ const navThen = el("div", "lm-nav-then");
 const navLimit = el("div", "lm-nav-limit");
 const navBottom = el("div", "lm-nav-bottom");
 const navEta = el("div", "lm-nav-eta");
+const navElev = el("div", "lm-nav-elev");
+navElev.hidden = true;
 const navBtn = (icon, label, cls = "") => {
   const b = el("button", `lm-nav-btn ${cls}`.trim(), { type: "button", title: label, "aria-label": label });
   b.innerHTML = svg(icon, 22);
@@ -1579,7 +1723,7 @@ navCenter.innerHTML = svg(ICON.navigate, 16);
 navCenter.append(T.recenter);
 navCenter.hidden = true;
 navBottom.append(navMute, navEta, navOverview, navEnd);
-navBox.append(navBanner, navSign, navThen, navLimit, navCenter, navBottom);
+navBox.append(navBanner, navSign, navThen, navLimit, navElev, navCenter, navBottom);
 mapEl.append(navBox);
 
 // distances on the earth, in metres, near a point: x east, y north
@@ -1591,13 +1735,12 @@ const bearingOf = (a, b) => {
 };
 // prepare a route answer for following: the distance along the line at each point
 function navLoad(d) {
-  const line = d.line, cum = [0];
-  for (let i = 1; i < line.length; i++) {
-    const [ax, ay] = flat(line[i - 1], line[i][1]), [bx, by] = flat(line[i], line[i][1]);
-    cum.push(cum[i - 1] + Math.hypot(bx - ax, by - ay));
-  }
   nav.d = d;
-  nav.cum = cum;
+  nav.cum = cumOf(d.line);
+  navElev.innerHTML = "";
+  nav.elev = d.elev?.pts?.length > 1 ? heightChart(d.elev, { compact: true }) : null;
+  navElev.hidden = !nav.elev;
+  if (nav.elev) navElev.append(nav.elev.node);
   nav.idx = 0;
   nav.spoken = new Set();
   nav.off = 0;
@@ -1620,14 +1763,7 @@ function snap(p, wide) {
     heading: bearingOf(a, b) };
 }
 // the point at a distance along the line (Preview)
-function pointAt(along) {
-  const cum = nav.cum, line = nav.d.line;
-  let i = Math.max(0, Math.min(nav.idx, cum.length - 2));
-  while (i < cum.length - 2 && cum[i + 1] < along) i++;
-  const seg = cum[i + 1] - cum[i] || 1, t = Math.max(0, Math.min(1, (along - cum[i]) / seg));
-  const a = line[i], b = line[i + 1];
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-}
+const pointAt = (along) => pointOn(nav.d.line, nav.cum, along, nav.idx);
 function say1(text) {
   if (nav.muted || !text || !("speechSynthesis" in window)) return;
   const u = new SpeechSynthesisUtterance(text);
@@ -1710,7 +1846,8 @@ function navUpdate(p, rawPos, off = false) {
   // the camera and the sprite
   // off the route: the real position, and the heading of the device when it has one
   const at = off ? rawPos : p.ll, heading = off && rawPos.heading != null ? rawPos.heading : p.heading;
-  nav.marker.setLngLat(at).setRotation(heading);
+  nav.avatar?.set(at, heading, nav.sim ? 480 : 900, nav.speed || 0);
+  if (nav.elev) nav.elev.mark((p.along / (total || 1)) * nav.elev.km);
   if (nav.follow) {
     map.easeTo({ center: at, bearing: heading, pitch: 60, zoom: cfg.zoom, padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
   }
@@ -1719,7 +1856,7 @@ function navUpdate(p, rawPos, off = false) {
 }
 const navPad = () => {
   const h = mapEl.clientHeight;
-  return { top: Math.round(h * 0.42), bottom: 90, left: 20, right: 20 };
+  return { top: Math.round(h * 0.42), bottom: nav.elev ? 140 : 90, left: 20, right: 20 };
 };
 function drawNavLine(p) {
   const rest = [p.ll, ...nav.d.line.slice(p.i + 1)];
@@ -1767,6 +1904,12 @@ function onFix(pos) {
     return;
   }
   nav.off = 0;
+  // the speed for the wheels and legs: from the device, or from the last two fixes
+  const t = pos.timestamp || Date.now();
+  nav.speed = pos.coords.speed != null && !Number.isNaN(pos.coords.speed) ? pos.coords.speed
+    : nav.lastAlong != null && t > nav.lastT ? Math.abs(p.along - nav.lastAlong) / ((t - nav.lastT) / 1000) : 0;
+  nav.lastAlong = p.along;
+  nav.lastT = t;
   navUpdate(p, ll);
 }
 async function reroute(ll) {
@@ -1797,9 +1940,18 @@ async function navStart(sim) {
   navBox.hidden = false;
   navCenter.hidden = true;
   navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
-  const sprite = el("div", "lm-sprite");
-  sprite.innerHTML = SPRITE[route.mode];
-  nav.marker = new maplibregl.Marker({ element: sprite, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(nav.d.line[0]).addTo(map);
+  nav.speed = 0;
+  nav.lastAlong = null;
+  nav.avatar = makeAvatar(route.mode);
+  if (!AVATAR) loadAvatar().then(() => { // the 3D traveller once its code is here
+    if (!nav.on || !AVATAR || nav.avatar.is3d) return;
+    const a = makeAvatar(route.mode);
+    if (!a.is3d) return a.remove();
+    a.set(nav.avatar.at, nav.avatar.heading || 0);
+    nav.avatar.remove();
+    nav.avatar = a;
+  });
+  nav.avatar.set(nav.d.line[0], bearingOf(nav.d.line[0], nav.d.line[1] || nav.d.line[0]));
   setTimeout(() => map.resize(), 0);
   try { nav.lock = await navigator.wakeLock?.request("screen"); } catch {}
   if (sim) {
@@ -1811,7 +1963,8 @@ async function navStart(sim) {
     };
     nav.timer = setInterval(() => {
       const now = performance.now();
-      along += speedAt() * 3 * ((now - last) / 1000);
+      nav.speed = speedAt() * 3;
+      along += nav.speed * ((now - last) / 1000);
       last = now;
       const total = nav.cum[nav.cum.length - 1];
       const ll = pointAt(Math.min(along, total));
@@ -1839,7 +1992,9 @@ function navStop() {
   if ("speechSynthesis" in window) speechSynthesis.cancel();
   nav.lock?.release?.().catch(() => {});
   nav.lock = null;
-  nav.marker?.remove();
+  nav.avatar?.remove();
+  nav.avatar = null;
+  navElev.hidden = true;
   navBox.hidden = true;
   root.classList.remove("lm-navigating");
   setTimeout(() => {
@@ -1880,6 +2035,9 @@ map.once("load", () => {
   if (q) {
     const extra = Object.fromEntries(extraKeys.map((k) => [k, u.get(k) || ""]));
     run(q, extra, { push: false, sel: u.get("sel") });
-  } else intro();
+  } else {
+    intro();
+    if (!linkedView) showMe(true);
+  }
 });
 if (!root.dataset.key) say("The map is not configured on this server: MAPS_KEY is missing.", true);

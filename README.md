@@ -13,6 +13,8 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 
 ## What it does
 
+- The map opens where the visitor is: the browser asks for the location once (a link with `#map=` opens there instead; no
+  message when the visitor says no).
 - Suggestions while typing: words of the list, chains and places (`/complete`).
 - The reading of the search at once (`/query`), then the results (`/search`), named first, 40 at a time.
 - A card per result: name, kind, chain, address, distance from the visitor once known, open or closed with the next change
@@ -23,10 +25,13 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - Directions (with `ROUTING_URL`; without it the button opens OpenStreetMap): to a place, or to a tapped point, by car, bike or
   on foot. The start is the location of the visitor, or a tap on the map; a button swaps start and destination. The line on
   the map, time and length, and the steps in the language of the browser; a tap on a step moves the map there. The mode is
-  kept in the browser (`hm-mode`).
+  kept in the browser (`hm-mode`). By bike and on foot, the height profile (with `ELEVATION_KEY`): up and down, coloured by
+  how steep each part is; under the mouse or a finger the height and distance, and the point on the map. In navigation a strip
+  of it shows the point reached and the climb still to come.
 - Navigation, turn by turn, from the directions: Start follows the location of the browser, Preview drives the route at three
-  times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a small sprite of a
-  car, a bike or a walker; the next turn with its arrow, its distance and the street; by car the sign of the junction in its
+  times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a car, a cyclist or a
+  walker in 3D (`web/avatar.js`, three.js, loaded with the first route; wheels, pedals and legs move with the speed; the flat
+  sprite when WebGL fails); the next turn with its arrow, its distance and the street; by car the sign of the junction in its
   last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; arrival
   time, time and distance left. The instructions of Valhalla are spoken (Web Speech, in the language of the browser; a button
   turns the sound off, kept as `hm-mute`). Off the route for three fixes, a new route from where the visitor is (at most every
@@ -74,6 +79,10 @@ second call to Valhalla (`trace_attributes`); missing when that call fails. Erro
 `{"error":{"code","message"}}`: 400 `bad_request` or `too_far` (more than 1500 km in a line by car, 300 by bike, 100 on foot),
 404 `no_route`, 429 `too_many`, 503 `busy`, 502 `failed`. Four calls to Valhalla at a time.
 
+By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,m],…]}`, from the elevation API of overpass.ch
+(`ELEVATION_URL` + `/v1/elevation/profile`, 300 samples at most, one every 10 m at least) with `ELEVATION_KEY`, a key of type
+"All APIs" (a maps key is refused); missing when that call fails.
+
 ## Settings
 
 | Setting | Default | Meaning |
@@ -88,6 +97,8 @@ second call to Valhalla (`trace_attributes`); missing when that call fails. Erro
 | `PICTURE_CACHE_MB` | `64` | memory for the answers of Wikimedia and the thumbnails |
 | `ROUTING_URL` | | Valhalla, for directions; empty: no directions |
 | `ROUTES_PER_IP` | `120` | directions a visitor gets in 10 minutes |
+| `ELEVATION_URL` | `https://api.overpass.ch` | the elevation API, for height profiles |
+| `ELEVATION_KEY` | | its key, server side only; empty: no height profiles |
 | `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia, which asks for a way to reach the operator |
 
 The page sends a Content-Security-Policy that allows this site and the tiles API, `noindex`, and `geolocation=(self)`. The
@@ -103,7 +114,7 @@ server/          the page, its files, the pictures, directions; tests with a fak
 web/             index.html, app.js, app.css, icon.svg, and vendor/
 ```
 
-`web/vendor/` holds maplibre-gl 6.13.0 (BSD-3-Clause, `LICENSE.txt`) and opening_hours 3.15.0 (LGPL-3.0-only) with suncalc
+`web/vendor/` holds maplibre-gl 6.13.0 (BSD-3-Clause, `LICENSE.txt`), three.js 0.170.0 (MIT, `LICENSE`) and opening_hours 3.15.0 (LGPL-3.0-only) with suncalc
 2.0.1 (BSD-2-Clause), unchanged from npm except that opening_hours imports `./suncalc.mjs`. The directories carry the version:
 browsers keep their files for a year.
 
