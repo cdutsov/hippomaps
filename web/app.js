@@ -5,6 +5,7 @@
 // data-route (Valhalla, through this server) when the server has them. Text from OpenStreetMap
 // only ever goes in as text, never as HTML.
 import * as maplibregl from "./vendor/maplibre-gl-6.13.0/maplibre-gl.mjs";
+import { languages, texts } from "./i18n.js";
 
 maplibregl.setWorkerCount(Math.max(maplibregl.getWorkerCount(), 2));
 
@@ -14,18 +15,24 @@ const mapEl = root.querySelector(".lm-map");
 const API = root.dataset.api.replace(/\/$/, "");
 const PICTURES = root.dataset.pictures || "";
 const ROUTE = root.dataset.route || "";
-const LANG = (navigator.language || "en").slice(0, 2).toLowerCase();
+// the language: chosen in the menu (hm-lang), else that of the browser. It sets the texts of the page
+// (en, de, fr, it), the names on the map, the steps of directions and the voice.
+const chosenLang = (() => { try { return localStorage.getItem("hm-lang") || ""; } catch { return ""; } })();
+const LANG = chosenLang || (navigator.language || "en").slice(0, 2).toLowerCase();
+const UI = languages.some(([k]) => k === LANG) ? LANG : "en";
+document.documentElement.lang = UI;
+const num = (n) => n.toLocaleString(UI);
 const placeKeys = ["place", "place2", "region"];
 const extraKeys = [...placeKeys, "what", "view"]; // view=1: the same search in the map view
 
-const T = {
+const EN = {
   placeholder: "Search places, or what and where",
   examples: ["cafés", "Migros", "museums in Bern", "playgrounds near me", "restaurants open now", "hotels along the Limmat in Zurich"],
   intro: "Search in plain words: a place, a chain, or what and where. A word alone searches the map view.",
   searching: "Searching…",
   locating: "Finding your location…",
-  results: (n) => (n === 1 ? "1 result" : `${n.toLocaleString("en")} results`),
-  shown: (n, all) => `${n.toLocaleString("en")} of ${all.toLocaleString("en")} shown`,
+  results: (n) => (n === 1 ? "1 result" : `${num(n)} results`),
+  shown: (n, all) => `${num(n)} of ${num(all)} shown`,
   more: "Show more",
   noName: "Unnamed",
   back: "Results",
@@ -60,6 +67,8 @@ const T = {
   directions: "Directions",
   from: "From",
   to: "To",
+  fromHint: "Start: a place, an address",
+  toHint: "Destination: a place, an address",
   swap: "Swap start and destination",
   myPlace: "Your location",
   mapPoint: "Point on the map",
@@ -88,9 +97,11 @@ const T = {
   exit: "Exit",
   speedLimit: (v) => `Speed limit ${v}`,
   heights: "Height profile",
-  up: (m) => `${m.toLocaleString("en")} m up`,
-  down: (m) => `${m.toLocaleString("en")} m down`,
-  climbLeft: (m) => `${m.toLocaleString("en")} m still to climb`,
+  up: (m) => `${num(m)} m up`,
+  down: (m) => `${num(m)} m down`,
+  climbLeft: (m) => `${num(m)} m still to climb`,
+  withHours: (n, label, all) => `${num(n)} ${label}, of ${num(all)} with opening hours`,
+  wheelchair: "Wheelchair",
   duration: (s) => {
     const m = Math.max(1, Math.round(s / 60));
     return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
@@ -113,7 +124,16 @@ const T = {
     ["marine", "Marine"], ["white", "White"], ["grayscale", "Grayscale"], ["black", "Black"]],
   credit: "Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons. Chains from the name-suggestion-index.",
   voiceCredit: "Voices by Piper; the French voice from the SIWIS database (CC BY 4.0).",
+  language: "Language",
+  languageNote: "Page, names on the map, directions and voice",
+  automatic: "As the browser",
+  poweredBy: "Powered by",
+  clear: "Clear",
+  search: "Search",
+  sheet: "Show or hide the list",
 };
+const TR = texts(num)[UI] || {};
+const T = { ...EN, ...TR, errors: { ...EN.errors, ...(TR.errors || {}) } };
 
 // ------------------------------------------------------------------ helpers
 const el = (tag, cls, attrs = {}, text) => {
@@ -231,17 +251,17 @@ const burger = () => {
   return b;
 };
 const menuBtn = burger();
-const sheetBtn = el("button", "lm-sheet-btn", { type: "button", "aria-label": "Show or hide the list" });
+const sheetBtn = el("button", "lm-sheet-btn", { type: "button", "aria-label": T.sheet });
 top.append(menuBtn, logo(), tag);
 
 const form = el("form", "lm-form", { role: "search" });
 const combo = el("div", "lm-combo");
 const input = el("input", "lm-input", { type: "search", role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false",
   "aria-controls": "lm-list", "aria-label": T.placeholder, placeholder: T.placeholder, autocomplete: "off", spellcheck: "false", maxlength: "160", enterkeyhint: "search" });
-const clearBtn = el("button", "lm-clear", { type: "button", "aria-label": "Clear" });
+const clearBtn = el("button", "lm-clear", { type: "button", "aria-label": T.clear });
 clearBtn.innerHTML = svg(ICON.close, 16);
 clearBtn.hidden = true;
-const goBtn = el("button", "lm-go", { type: "submit", "aria-label": "Search" });
+const goBtn = el("button", "lm-go", { type: "submit", "aria-label": T.search });
 goBtn.innerHTML = svg(ICON.search, 20);
 const list = el("ul", "lm-suggest", { id: "lm-list", role: "listbox" });
 list.hidden = true;
@@ -297,7 +317,22 @@ compassBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hid
   '<path d="M12 3 15.5 12h-7z" fill="#d0312d"/><path d="M12 21 8.5 12h7z" fill="currentColor" opacity=".55"/></g></svg>';
 const locBtn = el("button", "lm-locate", { type: "button", title: T.myLocation, "aria-label": T.myLocation });
 locBtn.innerHTML = svg(ICON.locate, 22);
-mapEl.append(areaBtn, compassBtn, locBtn);
+// 2D or 3D, the button names the other: on the map the 3D of the menu; in navigation the map that
+// follows, flat or tilted (hm-nav-2d)
+const dimBtn = el("button", "lm-dim", { type: "button" });
+function showDim() {
+  const flat = nav.on ? nav.flat : !look.threeD;
+  dimBtn.textContent = flat ? "3D" : "2D";
+  dimBtn.title = dimBtn.ariaLabel = flat ? T.tiltedMap : T.flatMap;
+}
+dimBtn.addEventListener("click", () => {
+  if (!nav.on) return setThreeD(!look.threeD);
+  nav.flat = !nav.flat;
+  store.set("hm-nav-2d", nav.flat ? "1" : "0");
+  showDim();
+  if (nav.follow) map.easeTo({ pitch: nav.flat ? 0 : 60, duration: 500 });
+});
+mapEl.append(areaBtn, compassBtn, dimBtn, locBtn);
 const needle = compassBtn.querySelector(".lm-needle");
 const turnNeedle = () => {
   needle.style.transform = `rotate(${-map.getBearing()}deg)`;
@@ -412,19 +447,46 @@ const toggle = (label, note, on, set) => {
   row.append(text, box);
   return row;
 };
-menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "lm-menu-title", {}, T.show),
-  toggle(T.threeD, T.threeDNote, look.threeD, (on) => {
-    look.threeD = on;
-    store.set("hm-3d", on ? "1" : "0");
-    restyle();
+// 3D: terrain, buildings and the map tilted; from the menu or the 2D/3D button on the map
+function setThreeD(on) {
+  look.threeD = on;
+  store.set("hm-3d", on ? "1" : "0");
+  threeDBox.checked = on;
+  restyle();
+  // the new style stops a camera move: tilt once it is there
+  const tilt = () => {
     if (on && map.getPitch() < 30) map.easeTo({ pitch: 60, duration: 800 });
     if (!on) map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
-  }),
+  };
+  tilt();
+  map.once("style.load", tilt);
+  showDim();
+}
+const threeDRow = toggle(T.threeD, T.threeDNote, look.threeD, setThreeD);
+const threeDBox = threeDRow.querySelector("input");
+// the language; a change loads the page again in it
+const langSel = el("select", "lm-lang-select", { "aria-label": T.language });
+for (const [k, name] of [["", T.automatic], ...languages]) {
+  const o = el("option", "", { value: k }, name);
+  if (k === chosenLang) o.selected = true;
+  langSel.append(o);
+}
+langSel.addEventListener("change", () => {
+  store.set("hm-lang", langSel.value);
+  location.reload();
+});
+const langRow = el("label", "lm-toggle lm-lang");
+const langText = el("span", "lm-toggle-text");
+langText.append(el("span", "", {}, T.language), el("span", "lm-toggle-note", {}, T.languageNote));
+langRow.append(langText, langSel);
+menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "lm-menu-title", {}, T.show),
+  threeDRow,
   toggle(T.shading, T.shadingNote, look.shading, (on) => {
     look.shading = on;
     store.set("hm-shading", on ? "1" : "0");
     restyle();
   }),
+  langRow,
   poweredBy(), el("p", "lm-menu-foot", {}, T.credit));
 root.append(backdrop, menu);
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
@@ -432,7 +494,7 @@ function poweredBy() {
   const a = el("a", "lm-powered", { href: "/", title: "overpass.ch" });
   const light = el("img", "lm-powered-light", { src: root.dataset.overpass, alt: "overpass.ch", height: "22" });
   const dark = el("img", "lm-powered-dark", { src: root.dataset.overpassDark, alt: "overpass.ch", height: "22" });
-  a.append(el("span", "", {}, "Powered by"), light, dark);
+  a.append(el("span", "", {}, T.poweredBy), light, dark);
   return a;
 }
 function restyle() {
@@ -1119,7 +1181,7 @@ async function openNow(o) {
   });
   const keep = new Set(state.features.map((f) => f.properties.id));
   setSource("results", { ...state.answer.results, features: state.answer.results.features.filter((f) => keep.has(f.properties.id)) });
-  count.textContent = `${state.features.length.toLocaleString("en")} ${o.label}, of ${all.toLocaleString("en")} with opening hours`;
+  count.textContent = T.withHours(state.features.length, o.label, all);
   notes.textContent = notes.textContent.replace(/The opening hours were not checked[^.]*\./, "").trim();
   results.innerHTML = "";
   state.shown = 0;
@@ -1228,7 +1290,7 @@ function renderDetail(f) {
   if (phone) row(ICON.phone, el("a", "", { href: `tel:${phone.replace(/[^+\d]/g, "")}` }, phone));
   const mail = (t.email || t["contact:email"] || "").split(";")[0].trim();
   if (/^[^@\s]+@[^@\s]+$/.test(mail)) row(ICON.mail, el("a", "", { href: `mailto:${mail}` }, mail));
-  if (t.wheelchair) row(ICON.wheel, el("span", "", {}, `Wheelchair: ${human(t.wheelchair)}`));
+  if (t.wheelchair) row(ICON.wheel, el("span", "", {}, `${T.wheelchair}: ${human(t.wheelchair)}`));
   if (t.description) row(ICON.info, el("span", "", {}, t.description));
   const wp = /^([a-z-]{2,12}):(.+)$/.exec(t.wikipedia || "");
   if (wp) row(ICON.book, el("a", "", { href: `https://${wp[1]}.wikipedia.org/wiki/${encodeURIComponent(wp[2].replace(/ /g, "_"))}`, target: "_blank", rel: "noopener" }, `Wikipedia: ${wp[2]}`));
@@ -1435,13 +1497,7 @@ function renderRoute() {
     modes.append(b);
   }
   const ends = el("div", "lm-ends");
-  const end = (name, v, cls) => {
-    const row = el("div", `lm-end ${cls}`);
-    row.append(el("span", "lm-end-dot"), el("span", "lm-end-name", {}, name));
-    row.append(el("span", `lm-end-label${v ? "" : " lm-end-none"}`, {}, v ? v.label : "–"));
-    return row;
-  };
-  ends.append(end(T.from, route.from, "lm-end-from"), end(T.to, route.to, "lm-end-to"));
+  ends.append(placeField("from"), placeField("to"));
   const swap = el("button", "lm-icon-btn lm-swap", { type: "button", title: T.swap, "aria-label": T.swap });
   swap.innerHTML = svg(ICON.swap, 18);
   swap.disabled = !route.from || !route.to;
@@ -1467,6 +1523,102 @@ function renderRoute() {
   routeSteps.innerHTML = "";
   routeView.append(back, el("h2", "lm-dname", {}, T.directions), routeHead, routeMsg, routeSum, routeSteps);
   drawEnds(null);
+}
+// ------------------------------------------------------------------ start and destination
+// Each is a field that suggests places and addresses from the geocoder of overpass.ch (Photon,
+// with the key of the map, near the map view), with the location of the visitor first.
+let fieldN = 0;
+const geoLang = ["de", "fr"].includes(UI) ? UI : "en";
+function placeLabel(p) {
+  const street = [p.street, p.housenumber].filter(Boolean).join(" ");
+  const town = p.city || p.town || p.village || p.district || "";
+  const label = p.name || street || town || p.state || p.country || "";
+  const where = [p.name && street, p.postcode && town ? `${p.postcode} ${town}` : town, p.country].filter((x) => x && x !== label).join(", ");
+  const kind = p.osm_value && p.osm_value !== "yes" && p.type !== "house" ? human(p.osm_value) : "";
+  return { label, detail: [kind, where].filter(Boolean).join(" · ") };
+}
+function placeField(which) {
+  const v = route[which];
+  const row = el("div", `lm-end lm-end-${which}`);
+  const id = `lm-end-list-${++fieldN}`;
+  const box = el("div", "lm-end-box");
+  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : "", placeholder: which === "from" ? T.fromHint : T.toHint,
+    "aria-label": which === "from" ? T.from : T.to, role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id,
+    autocomplete: "off", spellcheck: "false", enterkeyhint: "search", maxlength: "160" });
+  const opts = el("ul", "lm-suggest lm-end-list", { id, role: "listbox" });
+  opts.hidden = true;
+  box.append(field, opts);
+  row.append(el("span", "lm-end-dot"), el("span", "lm-end-name", {}, which === "from" ? T.from : T.to), box);
+  let items = [], active = -1, timer = 0, ctl = null;
+  const close = () => { opts.hidden = true; field.setAttribute("aria-expanded", "false"); active = -1; };
+  const mark = (i) => {
+    active = i;
+    opts.querySelectorAll(".lm-opt").forEach((li, j) => li.setAttribute("aria-selected", String(j === i)));
+    if (i >= 0) field.setAttribute("aria-activedescendant", `${id}-${i}`); else field.removeAttribute("aria-activedescendant");
+  };
+  const choose = async (i) => {
+    const it = items[i];
+    if (!it) return;
+    close();
+    let place = it;
+    if (it.me) {
+      const me = await locate();
+      if (!me) { routeMsg.textContent = T.locBlocked; return; }
+      place = { ll: state.me.at2, label: T.myPlace, me: true };
+    }
+    route[which] = { ll: place.ll, label: place.label, me: place.me };
+    renderRoute();
+    findRoute();
+  };
+  const show = (list) => {
+    items = list;
+    opts.innerHTML = "";
+    if (!list.length) return close();
+    list.forEach((it, i) => {
+      const li = el("li", "lm-opt", { role: "option", id: `${id}-${i}`, "aria-selected": "false" });
+      const ic = el("span", "lm-opt-icon");
+      ic.innerHTML = svg(it.me ? ICON.locate : ICON.pin, 16);
+      const txt = el("span", "lm-opt-text");
+      txt.append(el("span", "lm-opt-label", {}, it.label));
+      if (it.detail) txt.append(el("span", "lm-opt-detail", {}, it.detail));
+      li.append(ic, txt);
+      li.addEventListener("mousedown", (e) => { e.preventDefault(); choose(i); });
+      opts.append(li);
+    });
+    opts.hidden = false;
+    field.setAttribute("aria-expanded", "true");
+    mark(-1);
+  };
+  const meItem = navigator.geolocation && !route[which]?.me ? [{ me: true, label: T.myPlace }] : [];
+  const ask = async () => {
+    const q = field.value.trim();
+    ctl?.abort();
+    if (q.length < 2) return show(meItem);
+    ctl = new AbortController();
+    const c = map.getCenter();
+    try {
+      const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q, limit: "6", lang: geoLang,
+        lat: c.lat.toFixed(4), lon: c.lng.toFixed(4) })}`, { signal: ctl.signal });
+      const d = await r.json();
+      if (document.activeElement !== field) return;
+      const seen = new Set();
+      show((d.features || []).map((f) => ({ ...placeLabel(f.properties || {}), ll: f.geometry.coordinates }))
+        .filter((it) => it.label && !seen.has(`${it.label}\n${it.detail}`) && seen.add(`${it.label}\n${it.detail}`)));
+    } catch {}
+  };
+  field.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(ask, 250); });
+  field.addEventListener("focus", () => { field.select(); if (!field.value.trim() || route[which]) show(meItem); });
+  field.addEventListener("blur", () => setTimeout(() => {
+    close();
+    if (route[which] && field.value !== route[which].label) field.value = route[which].label; // back to the place chosen
+  }, 150));
+  field.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" && !opts.hidden) { e.preventDefault(); mark(Math.min(items.length - 1, active + 1)); }
+    else if (e.key === "ArrowUp" && !opts.hidden) { e.preventDefault(); mark(Math.max(-1, active - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (!opts.hidden && items.length) choose(active >= 0 ? active : 0); }
+    else if (e.key === "Escape") { close(); field.blur(); }
+  });
+  return row;
 }
 async function findRoute() {
   if (!route.from || !route.to) return;
@@ -1727,13 +1879,8 @@ navCenter.innerHTML = svg(ICON.navigate, 16);
 navCenter.append(T.recenter);
 navCenter.hidden = true;
 navBottom.append(navMute, navEta, navOverview, navEnd);
-// 2D or 3D: the map flat or tilted while following, kept as hm-nav-2d; the button names the other
-const navDim = el("button", "lm-nav-dim", { type: "button" });
-const showDim = () => {
-  navDim.textContent = nav.flat ? "3D" : "2D";
-  navDim.title = navDim.ariaLabel = nav.flat ? T.tiltedMap : T.flatMap;
-};
-navBox.append(navBanner, navSign, navThen, navLimit, navElev, navCenter, navDim, navBottom);
+
+navBox.append(navBanner, navSign, navThen, navLimit, navElev, navCenter, navBottom);
 mapEl.append(navBox);
 
 // distances on the earth, in metres, near a point: x east, y north
@@ -2045,6 +2192,7 @@ async function navStart(sim) {
   nav.first = true;
   navLoad(route.answer);
   root.classList.add("lm-navigating");
+  showDim();
   navBox.hidden = false;
   navCenter.hidden = true;
   navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
@@ -2104,6 +2252,7 @@ function navStop() {
   navElev.hidden = true;
   navBox.hidden = true;
   root.classList.remove("lm-navigating", "lm-nav-elev-on");
+  showDim();
   setTimeout(() => {
     map.resize();
     drawEnds(route.answer?.line || null);
@@ -2113,12 +2262,6 @@ function navStop() {
 }
 navEnd.addEventListener("click", navStop);
 showDim();
-navDim.addEventListener("click", () => {
-  nav.flat = !nav.flat;
-  store.set("hm-nav-2d", nav.flat ? "1" : "0");
-  showDim();
-  if (nav.follow) map.easeTo({ pitch: nav.flat ? 0 : 60, duration: 500 });
-});
 navMute.addEventListener("click", () => {
   nav.muted = !nav.muted;
   store.set("hm-mute", nav.muted ? "1" : "0");

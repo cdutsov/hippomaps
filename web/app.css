@@ -188,6 +188,11 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-end-to .lm-end-dot { border-color: #fff; background: #d0312d; box-shadow: 0 0 0 1px #d0312d; }
 .lm-end-name { color: var(--muted); font-size: .8rem; }
 .lm-end-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lm-end-box { position: relative; min-width: 0; }
+.lm-end-input { width: 100%; border: 0; background: none; color: var(--fg); font: inherit; padding: .1rem 0; outline: none; text-overflow: ellipsis; }
+.lm-end-input::placeholder { color: var(--muted); }
+.lm-end:focus-within { box-shadow: 0 0 0 2px var(--accent); }
+.lm-end-list { left: -5.35rem; right: -.6rem; }
 .lm-end-none { color: var(--muted); }
 .lm-swap { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
 .lm-swap:disabled { opacity: .4; cursor: default; }
@@ -335,9 +340,15 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-elev-left { flex: none; font-size: .8rem; color: var(--muted); max-width: 40%; text-align: right; }
 .lm-elev-left:empty { display: none; }
 .lm-nav-elev:not([hidden]) ~ .lm-nav-center { bottom: 150px; }
-/* in navigation: 2D or 3D above the compass; both above the height strip when it shows */
-.lm-nav-dim { position: absolute; right: 10px; bottom: 146px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--bg);
+/* 2D or 3D, above the compass; in navigation both above the height strip when it shows */
+.lm-dim { position: absolute; right: 10px; bottom: 210px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--bg);
   color: var(--fg); font: inherit; font-size: .85rem; font-weight: 700; box-shadow: var(--shadow); cursor: pointer; }
-.lm-nav-dim:hover { background: var(--hot); }
+.lm-dim:hover { background: var(--hot); }
+@media (max-width: 760px) {
+  .lm-dim { bottom: calc(var(--sheet, 40dvh) + 112px); }
+}
+.lm-navigating .lm-dim { bottom: 146px; }
 .lm-navigating.lm-nav-elev-on .lm-compass { bottom: 146px; }
-.lm-nav-elev-on .lm-nav-dim { bottom: 196px; }
+.lm-navigating.lm-nav-elev-on .lm-dim { bottom: 196px; }
+/* the language in the menu */
+.lm-lang-select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: .3rem .4rem; }

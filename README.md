@@ -13,6 +13,11 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 
 ## What it does
 
+- Languages English, German, French and Italian (`web/i18n.js`): the language of the browser, or the one chosen in the menu
+  (`hm-lang`; the page loads again). It sets the texts, the names on the map, the steps of directions and the voice. The
+  readings of the search come from overpass-search and stay English.
+- A 2D/3D button above the compass: on the map the 3D of the menu (terrain, buildings, the map tilted); in navigation the
+  map that follows, flat or tilted.
 - The map opens where the visitor is: the browser asks for the location once (a link with `#map=` opens there instead; no
   message when the visitor says no).
 - Suggestions while typing: words of the list, chains and places (`/complete`).
@@ -23,7 +28,9 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - The page of a place: the picture with its credit, open or closed, directions, website, phone, e-mail, address, opening hours,
   wheelchair access, Wikipedia, and all tags.
 - Directions (with `ROUTING_URL`; without it the button opens OpenStreetMap): to a place, or to a tapped point, by car, bike or
-  on foot. The start is the location of the visitor, or a tap on the map; a button swaps start and destination. The line on
+  on foot. Start and destination are fields that suggest places and addresses from the geocoder of overpass.ch
+  (Photon, `/v1/{key}/geocode/api` with the key of the map, near the map view; the location of the visitor first); the start
+  can also be a tap on the map; a button swaps start and destination. The line on
   the map, time and length, and the steps in the language of the browser; a tap on a step moves the map there. The mode is
   kept in the browser (`hm-mode`). By bike and on foot, the height profile (with `ELEVATION_KEY`): up and down, coloured by
   how steep each part is; under the mouse or a finger the height and distance, and the point on the map. In navigation a strip
@@ -31,7 +38,7 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - Navigation, turn by turn, from the directions: Start follows the location of the browser, Preview drives the route at three
   times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a car, a cyclist or a
   walker in 3D (`web/avatar.js`, three.js, loaded with the first route; wheels, pedals and legs move with the speed; the flat
-  sprite when WebGL fails; larger on a flat map); a button turns the map flat (2D) or tilted (3D), kept as `hm-nav-2d`; the next turn with its arrow, its distance and the street; by car the sign of the junction in its
+  sprite when WebGL fails; larger on a flat map); the 2D/3D button turns the map flat or tilted, kept as `hm-nav-2d`; the next turn with its arrow, its distance and the street; by car the sign of the junction in its
   last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; arrival
   time, time and distance left. The instructions of Valhalla are spoken in the language of the browser: with `TTS_URL` by
   the Piper voices of the server in German, English, French and Italian (`/api/say`, fetched up to three turns ahead), else, or
