@@ -2565,16 +2565,16 @@ for (const ev of ["pointerdown", "wheel", "touchstart"]) {
 }
 
 // ------------------------------------------------------------------ start
+// the intro at once (before the map loads, a visitor may already open directions); a search of the
+// address once the map is there, as it searches the map view
+const startQ = new URLSearchParams(location.search).get("q");
+if (!startQ) intro();
 map.once("load", () => {
   loadTraffic();
   const u = new URLSearchParams(location.search);
-  const q = u.get("q");
-  if (q) {
+  if (startQ) {
     const extra = Object.fromEntries(extraKeys.map((k) => [k, u.get(k) || ""]));
-    run(q, extra, { push: false, sel: u.get("sel") });
-  } else {
-    intro();
-    if (!linkedView) showMe(true);
-  }
+    run(startQ, extra, { push: false, sel: u.get("sel") });
+  } else if (!linkedView) showMe(true);
 });
 if (!root.dataset.key) say("The map is not configured on this server: MAPS_KEY is missing.", true);
