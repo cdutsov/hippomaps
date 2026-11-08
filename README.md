@@ -133,6 +133,7 @@ By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,
 | `ELEVATION_URL` | `https://api.overpass.ch` | the elevation API, for height profiles |
 | `ELEVATION_KEY` | | its key, server side only; empty: no height profiles |
 | `TTS_URL` | | a Piper server (`/say?lang=&text=`, audio/mpeg) for the spoken instructions; empty: the voices of the browser |
+| `PUBLIC_URL` | | the address of the page on a site of its own (`https://hippomaps.ch`): then for search engines (no noindex, a canonical link, `/robots.txt`, `/sitemap.xml`); empty: unlisted |
 | `SEARCH_UPSTREAM` | | overpass-search of another site (`https://overpass.ch/labs/search/api`), relayed under `{base}/api/search` with the address of the visitor; it sets the search API of the page. For a site of its own: the search API answers its own site only |
 | `TRAFFIC_URL` | | the traffic service next to Valhalla (`/incidents.json`); empty: no traffic on the map |
 | `SAYS_PER_IP` | `600` | new sentences a visitor gets spoken in 10 minutes (those in memory are free) |

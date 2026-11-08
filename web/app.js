@@ -1173,10 +1173,17 @@ function show(d, sel) {
   else if (found.some((f) => f.properties.opening_hours)) loadHours().then(() => markHours());
   if (pick) select(pick, { push: false });
 }
-// pad keeps what the map fits to out from under the sheet on a phone
-const pad = () => (phone()
-  ? { top: 40, left: 30, right: 30, bottom: Math.min(innerHeight - 140, sheetHeights()[sheet.state] + 20) }
-  : { top: 50, left: 50, right: 50, bottom: 50 });
+// pad keeps what the map fits to out from under the sheet on a phone. It leaves at least 60 pixels
+// of map each way: with more padding than map MapLibre does not move at all ("Map cannot fit")
+const pad = () => {
+  const p = phone()
+    ? { top: 40, left: 30, right: 30, bottom: Math.min(innerHeight - 140, sheetHeights()[sheet.state] + 20) }
+    : { top: 50, left: 50, right: 50, bottom: 50 };
+  const h = mapEl.clientHeight, w = mapEl.clientWidth;
+  if (h && p.top + p.bottom > h - 60) p.bottom = Math.max(0, h - 60 - p.top);
+  if (w && p.left + p.right > w - 60) p.left = p.right = Math.max(0, (w - 60) / 2);
+  return p;
+};
 
 const PAGE = 40;
 function renderMore() {

@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"html"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -27,9 +29,13 @@ type Config struct {
 	// SearchUpstream: overpass-search elsewhere (https://overpass.ch/labs/search/api), relayed under
 	// {base}/api/search for a site of its own, as the search API answers its own site only
 	SearchUpstream string
-	TilesURL       string // the map tiles API: https://api.overpass.ch
-	MapsKey        string // a key of the tiles API for this page
-	Version        string
+	// PublicURL: the address of the page on its own site (https://hippomaps.ch). Set, the page is for
+	// search engines: no noindex, a canonical link, robots.txt and sitemap.xml at the root; empty,
+	// the page stays unlisted (noindex)
+	PublicURL string
+	TilesURL  string // the map tiles API: https://api.overpass.ch
+	MapsKey   string // a key of the tiles API for this page
+	Version   string
 
 	Pictures      bool          // pictures from Wikimedia Commons
 	PicturesPerIP int           // pictures a visitor gets in PictureWindow
@@ -150,6 +156,10 @@ func New(cfg Config) *Server {
 	if s.cfg.SearchUpstream != "" {
 		s.mux.HandleFunc("GET "+base+"/api/search/{rest...}", s.search)
 	}
+	if s.cfg.PublicURL != "" {
+		s.mux.HandleFunc("GET /robots.txt", s.robots)
+		s.mux.HandleFunc("GET /sitemap.xml", s.sitemap)
+	}
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	return s
 }
@@ -157,8 +167,30 @@ func New(cfg Config) *Server {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("X-Robots-Tag", "noindex")
+	if s.cfg.PublicURL == "" || r.URL.Path != s.home() { // only the page itself is for search engines
+		h.Set("X-Robots-Tag", "noindex")
+	}
 	s.mux.ServeHTTP(w, r)
+}
+
+// home is the path of the page
+func (s *Server) home() string {
+	if b := strings.TrimRight(s.cfg.Base, "/"); b != "" {
+		return b
+	}
+	return "/"
+}
+
+// robots and sitemap of a site of its own (PublicURL)
+func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: %s/sitemap.xml\n", strings.TrimRight(s.cfg.PublicURL, "/"))
+}
+
+func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+"\n"+`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>%s/</loc></url></urlset>`+"\n",
+		html.EscapeString(strings.TrimRight(s.cfg.PublicURL, "/")))
 }
 
 // asset is the address of a file of the app, with its hash: browsers keep it for a year.
@@ -169,7 +201,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
 	if err := s.page.Execute(&buf, data); err != nil {
 		s.log.Error("page", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

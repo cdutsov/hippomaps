@@ -18,10 +18,26 @@ func TestOwnSite(t *testing.T) {
 		io.WriteString(w, `{"error":{"code":"too_many"}}`)
 	}))
 	t.Cleanup(up.Close)
-	s := testServer(t, nil, func(c *Config) { c.Base = "/"; c.SearchUpstream = up.URL + "/labs/search/api/" })
+	s := testServer(t, nil, func(c *Config) {
+		c.Base = "/"
+		c.SearchUpstream = up.URL + "/labs/search/api/"
+		c.PublicURL = "https://hippomaps.example"
+	})
 	w := get(s, "/")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `data-api="/api/search"`) || !strings.Contains(w.Body.String(), `/static/app.js?v=`) {
 		t.Fatalf("page at the root: %d %.300s", w.Code, w.Body)
+	}
+	if w.Header().Get("X-Robots-Tag") != "" || !strings.Contains(w.Body.String(), `<link rel="canonical" href="https://hippomaps.example/">`) || strings.Contains(w.Body.String(), "noindex") {
+		t.Errorf("the page of its own site is for search engines: %v", w.Header().Get("X-Robots-Tag"))
+	}
+	if w := get(s, "/robots.txt"); w.Code != 200 || !strings.Contains(w.Body.String(), "Sitemap: https://hippomaps.example/sitemap.xml") || !strings.Contains(w.Body.String(), "Disallow: /api/") {
+		t.Errorf("robots.txt: %d %s", w.Code, w.Body)
+	}
+	if w := get(s, "/sitemap.xml"); w.Code != 200 || !strings.Contains(w.Body.String(), "<loc>https://hippomaps.example/</loc>") {
+		t.Errorf("sitemap.xml: %d %s", w.Code, w.Body)
+	}
+	if w := get(s, "/api/traffic"); w.Header().Get("X-Robots-Tag") != "noindex" {
+		t.Errorf("the API is not for search engines")
 	}
 	if w := get(s, "/static/app.js"); w.Code != 200 {
 		t.Errorf("script at the root: %d", w.Code)
