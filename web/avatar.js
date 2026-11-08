@@ -1,5 +1,5 @@
 // The traveller of the navigation in 3D: a car, a cyclist or a walker, drawn with three.js in a
-// custom layer of MapLibre. It keeps its size on the screen at every zoom, stands on the terrain
+// custom layer of MapLibre. Its size follows the zoom within limits, stands on the terrain
 // when the map is 3D, glides to each new position in the time the camera takes, and its wheels,
 // pedals or legs move with its speed. app.js loads this file only for navigation.
 import * as THREE from "./vendor/three-0.170.0/three.module.min.js";
@@ -249,7 +249,9 @@ export function avatar(map, maplibregl, mode) {
   sun.position.set(-40, -30, 90); // high in the south-west
   scene.add(sun);
 
-  const size = mode === "car" ? 2 : 1.9; // pixels of the screen per unit of the model
+  // its size: a car of about 9 m, a cyclist of 4 m, a walker of 3 m, so it keeps to the road when
+  // the map zooms out; never smaller than about 24 pixels, nor larger than a few times its own
+  const fit = { car: [0.2, 0.55, 1.6], bike: [0.12, 0.7, 1.9], walk: [0.09, 0.75, 1.9] }[mode]; // metres per unit, pixels per unit min and max
   let renderer = null;
   let from = null, to = null, t0 = 0, dur = 0, hFrom = 0, hTo = 0, speed = 0, last = 0;
   const now = () => performance.now();
@@ -276,8 +278,11 @@ export function avatar(map, maplibregl, mode) {
       turn.rotation.y = (-heading * Math.PI) / 180;
       const alt = map.queryTerrainElevation?.(ll) || 0;
       const mc = maplibregl.MercatorCoordinate.fromLngLat(ll, alt);
+      const world = 512 * 2 ** map.getZoom(); // pixels round the earth
+      const mpp = (40075016.7 * Math.cos((ll[1] * Math.PI) / 180)) / world; // metres per pixel here
+      const px = Math.min(fit[2], Math.max(fit[1], fit[0] / mpp));
       // from straight above a traveller shows less of itself: larger on a flat map
-      const s = (size * (1 + 0.5 * Math.max(0, 1 - map.getPitch() / 60))) / (512 * 2 ** map.getZoom());
+      const s = (px * (1 + 0.4 * Math.max(0, 1 - map.getPitch() / 60))) / world;
       const l = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(s, -s, s));
       camera.projectionMatrix = new THREE.Matrix4().fromArray(args.defaultProjectionData.mainMatrix).multiply(l);
       renderer.resetState();

@@ -43,6 +43,7 @@ type Config struct {
 	RoutesPerIP  int           // directions a visitor gets in RouteWindow
 	TTSURL       string        // a text-to-speech server for navigation (Piper); empty: the voices of the browser
 	SaysPerIP    int           // spoken sentences a visitor gets in RouteWindow, beyond those in memory
+	TrafficURL   string        // the traffic service next to Valhalla (incidents.json); empty: no traffic
 	RouteWindow  time.Duration //
 	Log          *slog.Logger
 }
@@ -89,6 +90,8 @@ type Server struct {
 	routeCalls  chan struct{} // calls to Valhalla at once
 	saysPerIP   *window
 	sayCalls    chan struct{} // calls to the text-to-speech server at once
+
+	trafficCache trafficCache
 }
 
 // New makes the server.
@@ -99,6 +102,7 @@ func New(cfg Config) *Server {
 		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
 		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4)}
 	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
+	s.cfg.TrafficURL = strings.TrimRight(cfg.TrafficURL, "/")
 	s.cfg.RoutingURL = strings.TrimRight(cfg.RoutingURL, "/")
 	if s.log == nil {
 		s.log = slog.Default()
@@ -127,6 +131,9 @@ func New(cfg Config) *Server {
 	if s.cfg.TTSURL != "" {
 		s.mux.HandleFunc("GET "+base+"/api/say", s.say)
 	}
+	if s.cfg.TrafficURL != "" {
+		s.mux.HandleFunc("GET "+base+"/api/traffic", s.traffic)
+	}
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	return s
 }
@@ -146,7 +153,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Version": s.cfg.Version}
 	if err := s.page.Execute(&buf, data); err != nil {
 		s.log.Error("page", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

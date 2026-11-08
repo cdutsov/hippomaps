@@ -16,7 +16,11 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - Languages English, German, French and Italian (`web/i18n.js`): the language of the browser, or the one chosen in the menu
   (`hm-lang`; the page loads again). It sets the texts, the names on the map, the steps of directions and the voice. The
   readings of the search come from overpass-search and stay English.
-- A Directions button beside the search box at all times opens the fields for start and destination (the location of the
+- Traffic in Switzerland (with `TRAFFIC_URL`): closures, queues, slow traffic and roadworks on the map, their message in a popup,
+  refreshed every two minutes; a switch in the menu (`hm-traffic`). Routes leave now (`date_time`), so Valhalla counts live
+  speeds and closures. Credit: "Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP)."
+- A Directions button beside the search box at all times opens the fields for start and destination; with a place opened or
+  found, it starts navigation to it from the location of the visitor (the location of the
   visitor as the start when known, the destination to type, or to tap on the map); a search that finds one place shows
   Directions beside its name.
 - A 2D/3D button above the compass: on the map the 3D of the menu (terrain, buildings, the map tilted); in navigation the
@@ -42,7 +46,7 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
   times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a car, a cyclist or a
   walker in 3D (`web/avatar.js`, three.js, loaded with the first route; wheels, pedals and legs move with the speed; the flat
   sprite when WebGL fails; larger on a flat map); the 2D/3D button turns the map flat or tilted, kept as `hm-nav-2d`; the next turn with its arrow, its distance and the street; by car the sign of the junction in its
-  last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; arrival
+  last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; the speed now by car and by bike (red above the limit); arrival
   time, time and distance left. The instructions of Valhalla are spoken in the language of the browser: with `TTS_URL` by
   the Piper voices of the server in German, English, French and Italian (`/api/say`, fetched up to three turns ahead), else, or
   when a sentence is late (2.5 s), by the best voice of the browser (natural, enhanced and Google voices first; not eSpeak or
@@ -91,6 +95,9 @@ second call to Valhalla (`trace_attributes`); missing when that call fails. Erro
 `{"error":{"code","message"}}`: 400 `bad_request` or `too_far` (more than 1500 km in a line by car, 300 by bike, 100 on foot),
 404 `no_route`, 429 `too_many`, 503 `busy`, 502 `failed`. Four calls to Valhalla at a time.
 
+`GET {base}/api/traffic` relays `TRAFFIC_URL` + `/incidents.json`, asked at most once a minute; the last answer serves for up to
+15 minutes when the service fails, then 502.
+
 `GET {base}/api/say?lang=de|en|fr|it&text=…` (at most 400 characters) asks `TTS_URL` + `/say` and answers audio/mpeg, kept a
 week by the browser and in memory here; 400, 429, 503 or 502 otherwise. Four calls at a time.
 
@@ -115,6 +122,7 @@ By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,
 | `ELEVATION_URL` | `https://api.overpass.ch` | the elevation API, for height profiles |
 | `ELEVATION_KEY` | | its key, server side only; empty: no height profiles |
 | `TTS_URL` | | a Piper server (`/say?lang=&text=`, audio/mpeg) for the spoken instructions; empty: the voices of the browser |
+| `TRAFFIC_URL` | | the traffic service next to Valhalla (`/incidents.json`); empty: no traffic on the map |
 | `SAYS_PER_IP` | `600` | new sentences a visitor gets spoken in 10 minutes (those in memory are free) |
 | `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia, which asks for a way to reach the operator |
 

@@ -184,6 +184,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		"costing":   mode.costing,
 		"units":     "kilometers",
 		"language":  lang,
+		"date_time": map[string]int{"type": 0}, // leaving now: live traffic and closures count
 	})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RoutingURL+"/route", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

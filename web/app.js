@@ -97,6 +97,14 @@ const EN = {
   then: "Then",
   exit: "Exit",
   speedLimit: (v) => `Speed limit ${v}`,
+  speedNow: (v) => `Speed ${v} km/h`,
+  traffic: "Traffic",
+  trafficNote: "Closures, queues and roadworks in Switzerland",
+  trafficKinds: { closure: "Closed", jam: "Queue", works: "Roadworks", accident: "Accident", obstruction: "Obstruction", weather: "Weather", event: "Event", slow: "Slow traffic" },
+  atNight: "at night",
+  byDay: "by day",
+  until: (d) => `until ${d}`,
+  trafficCredit: "Traffic: Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).",
   heights: "Height profile",
   up: (m) => `${num(m)} m up`,
   down: (m) => `${num(m)} m down`,
@@ -165,6 +173,7 @@ const ICON = {
   locate: "M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
   navigate: "M12 2 20 21l-8-4-8 4z",
+  directions: "M12 2.6 21.4 12 12 21.4 2.6 12zM9.3 14.6v-2.4a1.4 1.4 0 0 1 1.4-1.4h4.4M13.3 8.7l1.9 2.1-1.9 2.1",
   sound: "M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12",
   muted: "M4 9v6h4l5 4V5L8 9zM17 9l5 6M22 9l-5 6",
   overview: "M4 6h16M4 12h10M4 18h6",
@@ -224,6 +233,7 @@ const look = {
   style: T.styles.some(([k]) => k === store.get("hm-style")) ? store.get("hm-style") : store.get("theme") === "dark" ? "dark" : "light",
   threeD: store.get("hm-3d") === "1",
   shading: store.get("hm-shading") === "1",
+  traffic: store.get("hm-traffic") !== "0",
 };
 const theme = () => (look.style === "dark" || look.style === "black" ? "dark" : "light");
 document.documentElement.dataset.theme = theme();
@@ -268,13 +278,26 @@ const list = el("ul", "lm-suggest", { id: "lm-list", role: "listbox" });
 list.hidden = true;
 combo.append(input, clearBtn, goBtn, list);
 // Directions at all times, beside the search: the fields for start and destination
+// (with a place selected or found: navigation to it at once, from the location of the visitor)
 const dirBtn = el("button", "lm-dir-btn", { type: "button", title: T.directions, "aria-label": T.directions });
-dirBtn.innerHTML = svg(ICON.route, 20);
+dirBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 2.4 21.6 12 12 21.6 2.4 12z" fill="#fff"/>' +
+  '<path class="lm-dir-arrow" d="M9.3 14.6v-2.4a1.4 1.4 0 0 1 1.4-1.4h4.4M13.3 8.7l1.9 2.1-1.9 2.1" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 dirBtn.hidden = !ROUTE;
 dirBtn.addEventListener("click", () => {
+  const to = placeNow();
+  if (to) return directions(to, true);
   if (routeView.hidden) directions(null);
   routeView.querySelector(route.to ? ".lm-end-from input" : ".lm-end-to input")?.focus();
 });
+// the place on the screen: the one opened, or the one place a search found
+function placeNow() {
+  if (!detailView.hidden && state.selected) {
+    const c = center(state.selected);
+    if (c) return { ll: c, label: state.selected.properties.name || T.noName };
+  }
+  if (!listView.hidden && state.placeTarget) return state.placeTarget;
+  return null;
+}
 form.append(combo, dirBtn);
 
 const status = el("div", "lm-status", { role: "status", "aria-live": "polite" });
@@ -298,7 +321,7 @@ const showView = (v) => {
   routeView.hidden = v !== routeView;
   body.scrollTop = 0;
 };
-const foot = el("div", "lm-foot", {}, root.dataset.say ? `${T.credit} ${T.voiceCredit}` : T.credit);
+const foot = el("div", "lm-foot", {}, [T.credit, root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" "));
 side.append(sheetBtn, top, form, status, body, foot);
 
 // ------------------------------------------------------------------ the map
@@ -353,7 +376,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty };
+const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty };
 const ACCENT = "#d0312d";
 map.on("style.load", () => {
   for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
@@ -388,6 +411,20 @@ map.on("style.load", () => {
     paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95 } }, below);
   // directions: the line with a casing, the start (white) and the destination (red)
   const line = ["==", ["geometry-type"], "LineString"];
+  // traffic under the route: closures dark red, queues red, slow traffic and roadworks orange
+  const tline = ["==", ["geometry-type"], "LineString"];
+  map.addLayer({ id: "lm-traffic-line", type: "line", source: "lm-traffic", filter: ["all", tline, ["!=", ["get", "t"], "works"]],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#9ca3af", "jam", "#dc2626", "#f08c00"],
+      "line-width": ["interpolate", ["linear"], ["zoom"], 7, 2, 14, 6], "line-opacity": 0.85 } }, below);
+  map.addLayer({ id: "lm-traffic-works", type: "line", source: "lm-traffic", minzoom: 11, filter: ["all", tline, ["==", ["get", "t"], "works"]],
+    paint: { "line-color": "#f08c00", "line-width": 3, "line-dasharray": [2, 1.5], "line-opacity": 0.8 } }, below);
+  const tpt = ["==", ["geometry-type"], "Point"];
+  map.addLayer({ id: "lm-traffic-pt", type: "circle", source: "lm-traffic", minzoom: 7, filter: ["all", tpt, ["!=", ["get", "t"], "works"]], paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 4, 14, 8], "circle-stroke-width": 2, "circle-stroke-color": "#fff",
+    "circle-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#6b7280", "jam", "#dc2626", "accident", "#dc2626", "#f08c00"] } });
+  map.addLayer({ id: "lm-traffic-works-pt", type: "circle", source: "lm-traffic", minzoom: 11, filter: ["all", tpt, ["==", ["get", "t"], "works"]], paint: {
+    "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-color": "#f08c00" } });
   map.addLayer({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
   map.addLayer({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
@@ -419,6 +456,59 @@ const viewBox = () => {
   const b = map.getBounds();
   return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(",");
 };
+
+// ------------------------------------------------------------------ traffic
+// Closures, queues, roadworks and slow traffic in Switzerland (data-traffic: the Traffic Data
+// Platform of FEDRO, through Valhalla's traffic service), refreshed every two minutes while the
+// switch of the menu is on (hm-traffic). Routes take them into account in any case.
+const TRAFFIC = root.dataset.traffic || "";
+let trafficTimer = 0, trafficById = new Map();
+async function loadTraffic() {
+  clearTimeout(trafficTimer);
+  if (!TRAFFIC || !look.traffic) return setSource("traffic", empty);
+  try {
+    const d = await (await fetch(TRAFFIC)).json();
+    const fs = [];
+    trafficById = new Map();
+    for (const it of d.items || []) {
+      const t = it.kind === "closure" ? (it.closed ? "closed" : "closure") : it.kind;
+      trafficById.set(it.id, it);
+      for (const ln of it.lines || []) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: ln }, properties: { t, id: it.id } });
+      if (it.at) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: it.at }, properties: { t, id: it.id } });
+    }
+    for (const f of d.flow || []) {
+      fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: f.line }, properties: { t: f.level === "jam" ? "jam" : "slow", kph: f.kph } });
+    }
+    if (look.traffic) setSource("traffic", { type: "FeatureCollection", features: fs });
+  } catch {}
+  trafficTimer = setTimeout(loadTraffic, 120e3);
+}
+// a tap on traffic shows its message; true when it did
+function trafficAt(e) {
+  if (!TRAFFIC || !look.traffic) return false;
+  const layers = ["lm-traffic-pt", "lm-traffic-works-pt", "lm-traffic-line", "lm-traffic-works"].filter((l) => map.getLayer(l));
+  const box = [[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]];
+  const f = map.queryRenderedFeatures(box, { layers })[0];
+  if (!f) return false;
+  const it = trafficById.get(f.properties.id);
+  const box2 = el("div", "lm-traffic-pop");
+  const kind = it ? (it.kind === "closure" && !it.closed ? "closure" : it.kind) : f.properties.t;
+  const head = el("strong", "", {}, T.trafficKinds[kind] || T.trafficKinds[f.properties.t] || T.traffic);
+  box2.append(head);
+  if (it?.when) head.append(` · ${it.when === "duringTheNight" ? T.atNight : T.byDay}`);
+  if (it) {
+    const tx = it.text?.[UI] || it.text?.de || it.text?.fr || it.text?.it || "";
+    box2.append(el("p", "", {}, tx.replace(/^(Freigegeben|Libéré|Approvato|Released):\s*/, "")));
+  } else if (f.properties.kph != null) {
+    box2.append(el("p", "", {}, `${f.properties.kph} km/h`));
+  }
+  new maplibregl.Popup({ maxWidth: "320px" }).setLngLat(e.lngLat).setDOMContent(box2).addTo(map);
+  return true;
+}
+for (const l of ["lm-traffic-pt", "lm-traffic-works-pt", "lm-traffic-line", "lm-traffic-works"]) {
+  map.on("mouseenter", l, () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", l, () => { map.getCanvas().style.cursor = ""; });
+}
 
 // ------------------------------------------------------------------ the menu
 // Closed at first; the burger in the top bar (on a phone, over the map) opens it.
@@ -495,8 +585,13 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
     store.set("hm-shading", on ? "1" : "0");
     restyle();
   }),
+  ...(TRAFFIC ? [toggle(T.traffic, T.trafficNote, look.traffic, (on) => {
+    look.traffic = on;
+    store.set("hm-traffic", on ? "1" : "0");
+    loadTraffic();
+  })] : []),
   langRow,
-  poweredBy(), el("p", "lm-menu-foot", {}, T.credit));
+  poweredBy(), el("p", "lm-menu-foot", {}, TRAFFIC ? `${T.credit} ${T.trafficCredit}` : T.credit));
 root.append(backdrop, menu);
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
 function poweredBy() {
@@ -892,6 +987,7 @@ function intro() {
 }
 function clear() {
   placeActs.innerHTML = "";
+  state.placeTarget = null;
   state.searchable = false;
   areaBtn.hidden = true;
   setSource("results", empty);
@@ -1001,7 +1097,8 @@ function show(d, sel) {
   if (place) {
     count.textContent = "";
     const c = center(place);
-    if (c && ROUTE) placeActs.append(routeButton(() => directions({ ll: c, label: place.properties.name || d.text })));
+    if (c) state.placeTarget = { ll: c, label: place.properties.name || d.text };
+    if (c && ROUTE) placeActs.append(routeButton(() => directions(state.placeTarget)));
     return;
   }
   state.searchable = true; // moving the map offers the search there
@@ -1327,7 +1424,9 @@ function renderDetail(f) {
 // opens that place when the answer has it.
 let hereCtl = null;
 map.on("click", (e) => {
-  if (e.defaultPrevented || nav.on) return;
+  if (e.defaultPrevented) return;
+  if (trafficAt(e)) return;
+  if (nav.on) return;
   if (document.activeElement === input || !list.hidden) {
     closeList();
     input.blur();
@@ -1457,7 +1556,7 @@ const MODE_ICON = { car: ICON.car, bike: ICON.bike, walk: ICON.walk };
 const route = { from: null, to: null, mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
 function routeButton(go) {
   const b = el("button", "lm-action", { type: "button" });
-  b.innerHTML = svg(ICON.route, 18);
+  b.innerHTML = svg(ICON.directions, 18);
   b.append(el("span", "", {}, T.directions));
   b.addEventListener("click", go);
   return b;
@@ -1473,9 +1572,11 @@ function drawEnds(line) {
   if (route.to) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } });
   setSource("route", { type: "FeatureCollection", features: fs });
 }
-async function directions(to) {
+// go: start navigation once the route from the location is there
+async function directions(to, go = false) {
   route.back = [listView, hereView, detailView].find((v) => !v.hidden) || listView;
   route.to = to;
+  route.go = go;
   route.from = state.me ? { ll: state.me.at2, label: T.myPlace, me: true } : null;
   hereDone();
   showView(routeView);
@@ -1691,6 +1792,11 @@ async function findRoute() {
     routeSteps.append(li);
   }
   drawEnds(d.line);
+  if (route.go && route.from?.me) {
+    route.go = false;
+    return navStart(false);
+  }
+  route.go = false;
   const b = extent({ type: "LineString", coordinates: d.line });
   if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 700 }));
 }
@@ -1882,6 +1988,8 @@ const navBanner = el("div", "lm-nav-banner");
 const navSign = el("div", "lm-nav-sign");
 const navThen = el("div", "lm-nav-then");
 const navLimit = el("div", "lm-nav-limit");
+const navSpeed = el("div", "lm-nav-speed"); // the speed now, by car and by bike
+navSpeed.hidden = true;
 const navBottom = el("div", "lm-nav-bottom");
 const navEta = el("div", "lm-nav-eta");
 const navElev = el("div", "lm-nav-elev");
@@ -1900,7 +2008,7 @@ navCenter.append(T.recenter);
 navCenter.hidden = true;
 navBottom.append(navMute, navEta, navOverview, navEnd);
 
-navBox.append(navBanner, navSign, navThen, navLimit, navElev, navCenter, navBottom);
+navBox.append(navBanner, navSign, navThen, navLimit, navSpeed, navElev, navCenter, navBottom);
 mapEl.append(navBox);
 
 // distances on the earth, in metres, near a point: x east, y north
@@ -2100,6 +2208,15 @@ function navUpdate(p, rawPos, off = false) {
     navLimit.textContent = lim[2];
     navLimit.title = navLimit.ariaLabel = T.speedLimit(lim[2]);
   }
+  // the speed now: of the device, or of Preview (which drives three times as fast)
+  const ms = nav.sim ? (nav.speed || 0) / 3 : nav.speed;
+  navSpeed.hidden = route.mode === "walk" || ms == null || nav.arrived;
+  if (!navSpeed.hidden) {
+    const kmh = Math.round(ms * 3.6);
+    navSpeed.replaceChildren(el("strong", "", {}, String(kmh)), el("span", "", {}, "km/h"));
+    navSpeed.classList.toggle("lm-over", !!lim && kmh > lim[2] + 3);
+    navSpeed.title = navSpeed.ariaLabel = T.speedNow(kmh);
+  }
   navEta.innerHTML = "";
   navEta.append(el("strong", "", {}, clock(s)), el("span", "", {}, `${T.duration(s)} · ${fmtKm(left / 1000)}`));
   // the spoken instructions: early, then at the turn; after the turn what comes
@@ -2145,7 +2262,7 @@ function navArrive() {
   const arrow = el("div", "lm-nav-arrow");
   arrow.innerHTML = arrowSVG(4, 44);
   navBanner.append(arrow, el("div", "lm-nav-text lm-nav-instr", {}, T.arrived));
-  navSign.hidden = navThen.hidden = navLimit.hidden = true;
+  navSign.hidden = navThen.hidden = navLimit.hidden = navSpeed.hidden = true;
   const last = nav.d.steps[nav.d.steps.length - 1];
   if (!nav.spoken.has("end")) {
     nav.spoken.add("end");
@@ -2216,8 +2333,9 @@ async function navStart(sim) {
   navBox.hidden = false;
   navCenter.hidden = true;
   navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
-  nav.speed = 0;
+  nav.speed = sim ? 0 : null;
   nav.lastAlong = null;
+  navSpeed.hidden = true;
   nav.avatar = makeAvatar(route.mode);
   if (!AVATAR) loadAvatar().then(() => { // the 3D traveller once its code is here
     if (!nav.on || !AVATAR || nav.avatar.is3d) return;
@@ -2307,6 +2425,7 @@ for (const ev of ["pointerdown", "wheel", "touchstart"]) {
 
 // ------------------------------------------------------------------ start
 map.once("load", () => {
+  loadTraffic();
   const u = new URLSearchParams(location.search);
   const q = u.get("q");
   if (q) {

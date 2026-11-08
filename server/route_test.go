@@ -132,6 +132,9 @@ func TestRoute(t *testing.T) {
 	if a.Elev != nil {
 		t.Errorf("heights by car: %+v", a.Elev)
 	}
+	if dt, _ := last["date_time"].(map[string]any); dt["type"] != 0.0 {
+		t.Errorf("no date_time now: %v", last["date_time"])
+	}
 	if last["costing"] != "auto" || last["language"] != "de-DE" || last["units"] != "kilometers" {
 		t.Errorf("request: %v", last)
 	}
