@@ -254,6 +254,10 @@ try:
     time.sleep(3)
     check(js("document.documentElement.dataset.theme") == theme0, "day and night stay with the visitor when the map goes far away")
 
+    # POIs before their zoom: at 14.3 the tile of POIs is put together from tiles of zoom 15
+    js("location.hash = '#map=14.3/47.3717/8.5390'")
+    check(wait("performance.getEntriesByType('resource').some(e => /maps\\/vector\\/15\\//.test(e.name))", 30), "POIs at zoom 14 from the tiles of zoom 15")
+
     # shared links: a place, a route
     call("Page.navigate", url=URL + "/?at=46.94797,7.44745&n=Zytglogge")
     # (the point opens; when a place of that name is there, its page follows)

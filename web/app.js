@@ -433,9 +433,125 @@ compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.
 const empty = { type: "FeatureCollection", features: [] };
 const sources = { transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty };
 const ACCENT = "#d0312d";
+// POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
+// tiles of zoom 14 leave the small ones out. Between zoom 14 and 15 the POIs come from a tile of zoom 14
+// put together here from the POIs of its four tiles of zoom 15 (hmpoi://); from 14 on they show two
+// zooms before their min_zoom, so a village seen whole shows its restaurants. Symbols that would
+// overlap still give way.
+let poiTiles = null;
+const pbf = {
+  read(b, f) { // the fields of a message: [field, wire type, value or bytes, start, end]
+    const out = [];
+    let i = 0;
+    const vint = () => { let v = 0, m = 1, c; do { c = b[i++]; v += (c & 127) * m; m *= 128; } while (c & 128); return v; };
+    while (i < b.length) {
+      const s = i, k = vint(), w = k & 7;
+      let v;
+      if (w === 0) v = vint();
+      else if (w === 2) { const n = vint(); v = b.subarray(i, i + n); i += n; }
+      else if (w === 5) { v = b.subarray(i, i + 4); i += 4; }
+      else if (w === 1) { v = b.subarray(i, i + 8); i += 8; }
+      else break;
+      if (!f || f(k >> 3)) out.push([k >> 3, w, v, s, i]);
+    }
+    return out;
+  },
+  packed(b) { const v = []; let i = 0; while (i < b.length) { let x = 0, m = 1, c; do { c = b[i++]; x += (c & 127) * m; m *= 128; } while (c & 128); v.push(x); } return v; },
+  vint(out, v) { while (v > 127) { out.push((v % 128) | 128); v = Math.floor(v / 128); } out.push(v); },
+  field(out, f, bytes) { pbf.vint(out, (f << 3) | 2); pbf.vint(out, bytes.length); for (const x of bytes) out.push(x); },
+};
+const zz = (n) => (n % 2 ? -(n + 1) / 2 : n / 2), unzz = (n) => (n < 0 ? -2 * n - 1 : 2 * n);
+async function poiTile(z, x, y, signal) {
+  const keys = [], keyAt = new Map(), vals = [], valAt = new Map(), feats = [];
+  const idx = (list, at, k, raw) => { if (!at.has(k)) { at.set(k, list.length); list.push(raw); } return at.get(k); };
+  await Promise.all([0, 1, 2, 3].map(async (c) => {
+    const dx = c & 1, dy = c >> 1;
+    const url = poiTiles[0].replace("{z}", z + 1).replace("{x}", 2 * x + dx).replace("{y}", 2 * y + dy);
+    const r = await fetch(url, { signal });
+    if (!r.ok) return;
+    let b = new Uint8Array(await r.arrayBuffer());
+    if (b[0] === 0x1f && b[1] === 0x8b) b = new Uint8Array(await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+    for (const [, , lb] of pbf.read(b, (f) => f === 3)) {
+      const fs = pbf.read(lb);
+      if (new TextDecoder().decode(fs.find((f) => f[0] === 1)?.[2] || new Uint8Array()) !== "pois") continue;
+      const ext = fs.find((f) => f[0] === 5)?.[2] || 4096;
+      const ks = fs.filter((f) => f[0] === 3).map((f) => f[2]), vs = fs.filter((f) => f[0] === 4).map((f) => f[2]);
+      for (const [, , fb] of fs.filter((f) => f[0] === 2)) {
+        const ff = pbf.read(fb);
+        if ((ff.find((f) => f[0] === 3)?.[2] || 0) !== 1) continue; // points only
+        const g = pbf.packed(ff.find((f) => f[0] === 4)?.[2] || new Uint8Array());
+        const pts = [];
+        for (let i = 0, px = 0, py = 0; i < g.length;) {
+          const cmd = g[i] & 7, n = g[i] >> 3;
+          i++;
+          for (let k = 0; k < n && cmd === 1; k++) { px += zz(g[i++]); py += zz(g[i++]); pts.push([px, py]); }
+          if (cmd !== 1) break;
+        }
+        // in this child only (the buffer of the tiles would draw a POI twice), then into the parent
+        const keep = pts.filter(([a, b2]) => a >= 0 && a < ext && b2 >= 0 && b2 < ext)
+          .map(([a, b2]) => [Math.round((a + dx * ext) * 2048 / ext), Math.round((b2 + dy * ext) * 2048 / ext)]);
+        if (!keep.length) continue;
+        const tags = pbf.packed(ff.find((f) => f[0] === 2)?.[2] || new Uint8Array());
+        const nt = [];
+        for (let t = 0; t + 1 < tags.length; t += 2) {
+          const kb = ks[tags[t]], vb = vs[tags[t + 1]];
+          if (!kb || !vb) continue;
+          nt.push(idx(keys, keyAt, new TextDecoder().decode(kb), kb), idx(vals, valAt, Array.from(vb).join(","), vb));
+        }
+        feats.push({ id: ff.find((f) => f[0] === 1), tags: nt, pts: keep });
+      }
+    }
+  }));
+  const layer = [];
+  pbf.vint(layer, (15 << 3) | 0); pbf.vint(layer, 2);
+  pbf.field(layer, 1, new TextEncoder().encode("pois"));
+  for (const f of feats) {
+    const fb = [];
+    if (f.id) { pbf.vint(fb, (1 << 3) | 0); pbf.vint(fb, f.id[2]); }
+    const tb = []; for (const t of f.tags) pbf.vint(tb, t);
+    pbf.field(fb, 2, tb);
+    pbf.vint(fb, (3 << 3) | 0); pbf.vint(fb, 1);
+    const gb = [];
+    pbf.vint(gb, (f.pts.length << 3) | 1);
+    let px = 0, py = 0;
+    for (const [a, b2] of f.pts) { pbf.vint(gb, unzz(a - px)); pbf.vint(gb, unzz(b2 - py)); px = a; py = b2; }
+    pbf.field(fb, 4, gb);
+    pbf.field(layer, 2, fb);
+  }
+  for (const k of keys) pbf.field(layer, 3, k);
+  for (const v of vals) pbf.field(layer, 4, v);
+  pbf.vint(layer, (5 << 3) | 0); pbf.vint(layer, 4096);
+  const tile = [];
+  pbf.field(tile, 3, layer);
+  return new Uint8Array(tile).buffer;
+}
+maplibregl.addProtocol("hmpoi", async (params, ctl) => {
+  const [z, x, y] = params.url.replace("hmpoi://", "").split("/").map(Number);
+  return { data: await poiTile(z, x, y, ctl.signal) };
+});
+async function poisEarlier() {
+  const st = map.getStyle(), pois = st?.layers.find((l) => l.id === "pois");
+  const src = pois && st.sources[pois.source];
+  if (!src || map.getLayer("lm-pois-near")) return;
+  try {
+    poiTiles ||= src.tiles || (await (await fetch(src.url)).json()).tiles;
+  } catch { return; }
+  if (!poiTiles?.length || !map.getLayer("pois") || map.getLayer("lm-pois-near")) return;
+  const earlier = (f) => Array.isArray(f) && f[0] === ">=" && JSON.stringify(f[1]) === '["zoom"]' && JSON.stringify(f[2]?.[1]) === '["get","min_zoom"]'
+    ? [">=", ["zoom"], ["-", ["get", "min_zoom"], 2]]
+    : Array.isArray(f) ? f.map(earlier) : f;
+  const filter = earlier(pois.filter);
+  if (JSON.stringify(filter) === JSON.stringify(pois.filter)) return; // a style without min_zoom: as it is
+  map.addSource("lm-pois-near", { type: "vector", tiles: ["hmpoi://{z}/{x}/{y}"], minzoom: 14, maxzoom: 14, attribution: "" });
+  const near = { ...pois, id: "lm-pois-near", source: "lm-pois-near", minzoom: 14, maxzoom: 15, filter };
+  delete near.metadata;
+  map.addLayer(near, "pois");
+  map.setFilter("pois", ["all", ["any", ["<", ["zoom"], 14], [">=", ["zoom"], 15]], filter]);
+}
 map.on("style.load", () => {
   // 3D buildings see-through, so the map and the route behind them stay in view
   for (const l of map.getStyle().layers) if (l.type === "fill-extrusion") map.setPaintProperty(l.id, "fill-extrusion-opacity", 0.6);
+  poisEarlier();
   for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
   const below = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
   const dashed = ["in", ["get", "kind"], ["literal", ["border", "circle"]]];
