@@ -15,7 +15,7 @@
 {{with .Tiles}}<link rel="preconnect" href="{{.}}" crossorigin>{{end}}
 </head>
 <body>
-<div class="lm" id="app" data-logo="{{asset "icon-192.png"}}" data-overpass="{{asset "overpass-logo.png"}}" data-overpass-dark="{{asset "overpass-logo-dark.png"}}" data-api="{{.SearchAPI}}" data-tiles="{{.Tiles}}" data-key="{{.Key}}"{{if .Pictures}} data-pictures="{{.Base}}/api/picture"{{end}}{{if .Routes}} data-route="{{.Base}}/api/route"{{end}}>
+<div class="lm" id="app" data-logo="{{asset "icon-192.png"}}" data-overpass="{{asset "overpass-logo.png"}}" data-overpass-dark="{{asset "overpass-logo-dark.png"}}" data-api="{{.SearchAPI}}" data-tiles="{{.Tiles}}" data-key="{{.Key}}"{{if .Pictures}} data-pictures="{{.Base}}/api/picture"{{end}}{{if .Routes}} data-route="{{.Base}}/api/route"{{end}}{{if .Say}} data-say="{{.Base}}/api/say"{{end}}>
   <aside class="lm-side" aria-label="Search and results"></aside>
   <main class="lm-map" aria-label="Map"></main>
 </div>

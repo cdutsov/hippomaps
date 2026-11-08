@@ -33,8 +33,10 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
   walker in 3D (`web/avatar.js`, three.js, loaded with the first route; wheels, pedals and legs move with the speed; the flat
   sprite when WebGL fails); the next turn with its arrow, its distance and the street; by car the sign of the junction in its
   last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; arrival
-  time, time and distance left. The instructions of Valhalla are spoken (Web Speech, in the language of the browser; a button
-  turns the sound off, kept as `hm-mute`). Off the route for three fixes, a new route from where the visitor is (at most every
+  time, time and distance left. The instructions of Valhalla are spoken in the language of the browser: with `TTS_URL` by
+  the Piper voices of the server in German, English, French and Italian (`/api/say`, fetched up to three turns ahead), else, or
+  when a sentence is late (2.5 s), by the best voice of the browser (natural, enhanced and Google voices first; not eSpeak or
+  the novelty voices of Apple). A button turns the sound off, kept as `hm-mute`. Off the route for three fixes, a new route from where the visitor is (at most every
   10 s). A move of the map stops the following until Re-centre; Whole route shows the rest of it. The screen stays on (Wake
   Lock) while the page is open.
 - The map: results as points and shapes, the lines of the answer (a border, a road, a river, the circles around the places of a
@@ -79,6 +81,9 @@ second call to Valhalla (`trace_attributes`); missing when that call fails. Erro
 `{"error":{"code","message"}}`: 400 `bad_request` or `too_far` (more than 1500 km in a line by car, 300 by bike, 100 on foot),
 404 `no_route`, 429 `too_many`, 503 `busy`, 502 `failed`. Four calls to Valhalla at a time.
 
+`GET {base}/api/say?lang=de|en|fr|it&text=…` (at most 400 characters) asks `TTS_URL` + `/say` and answers audio/mpeg, kept a
+week by the browser and in memory here; 400, 429, 503 or 502 otherwise. Four calls at a time.
+
 By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,m],…]}`, from the elevation API of overpass.ch
 (`ELEVATION_URL` + `/v1/elevation/profile`, 300 samples at most, one every 10 m at least) with `ELEVATION_KEY`, a key of type
 "All APIs" (a maps key is refused); missing when that call fails.
@@ -99,6 +104,8 @@ By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,
 | `ROUTES_PER_IP` | `120` | directions a visitor gets in 10 minutes |
 | `ELEVATION_URL` | `https://api.overpass.ch` | the elevation API, for height profiles |
 | `ELEVATION_KEY` | | its key, server side only; empty: no height profiles |
+| `TTS_URL` | | a Piper server (`/say?lang=&text=`, audio/mpeg) for the spoken instructions; empty: the voices of the browser |
+| `SAYS_PER_IP` | `600` | new sentences a visitor gets spoken in 10 minutes (those in memory are free) |
 | `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia, which asks for a way to reach the operator |
 
 The page sends a Content-Security-Policy that allows this site and the tiles API, `noindex`, and `geolocation=(self)`. The

@@ -41,6 +41,8 @@ type Config struct {
 	ElevationURL string        // the elevation API of overpass.ch, for height profiles of routes by bike and on foot
 	ElevationKey string        // a key for it (a maps key does not do); empty: no height profiles
 	RoutesPerIP  int           // directions a visitor gets in RouteWindow
+	TTSURL       string        // a text-to-speech server for navigation (Piper); empty: the voices of the browser
+	SaysPerIP    int           // spoken sentences a visitor gets in RouteWindow, beyond those in memory
 	RouteWindow  time.Duration //
 	Log          *slog.Logger
 }
@@ -52,7 +54,7 @@ func DefaultConfig() Config {
 		Pictures: true, PicturesPerIP: 600, PictureWindow: 10 * time.Minute, CacheMB: 64,
 		WikidataAPI: "https://www.wikidata.org/w/api.php", CommonsAPI: "https://commons.wikimedia.org/w/api.php",
 		ThumbHosts: []string{"upload.wikimedia.org", "thumb.wikimedia.org"}, UserAgent: "hippomaps (+https://gitlab.com/cdutsov/hippomaps)",
-		RoutesPerIP: 120, RouteWindow: 10 * time.Minute, ElevationURL: "https://api.overpass.ch",
+		RoutesPerIP: 120, RouteWindow: 10 * time.Minute, ElevationURL: "https://api.overpass.ch", SaysPerIP: 600,
 		Log: slog.Default(),
 	}
 }
@@ -85,6 +87,8 @@ type Server struct {
 	routeClient *http.Client
 	routesPerIP *window
 	routeCalls  chan struct{} // calls to Valhalla at once
+	saysPerIP   *window
+	sayCalls    chan struct{} // calls to the text-to-speech server at once
 }
 
 // New makes the server.
@@ -93,7 +97,8 @@ func New(cfg Config) *Server {
 		client: &http.Client{Timeout: 10 * time.Second}, cache: newMemo(cfg.CacheMB<<20, 24*time.Hour),
 		perIP: newWindow(cfg.PicturesPerIP, cfg.PictureWindow), calls: make(chan struct{}, 4),
 		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
-		routeCalls: make(chan struct{}, 4)}
+		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4)}
+	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
 	s.cfg.RoutingURL = strings.TrimRight(cfg.RoutingURL, "/")
 	if s.log == nil {
 		s.log = slog.Default()
@@ -119,6 +124,9 @@ func New(cfg Config) *Server {
 	if s.cfg.RoutingURL != "" {
 		s.mux.HandleFunc("GET "+base+"/api/route", s.route)
 	}
+	if s.cfg.TTSURL != "" {
+		s.mux.HandleFunc("GET "+base+"/api/say", s.say)
+	}
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	return s
 }
@@ -138,7 +146,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Version": s.cfg.Version}
 	if err := s.page.Execute(&buf, data); err != nil {
 		s.log.Error("page", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -153,7 +161,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf.Bytes())
 }
 
-// csp lets the page reach this site and the tiles API; pictures come as blobs.
+// csp lets the page reach this site and the tiles API; pictures and spoken sentences come as blobs.
 func (s *Server) csp() string {
 	tiles := ""
 	if u, err := url.Parse(s.cfg.TilesURL); err == nil && u.Host != "" {
@@ -172,6 +180,7 @@ func (s *Server) csp() string {
 		"child-src 'self' blob:",
 		"connect-src 'self'" + tiles + api,
 		"font-src 'self'",
+		"media-src 'self' blob:",
 		"object-src 'none'",
 		"base-uri 'none'",
 		"frame-ancestors 'none'",

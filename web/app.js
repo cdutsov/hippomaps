@@ -110,6 +110,7 @@ const T = {
   styles: [["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"],
     ["marine", "Marine"], ["white", "White"], ["grayscale", "Grayscale"], ["black", "Black"]],
   credit: "Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons. Chains from the name-suggestion-index.",
+  voiceCredit: "Voices by Piper; the French voice from the SIWIS database (CC BY 4.0).",
 };
 
 // ------------------------------------------------------------------ helpers
@@ -266,7 +267,7 @@ const showView = (v) => {
   routeView.hidden = v !== routeView;
   body.scrollTop = 0;
 };
-const foot = el("div", "lm-foot", {}, T.credit);
+const foot = el("div", "lm-foot", {}, root.dataset.say ? `${T.credit} ${T.voiceCredit}` : T.credit);
 side.append(sheetBtn, top, form, status, body, foot);
 
 // ------------------------------------------------------------------ the map
@@ -1505,6 +1506,7 @@ async function findRoute() {
   routeSum.after(go);
   if (d.elev?.pts?.length > 1) go.after(heightChart(d.elev, { onPoint: showOnRoute }).node);
   loadAvatar();
+  if (SAY) fetchSay(d.steps[0]?.pre || d.steps[0]?.text); // the first sentence, ready for Start
   for (const st of d.steps) {
     const li = el("li", "lm-step");
     const b = el("button", "", { type: "button" });
@@ -1764,12 +1766,105 @@ function snap(p, wide) {
 }
 // the point at a distance along the line (Preview)
 const pointAt = (along) => pointOn(nav.d.line, nav.cum, along, nav.idx);
-function say1(text) {
-  if (nav.muted || !text || !("speechSynthesis" in window)) return;
+// ------------------------------------------------------------------ the voice
+// The instructions are spoken by the voices of this server (data-say: Piper, in German, English,
+// French and Italian), fetched up to three turns ahead; else, or when one is late, by the best voice
+// the browser has for the language.
+const SAY = root.dataset.say || "";
+const LOCALES = { en: "en-US", de: "de-DE", fr: "fr-FR", it: "it-IT", es: "es-ES", nl: "nl-NL", pt: "pt-PT" };
+const STEP_LANG = LOCALES[LANG] ? LANG : "en"; // the language of the texts of Valhalla
+const OUR_VOICES = ["de", "en", "fr", "it"];
+const hasSpeech = "speechSynthesis" in window;
+let browserVoices = [];
+if (hasSpeech) {
+  const list = () => { browserVoices = speechSynthesis.getVoices(); };
+  list();
+  speechSynthesis.addEventListener?.("voiceschanged", list);
+}
+// the best voice of the browser: natural voices of Edge, enhanced voices of Apple, Google voices
+// of Chrome; not the novelty voices of Apple or eSpeak; the region of the browser when it can
+function bestVoice(lang) {
+  const want = (navigator.language || "").toLowerCase(), locale = (LOCALES[lang] || "en-US").toLowerCase();
+  let best = null, top = -Infinity;
+  for (const v of browserVoices) {
+    const vl = v.lang.toLowerCase().replace("_", "-");
+    if (vl.slice(0, 2) !== lang) continue;
+    let sc = 0;
+    if (/natural|neural|online/i.test(v.name)) sc += 6;
+    if (/premium|enhanced|siri/i.test(v.name)) sc += 5;
+    if (/google/i.test(v.name)) sc += 4;
+    if (/compact|espeak|eloquence/i.test(v.name)) sc -= 4;
+    if (/^(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|fred|junior|ralph|kathy|grandma|grandpa|rocko|shelley|flo|eddy|reed|sandy)\b/i.test(v.name)) sc -= 8;
+    if (vl === want) sc += 2;
+    else if (vl === locale) sc += 1;
+    if (v.default) sc += 0.5;
+    if (sc > top) { top = sc; best = v; }
+  }
+  return best;
+}
+function browserSay(text, lang) {
+  if (!hasSpeech) return;
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = { en: "en-US", de: "de-DE", fr: "fr-FR", it: "it-IT", es: "es-ES", nl: "nl-NL", pt: "pt-PT" }[LANG] || "en-US";
+  u.lang = LOCALES[lang] || "en-US";
+  const v = bestVoice(lang);
+  if (v) u.voice = v;
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
+}
+const player = new Audio();
+const sayCache = new Map(); // lang and text → a promise of a blob URL, or null
+function fetchSay(text, lang = STEP_LANG) {
+  if (!SAY || !text || !OUR_VOICES.includes(lang)) return null;
+  const key = `${lang}\n${text}`;
+  if (!sayCache.has(key)) {
+    sayCache.set(key, fetch(`${SAY}?${new URLSearchParams({ lang, text })}`)
+      .then((r) => (r.ok ? r.blob() : null)).then((b) => (b ? URL.createObjectURL(b) : null)).catch(() => null));
+  }
+  return sayCache.get(key);
+}
+// the sentences of the next turns, before they are needed
+function preSay(steps) {
+  for (const st of steps) if (st) for (const t of [st.alert, st.pre || st.text]) fetchSay(t);
+}
+let sayN = 0;
+async function say1(text, lang = STEP_LANG) {
+  if (nav.muted || !text) return;
+  const n = ++sayN;
+  player.pause();
+  if (hasSpeech) speechSynthesis.cancel();
+  const p = fetchSay(text, lang);
+  if (p) {
+    const url = await Promise.race([p, new Promise((done) => setTimeout(() => done(null), 2500))]);
+    if (n !== sayN || nav.muted) return;
+    if (url) {
+      player.src = url;
+      try {
+        await player.play();
+        return;
+      } catch {}
+    }
+  }
+  browserSay(text, lang);
+}
+// inside the tap on Start: a silent sound and an empty word, so that the browser lets the page speak later
+function unlockSound() {
+  const n = 800, b = new DataView(new ArrayBuffer(44 + n * 2));
+  const str = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); b.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true);
+  b.setUint16(22, 1, true); b.setUint32(24, 8000, true); b.setUint32(28, 16000, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true);
+  str(36, "data"); b.setUint32(40, n * 2, true);
+  player.src = URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+  player.play().catch(() => {});
+  if (hasSpeech) {
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  }
+}
+function hush() {
+  sayN++;
+  player.pause();
+  if (hasSpeech) speechSynthesis.cancel();
 }
 const clock = (s) => new Date(Date.now() + s * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 // the sign of the next junction, by car, in its last 2 km
@@ -1833,6 +1928,7 @@ function navUpdate(p, rawPos, off = false) {
   navEta.append(el("strong", "", {}, clock(s)), el("span", "", {}, `${T.duration(s)} · ${fmtKm(left / 1000)}`));
   // the spoken instructions: early, then at the turn; after the turn what comes
   const n = steps.indexOf(next);
+  preSay([next, steps[k + 2], steps[k + 3]]);
   if (k === 0 && !nav.spoken.has("0")) {
     nav.spoken.add("0");
     say1(steps[0].pre || steps[0].text);
@@ -1877,7 +1973,8 @@ function navArrive() {
   const last = nav.d.steps[nav.d.steps.length - 1];
   if (!nav.spoken.has("end")) {
     nav.spoken.add("end");
-    say1(last?.pre || T.arrived);
+    if (last?.pre) say1(last.pre);
+    else say1(T.arrived, "en");
   }
 }
 function stopTracking() {
@@ -1915,7 +2012,7 @@ function onFix(pos) {
 async function reroute(ll) {
   nav.rerouting = true;
   navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
-  say1(T.rerouting.replace("…", ""));
+  say1(T.rerouting.replace("…", ""), "en");
   try {
     const q = new URLSearchParams({ from: `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`, to: `${route.to.ll[1].toFixed(5)},${route.to.ll[0].toFixed(5)}`, mode: route.mode, lang: LANG });
     const r = await fetch(`${ROUTE}?${q}`);
@@ -1930,6 +2027,8 @@ async function reroute(ll) {
 }
 async function navStart(sim) {
   if (!route.answer) return;
+  if (!nav.muted) unlockSound();
+  preSay(route.answer.steps.slice(0, 2));
   nav.on = true;
   nav.sim = sim;
   nav.follow = true;
@@ -1977,7 +2076,6 @@ async function navStart(sim) {
     navBanner.innerHTML = "";
     navBanner.append(el("div", "lm-nav-text lm-nav-instr", {}, T.waitGPS));
     navSign.hidden = navThen.hidden = navLimit.hidden = true;
-    say1(""); // a first word inside the tap, so that the browser lets the page speak later
     nav.watch = navigator.geolocation.watchPosition(onFix, (err) => {
       if (err.code === 1) {
         navBanner.innerHTML = "";
@@ -1989,7 +2087,7 @@ async function navStart(sim) {
 function navStop() {
   nav.on = false;
   stopTracking();
-  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  hush();
   nav.lock?.release?.().catch(() => {});
   nav.lock = null;
   nav.avatar?.remove();
@@ -2010,7 +2108,7 @@ navMute.addEventListener("click", () => {
   store.set("hm-mute", nav.muted ? "1" : "0");
   navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
   navMute.title = navMute.ariaLabel = nav.muted ? T.unmute : T.mute;
-  if (nav.muted && "speechSynthesis" in window) speechSynthesis.cancel();
+  if (nav.muted) hush();
 });
 navOverview.addEventListener("click", () => {
   nav.follow = false;

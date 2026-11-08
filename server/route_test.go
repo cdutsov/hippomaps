@@ -176,7 +176,12 @@ func TestRouteLimit(t *testing.T) {
 	var calls atomic.Int32
 	var last map[string]any
 	v := fakeValhalla(t, &calls, &last)
-	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL; c.ElevationURL = v.URL; c.ElevationKey = "ek_test"; c.RoutesPerIP = 2 })
+	s := testServer(t, nil, func(c *Config) {
+		c.RoutingURL = v.URL
+		c.ElevationURL = v.URL
+		c.ElevationKey = "ek_test"
+		c.RoutesPerIP = 2
+	})
 	u := "/labs/maps/api/route?from=47.3779,8.5403&to=46.949,7.4391&mode=bike"
 	for i, want := range []int{200, 200, 429} {
 		if w := get(s, u, "X-Forwarded-For", "203.0.113.9"); w.Code != want {
