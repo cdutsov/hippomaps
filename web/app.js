@@ -1,7 +1,8 @@
 // hippomaps: a search box with suggestions, the results and the page of a place in a
 // side bar, and the map beside it. The search is the API of overpass-search (data-api):
 // /complete while typing, /query for the reading, /search for the results. Pictures and
-// logos come from data-pictures, which reads Wikimedia Commons. Text from OpenStreetMap
+// logos come from data-pictures, which reads Wikimedia Commons. Directions come from
+// data-route (Valhalla, through this server) when the server has them. Text from OpenStreetMap
 // only ever goes in as text, never as HTML.
 import * as maplibregl from "./vendor/maplibre-gl-6.13.0/maplibre-gl.mjs";
 
@@ -12,6 +13,7 @@ const side = root.querySelector(".lm-side");
 const mapEl = root.querySelector(".lm-map");
 const API = root.dataset.api.replace(/\/$/, "");
 const PICTURES = root.dataset.pictures || "";
+const ROUTE = root.dataset.route || "";
 const LANG = (navigator.language || "en").slice(0, 2).toLowerCase();
 const placeKeys = ["place", "place2", "region"];
 const extraKeys = [...placeKeys, "what", "view"]; // view=1: the same search in the map view
@@ -56,6 +58,20 @@ const T = {
     need_location: "Share your location, or zoom the map to where you are, or add a place to the search.",
   },
   directions: "Directions",
+  from: "From",
+  to: "To",
+  swap: "Swap start and destination",
+  myPlace: "Your location",
+  mapPoint: "Point on the map",
+  tapStart: "Tap the map to set the start, or use your location.",
+  useLocation: "Use my location",
+  routing: "Finding the route…",
+  modes: [["car", "Car"], ["bike", "Bike"], ["walk", "Walk"]],
+  routeFailed: "The route could not be found. Please try again.",
+  duration: (s) => {
+    const m = Math.max(1, Math.round(s / 60));
+    return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+  },
   website: "Website",
   call: "Call",
   osm: "OpenStreetMap",
@@ -103,6 +119,10 @@ const ICON = {
   burger: "M4 7h16M4 12h16M4 17h16",
   locate: "M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
+  car: "M5 17h14v-5l-2-5H7l-2 5zM5 12h14M7.5 17v2M16.5 17v2M8 14.5h.01M16 14.5h.01",
+  bike: "M5.5 18a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM18.5 18a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5.5 14.5 9 8h6l3.5 6.5M9 8l3 6.5 3-6.5M8 5h3",
+  walk: "M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM10 21l2-6 3 3v3M12 15l-1-6 4 2 2 3M11 9l-3 2-1 3",
+  swap: "M7 4v16M7 4 4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3",
 };
 const human = (v) => (v ? v.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
 const tagsOf = (p) => (typeof p.tags === "string" ? JSON.parse(p.tags) : p.tags) || {};
@@ -209,12 +229,16 @@ const detailView = el("section", "lm-detail");
 detailView.hidden = true;
 const hereView = el("section", "lm-here");
 hereView.hidden = true;
-body.append(listView, hereView, detailView);
-// show one of the views of the side bar: the list, what is here, the page of a place
+const routeView = el("section", "lm-route");
+routeView.hidden = true;
+body.append(listView, hereView, detailView, routeView);
+// show one of the views of the side bar: the list, what is here, the page of a place, directions
 const showView = (v) => {
+  if (v !== routeView && !routeView.hidden) routeDone();
   listView.hidden = v !== listView;
   hereView.hidden = v !== hereView;
   detailView.hidden = v !== detailView;
+  routeView.hidden = v !== routeView;
   body.scrollTop = 0;
 };
 const foot = el("div", "lm-foot", {}, T.credit);
@@ -255,7 +279,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty };
+const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty };
 const ACCENT = "#d0312d";
 map.on("style.load", () => {
   for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
@@ -288,6 +312,15 @@ map.on("style.load", () => {
     paint: { "line-color": "#0284c7", "line-width": 9, "line-opacity": 0.22, "line-blur": 2 } }, below);
   map.addLayer({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "round" },
     paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95 } }, below);
+  // directions: the line with a casing, the start (white) and the destination (red)
+  const line = ["==", ["geometry-type"], "LineString"];
+  map.addLayer({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
+  map.addLayer({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#1a73e8", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
+  map.addLayer({ id: "lm-route-ends", type: "circle", source: "lm-route", filter: ["!", line], paint: {
+    "circle-radius": 7, "circle-color": ["match", ["get", "end"], "from", "#fff", ACCENT],
+    "circle-stroke-color": ["match", ["get", "end"], "from", "#111827", "#fff"], "circle-stroke-width": 3 } });
   map.addLayer({ id: "lm-pin", type: "circle", source: "lm-pin",
     paint: { "circle-radius": 8, "circle-color": "#111827", "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
   map.addLayer({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
@@ -1128,7 +1161,8 @@ function renderDetail(f) {
     a.append(el("span", "", {}, label));
     actions.append(a);
   };
-  if (c) {
+  if (c && ROUTE) actions.append(routeButton(() => directions({ ll: c, label: p.name || kindOf(p).label || T.noName })));
+  else if (c) {
     const from = state.me ? `from=${state.me.at2[1].toFixed(6)}%2C${state.me.at2[0].toFixed(6)}&` : "";
     action(T.directions, `https://www.openstreetmap.org/directions?${from}to=${c[1].toFixed(6)}%2C${c[0].toFixed(6)}`, ICON.route);
   }
@@ -1192,6 +1226,11 @@ map.on("click", (e) => {
     return;
   }
   const hit = resultAt(e.point);
+  if (!routeView.hidden) {
+    const c = hit && center(hit);
+    return setFrom(c ? { ll: c, label: hit.properties.name || T.mapPoint }
+      : { ll: [+e.lngLat.lng.toFixed(5), +e.lngLat.lat.toFixed(5)], label: symbolAt(e.point) || T.mapPoint });
+  }
   if (hit) return select(hit, { fly: false });
   here(e.lngLat, symbolAt(e.point));
 });
@@ -1243,7 +1282,13 @@ async function here(ll, symbol) {
   const h = el("h2", "lm-dname", {}, symbol || T.here);
   const sub = el("p", "lm-dsub", {}, `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
   const note = el("p", "lm-notes lm-here-note", {}, T.hereLooking);
-  hereView.append(h, sub, note);
+  hereView.append(h, sub);
+  if (ROUTE) {
+    const acts = el("div", "lm-actions lm-here-actions");
+    acts.append(routeButton(() => directions({ ll: [lon, lat], label: h.textContent })));
+    hereView.append(acts);
+  }
+  hereView.append(note);
   showView(hereView);
   setSheet("half");
   let d;
@@ -1287,6 +1332,143 @@ async function here(ll, symbol) {
   // the symbol tapped: its page at once
   const hit = symbol && fs.find((f) => fold(f.properties.name || "") === fold(symbol));
   if (hit) select(hit, { push: false, fly: false });
+}
+
+// ------------------------------------------------------------------ directions
+// From the page of a place or from a point of the map: to there, from the location of the
+// visitor, or from a tap on the map. The line and the steps come from data-route.
+const MODE_ICON = { car: ICON.car, bike: ICON.bike, walk: ICON.walk };
+const route = { from: null, to: null, mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
+function routeButton(go) {
+  const b = el("button", "lm-action", { type: "button" });
+  b.innerHTML = svg(ICON.route, 18);
+  b.append(el("span", "", {}, T.directions));
+  b.addEventListener("click", go);
+  return b;
+}
+function routeDone() {
+  route.ctl?.abort();
+  setSource("route", empty);
+}
+function drawEnds(line) {
+  const fs = [];
+  if (line) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: line }, properties: {} });
+  if (route.from) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.from.ll }, properties: { end: "from" } });
+  if (route.to) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } });
+  setSource("route", { type: "FeatureCollection", features: fs });
+}
+async function directions(to) {
+  route.back = [listView, hereView, detailView].find((v) => !v.hidden) || listView;
+  route.to = to;
+  route.from = state.me ? { ll: state.me.at2, label: T.myPlace, me: true } : null;
+  hereDone();
+  showView(routeView);
+  setSheet("half");
+  renderRoute();
+  if (!route.from) { // ask the browser once; the visitor can tap the map instead
+    const me = await locate();
+    if (me && !route.from && !routeView.hidden) setFrom({ ll: state.me.at2, label: T.myPlace, me: true });
+  } else findRoute();
+}
+function setFrom(from) {
+  route.from = from;
+  renderRoute();
+  findRoute();
+}
+const routeHead = el("div", "lm-route-head");
+const routeMsg = el("p", "lm-notes lm-route-msg", { role: "status", "aria-live": "polite" });
+const routeSum = el("p", "lm-route-sum");
+const routeSteps = el("ol", "lm-steps");
+function renderRoute() {
+  routeView.innerHTML = "";
+  routeHead.innerHTML = "";
+  const back = el("button", "lm-back", { type: "button" });
+  back.innerHTML = svg(ICON.back, 18);
+  back.append(route.back === detailView ? (state.selected?.properties.name || T.back) : route.back === hereView ? T.here : T.back);
+  back.addEventListener("click", () => showView(route.back || listView));
+  const modes = el("div", "lm-modes", { role: "radiogroup", "aria-label": T.directions });
+  for (const [m, label] of T.modes) {
+    const b = el("button", "lm-mode", { type: "button", role: "radio", "aria-checked": String(m === route.mode), title: label });
+    b.innerHTML = svg(MODE_ICON[m], 18);
+    b.append(el("span", "", {}, label));
+    b.addEventListener("click", () => {
+      if (route.mode === m) return;
+      route.mode = m;
+      store.set("hm-mode", m);
+      renderRoute();
+      findRoute();
+    });
+    modes.append(b);
+  }
+  const ends = el("div", "lm-ends");
+  const end = (name, v, cls) => {
+    const row = el("div", `lm-end ${cls}`);
+    row.append(el("span", "lm-end-dot"), el("span", "lm-end-name", {}, name));
+    row.append(el("span", `lm-end-label${v ? "" : " lm-end-none"}`, {}, v ? v.label : "–"));
+    return row;
+  };
+  ends.append(end(T.from, route.from, "lm-end-from"), end(T.to, route.to, "lm-end-to"));
+  const swap = el("button", "lm-icon-btn lm-swap", { type: "button", title: T.swap, "aria-label": T.swap });
+  swap.innerHTML = svg(ICON.swap, 18);
+  swap.disabled = !route.from || !route.to;
+  swap.addEventListener("click", () => {
+    [route.from, route.to] = [route.to, route.from];
+    renderRoute();
+    findRoute();
+  });
+  ends.append(swap);
+  routeHead.append(modes, ends);
+  if (!route.from?.me && navigator.geolocation) {
+    const use = el("button", "lm-chip lm-use-me", { type: "button" }, T.useLocation);
+    use.addEventListener("click", async () => {
+      const me = await locate();
+      if (me) setFrom({ ll: state.me.at2, label: T.myPlace, me: true });
+      else routeMsg.textContent = T.locBlocked;
+    });
+    routeHead.append(use);
+  }
+  routeMsg.textContent = route.from ? "" : T.tapStart;
+  routeSum.textContent = "";
+  routeSteps.innerHTML = "";
+  routeView.append(back, el("h2", "lm-dname", {}, T.directions), routeHead, routeMsg, routeSum, routeSteps);
+  drawEnds(null);
+}
+async function findRoute() {
+  if (!route.from || !route.to) return;
+  route.ctl?.abort();
+  const ctl = route.ctl = new AbortController();
+  const ll = (v) => `${v.ll[1].toFixed(5)},${v.ll[0].toFixed(5)}`;
+  routeMsg.textContent = T.routing;
+  routeSum.textContent = "";
+  routeSteps.innerHTML = "";
+  drawEnds(null);
+  let d;
+  try {
+    const r = await fetch(`${ROUTE}?${new URLSearchParams({ from: ll(route.from), to: ll(route.to), mode: route.mode, lang: LANG })}`, { signal: ctl.signal });
+    d = await r.json().catch(() => ({}));
+    if (ctl.signal.aborted) return;
+    if (!r.ok) {
+      routeMsg.textContent = d.error?.message || T.routeFailed;
+      return;
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") routeMsg.textContent = T.routeFailed;
+    return;
+  }
+  routeMsg.textContent = "";
+  routeSum.textContent = `${T.duration(d.s)} · ${fmtKm(d.km)}`;
+  for (const st of d.steps) {
+    const li = el("li", "lm-step");
+    const b = el("button", "", { type: "button" });
+    b.append(el("span", "lm-step-text", {}, st.text));
+    if (st.km > 0) b.append(el("span", "lm-step-km", {}, fmtKm(st.km)));
+    b.addEventListener("click", () => fit(() => map.easeTo({ center: st.at, zoom: Math.max(map.getZoom(), 16), duration: 600, padding: pad() })));
+    li.append(b);
+    routeSteps.append(li);
+  }
+  drawEnds(d.line);
+  const b = extent({ type: "LineString", coordinates: d.line });
+  if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 700 }));
 }
 
 // ------------------------------------------------------------------ start

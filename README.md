@@ -4,8 +4,8 @@ A map app: a search box with suggestions, the results and the page of a place in
 places and logos of chains come from Wikimedia Commons. On a phone the side bar is a sheet over the lower part of the map.
 
 It is a client of [overpass-search](https://gitlab.com/cdutsov/overpass-search): the browser calls its API for the reading, the
-results and the completions. This server serves the page and its files, and reads pictures from Wikidata and Commons, so that
-the browser of a visitor asks only the site it is on.
+results and the completions. This server serves the page and its files, reads pictures from Wikidata and Commons, and asks
+Valhalla for directions, so that the browser of a visitor asks only the site it is on.
 
 ```
 go run ./cmd/hippomaps            # :8096, the page on /labs/maps
@@ -18,8 +18,12 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - A card per result: name, kind, chain, address, distance from the visitor once known, open or closed with the next change
   (opening_hours.js, loaded when a result has hours), and a thumbnail: the photo of the place, else the logo of the chain, else
   a letter.
-- The page of a place: the picture with its credit, open or closed, directions (OpenStreetMap), website, phone, e-mail, address,
-  opening hours, wheelchair access, Wikipedia, and all tags.
+- The page of a place: the picture with its credit, open or closed, directions, website, phone, e-mail, address, opening hours,
+  wheelchair access, Wikipedia, and all tags.
+- Directions (with `ROUTING_URL`; without it the button opens OpenStreetMap): to a place, or to a tapped point, by car, bike or
+  on foot. The start is the location of the visitor, or a tap on the map; a button swaps start and destination. The line on
+  the map, time and length, and the steps in the language of the browser; a tap on a step moves the map there. The mode is
+  kept in the browser (`hm-mode`).
 - The map: results as points and shapes, the lines of the answer (a border, a road, a river, the circles around the places of a
   chain), hover and selection in step with the list.
 - "Search this area": after the visitor moves the map, the same search in the view (`view=1`; the place of the sentence goes).
@@ -52,6 +56,13 @@ the file on Commons). 204 when the place does not have one, 400 when the request
 visitor, 503 when the calls to Wikimedia stay taken, 502 when Wikimedia failed. Four calls to Wikimedia at a time; the answers
 of Wikidata and Commons and the thumbnails are kept in memory for a day.
 
+## Directions
+
+`GET {base}/api/route?from=lat,lon&to=lat,lon&mode=car|bike|walk&lang=de` asks Valhalla (`ROUTING_URL` + `/route`) and answers
+`{"km","s","line":[[lon,lat],…],"steps":[{"text","km","s","at":[lon,lat],"type"}]}`. Errors are
+`{"error":{"code","message"}}`: 400 `bad_request` or `too_far` (more than 1500 km in a line by car, 300 by bike, 100 on foot),
+404 `no_route`, 429 `too_many`, 503 `busy`, 502 `failed`. Four calls to Valhalla at a time.
+
 ## Settings
 
 | Setting | Default | Meaning |
@@ -64,6 +75,8 @@ of Wikidata and Commons and the thumbnails are kept in memory for a day.
 | `PICTURES` | `true` | pictures from Wikimedia Commons |
 | `PICTURES_PER_IP` | `600` | pictures a visitor gets in 10 minutes |
 | `PICTURE_CACHE_MB` | `64` | memory for the answers of Wikimedia and the thumbnails |
+| `ROUTING_URL` | | Valhalla, for directions; empty: no directions |
+| `ROUTES_PER_IP` | `120` | directions a visitor gets in 10 minutes |
 | `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia, which asks for a way to reach the operator |
 
 The page sends a Content-Security-Policy that allows this site and the tiles API, `noindex`, and `geolocation=(self)`. The
@@ -75,7 +88,7 @@ proxy in front sets `X-Forwarded-For`, which the limit of pictures counts by.
 
 ```
 cmd/hippomaps/   settings from the environment, listen, healthcheck
-server/          the page, its files, the pictures; tests with a fake Wikimedia
+server/          the page, its files, the pictures, directions; tests with a fake Wikimedia and a fake Valhalla
 web/             index.html, app.js, app.css, icon.svg, and vendor/
 ```
 

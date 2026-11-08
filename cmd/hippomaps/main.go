@@ -76,6 +76,8 @@ func config() (server.Config, error) {
 	cfg.Pictures = env("PICTURES", "true") == "true"
 	cfg.PicturesPerIP = num("PICTURES_PER_IP", cfg.PicturesPerIP)
 	cfg.CacheMB = num("PICTURE_CACHE_MB", cfg.CacheMB)
+	cfg.RoutingURL = env("ROUTING_URL", "")
+	cfg.RoutesPerIP = num("ROUTES_PER_IP", cfg.RoutesPerIP)
 	if !strings.HasPrefix(cfg.Base, "/") {
 		err = errors.Join(err, fmt.Errorf("BASE_PATH: must start with /: %q", cfg.Base))
 	}
@@ -97,7 +99,7 @@ func serve() error {
 		defer cancel()
 		srv.Shutdown(c)
 	}()
-	cfg.Log.Info("listening", "addr", srv.Addr, "version", Version, "base", cfg.Base, "pictures", cfg.Pictures, "key", cfg.MapsKey != "")
+	cfg.Log.Info("listening", "addr", srv.Addr, "version", Version, "base", cfg.Base, "pictures", cfg.Pictures, "routes", cfg.RoutingURL != "", "key", cfg.MapsKey != "")
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

@@ -172,6 +172,35 @@ button { font: inherit; color: inherit; }
 .lm-here-note { padding: 0 1rem; }
 .lm-here .lm-count { margin-top: .8rem; }
 
+/* directions */
+button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-size: .78rem; cursor: pointer; }
+.lm-here-actions { border-bottom: 0; padding-bottom: .4rem; }
+.lm-route { padding: 0 0 1rem; }
+.lm-route-head { padding: .3rem 1rem .6rem; border-bottom: 1px solid var(--line); }
+.lm-modes { display: flex; gap: .4rem; margin-bottom: .7rem; }
+.lm-mode { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: .35rem; border: 1px solid var(--line); background: var(--bg);
+  color: var(--fg); border-radius: 18px; padding: .4rem .5rem; font: inherit; font-size: .85rem; cursor: pointer; }
+.lm-mode:hover { background: var(--hot); }
+.lm-mode[aria-checked=true] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.lm-ends { position: relative; display: flex; flex-direction: column; gap: .35rem; padding-right: 2.4rem; }
+.lm-end { display: grid; grid-template-columns: auto 3rem 1fr; align-items: center; gap: .5rem; background: var(--bg2); border-radius: 8px; padding: .45rem .6rem; }
+.lm-end-dot { width: 12px; height: 12px; border-radius: 50%; border: 3px solid #111827; background: #fff; }
+.lm-end-to .lm-end-dot { border-color: #fff; background: #d0312d; box-shadow: 0 0 0 1px #d0312d; }
+.lm-end-name { color: var(--muted); font-size: .8rem; }
+.lm-end-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lm-end-none { color: var(--muted); }
+.lm-swap { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+.lm-swap:disabled { opacity: .4; cursor: default; }
+.lm-use-me { margin-top: .6rem; color: var(--accent); }
+.lm-route-msg { padding: .6rem 1rem 0; margin: 0; }
+.lm-route-sum { margin: .7rem 1rem .3rem; font-size: 1.2rem; font-weight: 600; }
+.lm-route-sum:empty { display: none; }
+.lm-steps { list-style: none; margin: 0; padding: 0; }
+.lm-step button { display: flex; width: 100%; gap: .8rem; justify-content: space-between; align-items: baseline; border: 0; border-bottom: 1px solid var(--line);
+  background: none; color: var(--fg); font: inherit; text-align: left; padding: .55rem 1rem; cursor: pointer; }
+.lm-step button:hover { background: var(--hot); }
+.lm-step-km { color: var(--muted); font-size: .8rem; white-space: nowrap; }
+
 /* the menu: a drawer from the left, over everything */
 .lm-burger { margin-left: -.35rem; }
 .lm-map-burger { display: none; }

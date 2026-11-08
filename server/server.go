@@ -1,5 +1,5 @@
-// Package server serves the map app: the page, its files, and pictures from Wikimedia
-// Commons. The search itself is the API of overpass-search, which the browser calls.
+// Package server serves the map app: the page, its files, pictures from Wikimedia
+// Commons, and directions from Valhalla. The search itself is the API of overpass-search, which the browser calls.
 package server
 
 import (
@@ -36,7 +36,11 @@ type Config struct {
 	CommonsAPI    string        // https://commons.wikimedia.org/w/api.php
 	ThumbHosts    []string      // hosts of thumbnails: upload.wikimedia.org, thumb.wikimedia.org
 	UserAgent     string        // for Wikimedia, with a way to reach the operator
-	Log           *slog.Logger
+
+	RoutingURL  string        // Valhalla, for directions; empty: no directions
+	RoutesPerIP int           // directions a visitor gets in RouteWindow
+	RouteWindow time.Duration //
+	Log         *slog.Logger
 }
 
 // DefaultConfig is the configuration without the environment.
@@ -46,6 +50,7 @@ func DefaultConfig() Config {
 		Pictures: true, PicturesPerIP: 600, PictureWindow: 10 * time.Minute, CacheMB: 64,
 		WikidataAPI: "https://www.wikidata.org/w/api.php", CommonsAPI: "https://commons.wikimedia.org/w/api.php",
 		ThumbHosts: []string{"upload.wikimedia.org", "thumb.wikimedia.org"}, UserAgent: "hippomaps (+https://gitlab.com/cdutsov/hippomaps)",
+		RoutesPerIP: 120, RouteWindow: 10 * time.Minute,
 		Log: slog.Default(),
 	}
 }
@@ -74,13 +79,20 @@ type Server struct {
 	cache  *memo
 	perIP  *window
 	calls  chan struct{} // calls to Wikimedia at once
+
+	routeClient *http.Client
+	routesPerIP *window
+	routeCalls  chan struct{} // calls to Valhalla at once
 }
 
 // New makes the server.
 func New(cfg Config) *Server {
 	s := &Server{cfg: cfg, log: cfg.Log, mux: http.NewServeMux(), hashes: map[string]string{},
 		client: &http.Client{Timeout: 10 * time.Second}, cache: newMemo(cfg.CacheMB<<20, 24*time.Hour),
-		perIP: newWindow(cfg.PicturesPerIP, cfg.PictureWindow), calls: make(chan struct{}, 4)}
+		perIP: newWindow(cfg.PicturesPerIP, cfg.PictureWindow), calls: make(chan struct{}, 4),
+		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
+		routeCalls: make(chan struct{}, 4)}
+	s.cfg.RoutingURL = strings.TrimRight(cfg.RoutingURL, "/")
 	if s.log == nil {
 		s.log = slog.Default()
 	}
@@ -102,6 +114,9 @@ func New(cfg Config) *Server {
 	if cfg.Pictures {
 		s.mux.HandleFunc("GET "+base+"/api/picture", s.picture)
 	}
+	if s.cfg.RoutingURL != "" {
+		s.mux.HandleFunc("GET "+base+"/api/route", s.route)
+	}
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	return s
 }
@@ -121,7 +136,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Version": s.cfg.Version}
 	if err := s.page.Execute(&buf, data); err != nil {
 		s.log.Error("page", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
