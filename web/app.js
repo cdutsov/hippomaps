@@ -1803,7 +1803,7 @@ function placeField(which) {
       const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q, limit: "6", lang: geoLang,
         lat: c.lat.toFixed(4), lon: c.lng.toFixed(4) })}`, { signal: ctl.signal });
       const d = await r.json();
-      if (document.activeElement !== field) return;
+      if (!field.isConnected || field.value.trim() !== q) return; // typed on meanwhile, or gone
       const seen = new Set();
       show((d.features || []).map((f) => ({ ...placeLabel(f.properties || {}), ll: f.geometry.coordinates }))
         .filter((it) => it.label && !seen.has(`${it.label}\n${it.detail}`) && seen.add(`${it.label}\n${it.detail}`)));
