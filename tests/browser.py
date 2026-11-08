@@ -130,10 +130,18 @@ try:
     # with start and destination set, a tap on the map shows the place; its card goes back to the route as it was
     call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 120, "y": 160}])
     call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
-    check(wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 10), "a tap on the map with a route: the place shown")
-    js("document.querySelector('.lm-here:not([hidden]) .lm-back, .lm-detail:not([hidden]) .lm-back')?.click()")
+    check(wait("!document.querySelector('.lm-here').hidden", 10) and js("!!document.querySelector('.lm-here .lm-swap-acts')"),
+          "a tap on the map with a route: the point shown, the route kept")
+    js("document.querySelector('.lm-here:not([hidden]) .lm-back')?.click()")
     check(wait("!document.querySelector('.lm-route').hidden && /Paradeplatz/.test(document.querySelector('.lm-end-from input').value)", 10),
           "back to the route: the start kept")
+    to0 = js("document.querySelector('.lm-end-to input').value")
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 140, "y": 180}])
+    call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    wait("!!document.querySelector('.lm-here:not([hidden]) .lm-swap-acts')", 10)
+    js("document.querySelector('.lm-here:not([hidden]) .lm-swap-acts .lm-chip')?.click()")
+    check(wait(f"!document.querySelector('.lm-route').hidden && document.querySelector('.lm-end-to input').value !== {json.dumps(to0)} && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30),
+          "a point of the map as the new destination")
     # (the route may be asked once more when the location comes: wait for the summary)
     check(wait(r"/\d{1,2}:\d{2}/.test(document.querySelector('.lm-sum-eta')?.textContent || '')", 20), "the arrival time of the route")
     check(wait("(() => { const b = document.querySelector('.lm-nav-start')?.getBoundingClientRect(); return !!b && b.height >= 44 && b.top >= 0 && b.bottom <= innerHeight; })()", 10),
@@ -248,8 +256,10 @@ try:
 
     # shared links: a place, a route
     call("Page.navigate", url=URL + "/?at=46.94797,7.44745&n=Zytglogge")
-    check(wait("!document.querySelector('.lm-here').hidden && /Zytglogge/.test(document.querySelector('.lm-here .lm-dname')?.textContent || '')", 30)
-          and js("!!document.querySelector('.lm-here .lm-share')"), "a shared place opens with its name and Share")
+    # (the point opens; when a place of that name is there, its page follows)
+    check(wait("[...document.querySelectorAll('.lm-here:not([hidden]) .lm-dname, .lm-detail:not([hidden]) .lm-dname')].some(e => /Zytglogge/.test(e.textContent))"
+               " && !!document.querySelector('.lm-here:not([hidden]) .lm-share, .lm-detail:not([hidden]) .lm-share')", 60),
+          "a shared place opens with its name and Share")
     call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=47.36690,8.54500&tn=Bellevue&mode=walk")
     check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && /Zurich HB/.test(document.querySelector('.lm-end-from input')?.value || '') && document.querySelector('.lm-mode[aria-checked=true]')?.textContent.includes('Walk')", 40),
           "a shared route opens with its start, destination and mode")

@@ -461,3 +461,4 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 /* the X of a card, top right */
 .lm-here, .lm-detail { position: relative; }
 .lm-card-x { position: absolute; top: .3rem; right: .6rem; z-index: 2; }
+.lm-swap-acts { display: flex; gap: .5rem; flex-wrap: wrap; padding: 0 1rem .6rem; }

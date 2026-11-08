@@ -61,6 +61,8 @@ const EN = {
   copy: "Copy",
   copied: "Copied",
   share: "Share",
+  useAsTo: "Use as destination",
+  useAsFrom: "Use as start",
   linkCopied: "Link copied",
   open: "Open",
   closed: "Closed",
@@ -362,7 +364,8 @@ routeView.hidden = true;
 body.append(listView, hereView, detailView, routeView);
 // show one of the views of the side bar: the list, what is here, the page of a place, directions
 const showView = (v) => {
-  if (v !== routeView && !routeView.hidden) routeDone();
+  if (v !== routeView && !routeView.hidden && !route.keep) routeDone(); // a point looked at from the route keeps it
+  if (v !== hereView) route.keep = false;
   listView.hidden = v !== listView;
   hereView.hidden = v !== hereView;
   detailView.hidden = v !== detailView;
@@ -1900,7 +1903,7 @@ function onTap(e) {
     }
     return setFrom(p);
   }
-  const fromRoute = !routeView.hidden; // the place's card goes back to the route
+  const fromRoute = !routeView.hidden || route.keep; // the place's card goes back to the route
   if (hit) return select(hit, { fly: false });
   here(e.lngLat, symbolAt(e.point), fromRoute);
 }
@@ -1936,6 +1939,7 @@ function hereDone() {
 }
 // the X of a card: the card and what it highlights go; back to the results, or to the start
 function closeCard() {
+  if (route.keep) { route.keep = false; routeDone(); }
   hereDone();
   setSource("selected", empty);
   state.selected = null;
@@ -1958,12 +1962,25 @@ async function here(ll, symbol, backToRoute = false) {
   setSource("selected", empty);
   state.selected = null;
   hereView.innerHTML = "";
+  route.keep = backToRoute;
   if (backToRoute) {
     const back = el("button", "lm-back", { type: "button" });
     back.innerHTML = svg(ICON.back, 18);
     back.append(T.directions);
-    back.addEventListener("click", () => { hereDone(); showView(routeView); renderRoute(); findRoute(); });
+    const toRoute = () => { hereDone(); showView(routeView); renderRoute(); findRoute(); };
+    back.addEventListener("click", toRoute);
     hereView.append(back);
+    // the point instead of the destination, or of the start
+    const swap = el("div", "lm-swap-acts");
+    for (const [label, end] of [[T.useAsTo, "to"], [T.useAsFrom, "from"]]) {
+      const b = el("button", "lm-chip", { type: "button" }, label);
+      b.addEventListener("click", () => {
+        route[end] = { ll: [+ll.lng.toFixed(5), +ll.lat.toFixed(5)], label: hereView.querySelector(".lm-dname")?.textContent || T.mapPoint };
+        toRoute();
+      });
+      swap.append(b);
+    }
+    hereView.append(swap);
   } else if (state.answer) {
     const back = el("button", "lm-back", { type: "button" });
     back.innerHTML = svg(ICON.back, 18);
@@ -2016,6 +2033,22 @@ async function here(ll, symbol, backToRoute = false) {
     sub.textContent = [d.place?.detail, coords].filter(Boolean).join(" · ");
     if (area) sub.after(el("p", "lm-dsub lm-in-area", {}, T.inArea(area.label, area.detail)));
   }
+  // the picture of the town or area (of the place close in), when its item of Wikidata has one
+  const rel = (area && (zoom < 14 || !d.place) ? area : d.place || area)?.place;
+  if (PICTURES && /^relation\/\d+$/.test(rel || "")) {
+    const fig = el("figure", "lm-pic lm-place-pic");
+    fig.hidden = true;
+    (hereView.querySelector(".lm-here-actions") || note).before(fig);
+    picture({}, 500, rel).then((pic) => {
+      if (!pic || ctl.signal.aborted || hereView.hidden) return;
+      fig.hidden = false;
+      fig.append(el("img", "", { src: pic.url, alt: h.textContent }));
+      const cap = el("figcaption");
+      cap.append(`${T.photo}${pic.credit ? `: ${pic.credit}` : ""} · `);
+      cap.append(el("a", "", { href: pic.page, target: "_blank", rel: "noopener" }, "Wikimedia Commons"));
+      fig.append(cap);
+    });
+  }
   note.textContent = fs.length ? "" : T.hereNothing;
   note.hidden = fs.length > 0;
   if (fs.length) {
@@ -2034,7 +2067,7 @@ async function here(ll, symbol, backToRoute = false) {
 // From the page of a place or from a point of the map: to there, from the location of the
 // visitor, or from a tap on the map. The line and the steps come from data-route.
 const MODE_ICON = { car: ICON.car, bike: ICON.bike, walk: ICON.walk };
-const route = { from: null, to: null, mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
+const route = { keep: false, from: null, to: null, mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
 function routeButton(go) {
   const b = el("button", "lm-action", { type: "button" });
   b.innerHTML = svg(ICON.directions, 18);
