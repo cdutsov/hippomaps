@@ -6,14 +6,16 @@
 <meta name="robots" content="noindex">
 <title>hippomaps</title>
 <meta name="description" content="Search places on OpenStreetMap in plain words, with pictures and details beside the map.">
-<link rel="icon" href="{{asset "icon.svg"}}" type="image/svg+xml">
+<link rel="icon" href="{{asset "icon-32.png"}}" type="image/png" sizes="32x32">
+<link rel="icon" href="{{asset "icon-192.png"}}" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
 <link rel="stylesheet" href="{{asset "vendor/maplibre-gl-6.13.0/maplibre-gl.css"}}">
 <link rel="stylesheet" href="{{asset "app.css"}}">
 <link rel="modulepreload" href="{{asset "vendor/maplibre-gl-6.13.0/maplibre-gl.mjs"}}">
 {{with .Tiles}}<link rel="preconnect" href="{{.}}" crossorigin>{{end}}
 </head>
 <body>
-<div class="lm" id="app" data-api="{{.SearchAPI}}" data-tiles="{{.Tiles}}" data-key="{{.Key}}"{{if .Pictures}} data-pictures="{{.Base}}/api/picture"{{end}}>
+<div class="lm" id="app" data-logo="{{asset "icon-192.png"}}" data-api="{{.SearchAPI}}" data-tiles="{{.Tiles}}" data-key="{{.Key}}"{{if .Pictures}} data-pictures="{{.Base}}/api/picture"{{end}}>
   <aside class="lm-side" aria-label="Search and results"></aside>
   <main class="lm-map" aria-label="Map"></main>
 </div>

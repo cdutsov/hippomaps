@@ -59,8 +59,16 @@ const T = {
   allTags: "All tags",
   photo: "Photo",
   logo: "Logo",
-  dark: "Dark map",
-  light: "Light map",
+  menu: "Menu",
+  closeMenu: "Close the menu",
+  mapStyle: "Map style",
+  show: "Show",
+  threeD: "3D",
+  threeDNote: "Terrain and buildings; tilt with two fingers or the right mouse button",
+  shading: "Relief shading",
+  shadingNote: "Light and shadow of the mountains",
+  styles: [["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"],
+    ["marine", "Marine"], ["white", "White"], ["grayscale", "Grayscale"], ["black", "Black"]],
   credit: "Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons. Chains from the name-suggestion-index.",
 };
 
@@ -88,8 +96,8 @@ const ICON = {
   map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
   wheel: "M12 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM11 8v6h5l2 5M8 11a5 5 0 1 0 6 7",
   food: "M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 0-3 2-3 5s1 4 3 4v9",
-  moon: "M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z",
   book: "M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4zM5 16a4 4 0 0 1 4-4h10",
+  burger: "M4 7h16M4 12h16M4 17h16",
   locate: "M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
 };
@@ -136,21 +144,42 @@ const km = (a, b) => {
 };
 const fmtKm = (d) => (d < 1 ? `${Math.round(d * 100) * 10} m` : `${d.toFixed(d < 10 ? 1 : 0)} km`);
 
-// ------------------------------------------------------------------ theme
+// ------------------------------------------------------------------ the map style
+// The style of the map, 3D (terrain and buildings) and relief shading, kept in the browser. The
+// page is dark with the dark and black styles; the first style follows the theme of the site.
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
-const theme = () => (store.get("theme") === "dark" ? "dark" : "light");
+const look = {
+  style: T.styles.some(([k]) => k === store.get("hm-style")) ? store.get("hm-style") : store.get("theme") === "dark" ? "dark" : "light",
+  threeD: store.get("hm-3d") === "1",
+  shading: store.get("hm-shading") === "1",
+};
+const theme = () => (look.style === "dark" || look.style === "black" ? "dark" : "light");
 document.documentElement.dataset.theme = theme();
-const styleURL = () => `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${theme()}.json?lang=${["de", "fr", "it"].includes(LANG) ? LANG : "en"}`;
+const styleURL = () => {
+  const p = new URLSearchParams({ lang: ["de", "fr", "it"].includes(LANG) ? LANG : "en" });
+  if (look.shading) p.set("hillshade", "1");
+  if (look.threeD) p.set("terrain", "1");
+  if (look.threeD && look.style !== "relief") p.set("buildings", "1");
+  return `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${look.style}.json?${p}`;
+};
 
 // ------------------------------------------------------------------ the side bar
 const top = el("div", "lm-top");
-const brand = el("a", "lm-brand", { href: location.pathname }, "hippomaps");
+const logo = () => {
+  const a = el("a", "lm-brand", { href: location.pathname });
+  a.append(el("img", "lm-logo-img", { src: root.dataset.logo, alt: "", width: "28", height: "28" }), "hippomaps");
+  return a;
+};
 const tag = el("span", "lm-tag");
 tag.append("Labs · ", el("a", "", { href: "/" }, "overpass.ch"));
-const themeBtn = el("button", "lm-icon-btn", { type: "button", title: theme() === "dark" ? T.light : T.dark, "aria-label": theme() === "dark" ? T.light : T.dark });
-themeBtn.innerHTML = svg(ICON.moon);
+const burger = () => {
+  const b = el("button", "lm-icon-btn lm-burger", { type: "button", title: T.menu, "aria-label": T.menu, "aria-controls": "lm-menu", "aria-expanded": "false" });
+  b.innerHTML = svg(ICON.burger, 22);
+  return b;
+};
+const menuBtn = burger();
 const sheetBtn = el("button", "lm-sheet-btn", { type: "button", "aria-label": "Show or hide the list" });
-top.append(brand, tag, themeBtn);
+top.append(menuBtn, logo(), tag);
 
 const form = el("form", "lm-form", { role: "search" });
 const combo = el("div", "lm-combo");
@@ -193,9 +222,10 @@ const map = new maplibregl.Map({
   center: [8.54, 47.37],
   zoom: 13,
   hash: "map",
+  maxPitch: 85,
   attributionControl: { compact: true },
 });
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 // the toast over the map: the search again, in what the map shows now
 const areaBtn = el("button", "lm-area", { type: "button" });
@@ -260,12 +290,69 @@ const viewBox = () => {
   return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(",");
 };
 
-themeBtn.addEventListener("click", () => {
-  store.set("theme", theme() === "dark" ? "light" : "dark");
-  document.documentElement.dataset.theme = theme();
-  themeBtn.title = themeBtn.ariaLabel = theme() === "dark" ? T.light : T.dark;
-  map.setStyle(styleURL(), { diff: false });
-});
+// ------------------------------------------------------------------ the menu
+// Closed at first; the burger in the top bar (on a phone, over the map) opens it.
+const mapMenuBtn = burger();
+mapMenuBtn.classList.add("lm-map-burger");
+mapEl.append(mapMenuBtn);
+const backdrop = el("div", "lm-backdrop");
+backdrop.hidden = true;
+const menu = el("nav", "lm-menu", { id: "lm-menu", "aria-label": T.menu });
+menu.hidden = true;
+const menuHead = el("div", "lm-menu-head");
+const closeMenuBtn = el("button", "lm-icon-btn", { type: "button", title: T.closeMenu, "aria-label": T.closeMenu });
+closeMenuBtn.innerHTML = svg(ICON.close, 20);
+menuHead.append(logo(), closeMenuBtn);
+const styleGrid = el("div", "lm-styles", { role: "radiogroup", "aria-label": T.mapStyle });
+for (const [key, label] of T.styles) {
+  const b = el("button", "lm-style", { type: "button", role: "radio", "data-style": key, "aria-checked": String(key === look.style) });
+  b.append(el("span", `lm-swatch lm-swatch-${key}`), el("span", "", {}, label));
+  b.addEventListener("click", () => {
+    look.style = key;
+    store.set("hm-style", key);
+    document.documentElement.dataset.theme = theme();
+    styleGrid.querySelectorAll("[data-style]").forEach((x) => x.setAttribute("aria-checked", String(x.dataset.style === key)));
+    restyle();
+  });
+  styleGrid.append(b);
+}
+const toggle = (label, note, on, set) => {
+  const row = el("label", "lm-toggle");
+  const box = el("input", "", { type: "checkbox", role: "switch" });
+  box.checked = on;
+  box.addEventListener("change", () => set(box.checked));
+  const text = el("span", "lm-toggle-text");
+  text.append(el("span", "", {}, label), el("span", "lm-toggle-note", {}, note));
+  row.append(text, box);
+  return row;
+};
+menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "lm-menu-title", {}, T.show),
+  toggle(T.threeD, T.threeDNote, look.threeD, (on) => {
+    look.threeD = on;
+    store.set("hm-3d", on ? "1" : "0");
+    restyle();
+    if (on && map.getPitch() < 30) map.easeTo({ pitch: 60, duration: 800 });
+    if (!on) map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
+  }),
+  toggle(T.shading, T.shadingNote, look.shading, (on) => {
+    look.shading = on;
+    store.set("hm-shading", on ? "1" : "0");
+    restyle();
+  }),
+  el("p", "lm-menu-foot", {}, T.credit));
+root.append(backdrop, menu);
+function restyle() {
+  map.setStyle(styleURL(), { diff: false }); // our layers come back on style.load
+}
+const openMenu = (open) => {
+  menu.hidden = backdrop.hidden = !open;
+  for (const b of [menuBtn, mapMenuBtn]) b.setAttribute("aria-expanded", String(open));
+  if (open) closeMenuBtn.focus();
+};
+for (const b of [menuBtn, mapMenuBtn]) b.addEventListener("click", () => openMenu(true));
+closeMenuBtn.addEventListener("click", () => openMenu(false));
+backdrop.addEventListener("click", () => openMenu(false));
+addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) openMenu(false); });
 // only the map zooms: Safari ignores user-scalable=no and zooms the page on a pinch
 for (const ev of ["gesturestart", "gesturechange"]) {
   document.addEventListener(ev, (e) => { if (!mapEl.contains(e.target)) e.preventDefault(); }, { passive: false });

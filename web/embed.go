@@ -4,5 +4,5 @@ package web
 
 import "embed"
 
-//go:embed index.html app.js app.css icon.svg vendor
+//go:embed index.html app.js app.css icon-32.png icon-192.png apple-touch-icon.png vendor
 var Files embed.FS

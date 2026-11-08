@@ -30,7 +30,10 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - On a phone: the side bar is a sheet at three heights (the title, half, almost all), dragged by its handle and its title; a
   search closes the keyboard and leaves the map in view; only the map zooms, and pull to refresh is off.
 - The address holds the search and the place shown: `?q=…&sel=node/1#map=15/47.37/8.54`; Back goes from a place to the list.
-- Light and dark, with the choice of the site (`localStorage` `theme`).
+- A menu (the burger; closed at first): the style of the map (light, dark, outdoor, relief, driving, marine, white, grayscale,
+  black), 3D (terrain and buildings) and relief shading, kept in the browser (`hm-style`, `hm-3d`, `hm-shading`). The page is
+  dark with the dark and black styles; the first style follows the theme of the site (`theme`).
+- The logo and the icons are the hippo of overpass.ch (`icon-32.png`, `icon-192.png`, `apple-touch-icon.png`).
 
 ## Pictures
 

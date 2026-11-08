@@ -41,7 +41,8 @@ button { font: inherit; color: inherit; }
 .lm-map { position: relative; min-width: 0; min-height: 0; }
 
 .lm-top { display: flex; align-items: center; gap: .5rem; padding: .7rem 1rem .2rem; }
-.lm-brand { font-weight: 700; color: var(--fg); text-decoration: none; letter-spacing: -.01em; }
+.lm-brand { display: inline-flex; align-items: center; gap: .5rem; font-weight: 700; font-size: 1.05rem; color: var(--fg); text-decoration: none; letter-spacing: -.01em; }
+.lm-logo-img { width: 28px; height: 28px; border-radius: 7px; display: block; }
 .lm-tag { color: var(--muted); font-size: .85rem; flex: 1; }
 .lm-icon-btn { border: 0; background: none; padding: .35rem; border-radius: 8px; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
 .lm-icon-btn:hover { background: var(--hot); color: var(--fg); }
@@ -170,3 +171,42 @@ button { font: inherit; color: inherit; }
 .lm-tag a { color: inherit; }
 .lm-here-note { padding: 0 1rem; }
 .lm-here .lm-count { margin-top: .8rem; }
+
+/* the menu: a drawer from the left, over everything */
+.lm-burger { margin-left: -.35rem; }
+.lm-map-burger { display: none; }
+.lm-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .35); }
+.lm-menu { position: fixed; top: 0; left: 0; bottom: 0; z-index: 21; width: min(320px, 86vw); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg); box-shadow: 4px 0 24px rgba(0, 0, 0, .25); padding: .8rem 1rem 1.2rem; animation: lm-slide .18s ease-out; }
+@keyframes lm-slide { from { transform: translateX(-100%); } to { transform: none; } }
+.lm-menu-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .6rem; }
+.lm-menu-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 1rem 0 .5rem; font-weight: 600; }
+.lm-styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+.lm-style { display: flex; flex-direction: column; gap: .3rem; align-items: stretch; border: 2px solid transparent; border-radius: 10px; background: none;
+  padding: .25rem; cursor: pointer; font-size: .8rem; color: var(--fg); }
+.lm-style:hover { background: var(--hot); }
+.lm-style[aria-checked=true] { border-color: var(--accent); }
+.lm-swatch { display: block; height: 46px; border-radius: 7px; border: 1px solid var(--line); }
+.lm-swatch-light { background: linear-gradient(135deg, #f2efe9 55%, #aad3df 55% 70%, #f2efe9 70%), #f2efe9; }
+.lm-swatch-dark { background: linear-gradient(135deg, #2a2d33 55%, #1b2a3a 55% 70%, #2a2d33 70%); }
+.lm-swatch-outdoor { background: linear-gradient(135deg, #dfe9c8 40%, #b9d39a 40% 62%, #e9e3d3 62%); }
+.lm-swatch-relief { background: linear-gradient(135deg, #8fbf7a, #d9c38f 45%, #b49a7a 70%, #fff); }
+.lm-swatch-driving { background: linear-gradient(135deg, #f4f1ea 45%, #f2a541 45% 55%, #f4f1ea 55%); }
+.lm-swatch-marine { background: linear-gradient(135deg, #f1ead4 35%, #b8dcef 35% 60%, #7fb6da 60%); }
+.lm-swatch-white { background: #fff; }
+.lm-swatch-grayscale { background: linear-gradient(135deg, #e6e6e6 55%, #c4c4c4 55% 70%, #e6e6e6 70%); }
+.lm-swatch-black { background: linear-gradient(135deg, #111 55%, #2b2b2b 55% 70%, #111 70%); }
+.lm-toggle { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.lm-toggle-text { display: flex; flex-direction: column; }
+.lm-toggle-note { color: var(--muted); font-size: .8rem; }
+.lm-toggle input { appearance: none; flex: none; width: 42px; height: 24px; border-radius: 12px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; }
+.lm-toggle input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
+.lm-toggle input:checked { background: var(--accent); }
+.lm-toggle input:checked::after { left: 21px; }
+.lm-menu-foot { color: var(--muted); font-size: .72rem; margin-top: 1.2rem; }
+@media (max-width: 760px) {
+  .lm-map-burger { display: grid; position: absolute; top: 10px; left: 10px; z-index: 3; width: 44px; height: 44px; border-radius: 50%;
+    background: var(--bg); color: var(--fg); box-shadow: var(--shadow); }
+  .lm-area { left: calc(50% + 20px); }
+}
