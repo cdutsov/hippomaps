@@ -87,14 +87,25 @@ try:
     check(wait("location.hash.includes('/47.37')", 20), "the map starts at the location")
 
     # directions: the button, a typed destination, the route by car
+    # a double tap zooms the map and opens nothing
+    box = js("(() => { const r = document.querySelector('.lm-map').getBoundingClientRect(); return [r.left + r.width / 2, r.top + 150]; })()")
+    z0 = js("+location.hash.split('/')[0].slice(5)")
+    for _ in range(2):
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": box[0], "y": box[1]}])
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        time.sleep(0.08)
+    time.sleep(1.5)
+    check(js("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden") and js(f"+location.hash.split('/')[0].slice(5) > {z0}"),
+          "a double tap zooms in and opens nothing")
     js("document.querySelector('.lm-dir-btn').click()")
     check(wait("!document.querySelector('.lm-route').hidden", 5), "the Directions button opens start and destination")
+    check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "no search bar above start and destination")
     check(wait("document.activeElement?.closest('.lm-end-to')", 15), "the destination field is ready to type")
     js("[...document.querySelectorAll('.lm-mode')][0].click()")
     wait("document.activeElement?.closest('.lm-end-to')", 5) or js("document.querySelector('.lm-end-to input').focus()")
     call("Input.insertText", text="Bahnhof Enge Zürich")
     # headless Chromium can lose the focus of the page: give it back, the field asks again
-    js("const f = document.querySelector('.lm-end-to input'); if (document.activeElement !== f) { f.focus(); f.dispatchEvent(new Event('input')); }")
+    js("(() => { const f = document.querySelector('.lm-end-to input'); if (document.activeElement !== f) { f.focus(); f.dispatchEvent(new Event('input')); } })()")
     check(wait("[...document.querySelectorAll('.lm-end-list:not([hidden]) .lm-opt-label')].some(e => /Enge/.test(e.textContent))", 20),
           "the destination field suggests places")
     # the first suggestion (a click: the page may have lost the focus)
@@ -127,24 +138,38 @@ try:
         check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/traffic'))", 15), "traffic loads")
         js("document.querySelector('.lm-traffic-btn').click()")
 
+    # a tap on the map, then the Directions button: navigation to that point
+    js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+    check(wait("getComputedStyle(document.querySelector('.lm-form')).display !== 'none'", 5), "the search bar is back after directions")
+    js("location.hash = '#map=17/47.3700/8.5400'")
+    time.sleep(1.5)
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": box[0] + 60, "y": box[1] + 40}])
+    call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 10)
+    js("document.querySelector('.lm-dir-btn').click()")
+    check(wait("document.getElementById('app').classList.contains('lm-navigating')", 40), "a tapped point and the Directions button: navigation to it")
+    js("document.querySelector('.lm-nav-x')?.click()")
+    wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+
     # the X clears everything
-    js("document.querySelector('.lm-route .lm-back')?.click()")
-    js("const i = document.querySelector('.lm-input'); i.value = 'cafés'; i.dispatchEvent(new Event('input')); document.querySelector('.lm-clear').hidden = false")
+    js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+    js("(() => { const i = document.querySelector('.lm-input'); i.value = 'cafés'; i.dispatchEvent(new Event('input')); document.querySelector('.lm-clear').hidden = false })()")
     js("document.querySelector('.lm-clear').click()")
     check(wait("document.querySelector('.lm-input').value === '' && !document.querySelector('.lm-listview').hidden && document.querySelector('.lm-route').hidden", 5),
           "the X clears the search and the views")
 
-    # an example of the intro far from where the map is: the map moves to its results (Brugg -> Zurich)
+    # a search far from where the map is: the map moves to its results (Brugg -> Zurich)
     js("location.hash = '#map=14/47.481/8.211'")
     wait("location.hash.includes('/47.481')", 5)
     time.sleep(1)
-    js("[...document.querySelectorAll('.lm-chip')].find(c => /Limmat/.test(c.textContent))?.click()")
+    js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+    js("(() => { const i = document.querySelector('.lm-input'); i.value = 'hotels along the Limmat in Zurich'; document.querySelector('.lm-form').requestSubmit() })()")
     check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && /\/47\.3[6-9]/.test(location.hash)", 60),
-          "an example of the intro moves the map to its results")
+          "a search far away moves the map to its results")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
 
     # German
-    js("const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change'))")
+    js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)
     check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').placeholder)", 30), "the page in German")
     js("localStorage.removeItem('hm-lang')")

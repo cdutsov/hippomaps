@@ -12,7 +12,7 @@ import (
 
 // Spoken navigation from a text-to-speech server (TTSURL: Piper):
 //
-//	GET {base}/api/say?lang=de&text=…   audio/mpeg
+//	GET {base}/api/say?lang=de&text=…[&format=wav]   audio/mpeg, or audio/wav for browsers without MP3
 //
 // lang is de, en, fr or it, the text at most 400 characters (the instructions of Valhalla). The
 // browser keeps each answer a week; this server keeps the latest in memory, as navigation says
@@ -25,14 +25,17 @@ const maxSay = 400
 
 func (s *Server) say(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	lang, text := q.Get("lang"), strings.Join(strings.Fields(q.Get("text")), " ")
-	if !sayLangs[lang] || text == "" || utf8.RuneCountInString(text) > maxSay {
-		http.Error(w, "lang de, en, fr or it, and a text of at most 400 characters", http.StatusBadRequest)
+	lang, text, format := q.Get("lang"), strings.Join(strings.Fields(q.Get("text")), " "), q.Get("format")
+	if format == "" {
+		format = "mp3"
+	}
+	if !sayLangs[lang] || text == "" || utf8.RuneCountInString(text) > maxSay || (format != "mp3" && format != "wav") {
+		http.Error(w, "lang de, en, fr or it, a text of at most 400 characters, format mp3 or wav", http.StatusBadRequest)
 		return
 	}
-	key := "say\n" + lang + "\n" + text
+	key := "say\n" + format + "\n" + lang + "\n" + text
 	if b, ok := s.cache.get(key); ok {
-		sendAudio(w, b)
+		sendAudio(w, b, format)
 		return
 	}
 	if !s.saysPerIP.allow(clientIP(r), time.Now()) {
@@ -48,7 +51,7 @@ func (s *Server) say(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.TTSURL+"/say?"+url.Values{"lang": {lang}, "text": {text}}.Encode(), nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.TTSURL+"/say?"+url.Values{"lang": {lang}, "text": {text}, "format": {format}}.Encode(), nil)
 	req.Header.Set("User-Agent", s.cfg.UserAgent)
 	resp, err := s.routeClient.Do(req)
 	if err != nil {
@@ -64,12 +67,12 @@ func (s *Server) say(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.cache.put(key, b)
-	sendAudio(w, b)
+	sendAudio(w, b, format)
 }
 
-func sendAudio(w http.ResponseWriter, b []byte) {
+func sendAudio(w http.ResponseWriter, b []byte, format string) {
 	h := w.Header()
-	h.Set("Content-Type", "audio/mpeg")
+	h.Set("Content-Type", map[string]string{"mp3": "audio/mpeg", "wav": "audio/wav"}[format])
 	h.Set("Cache-Control", "public, max-age=604800")
 	w.Write(b)
 }

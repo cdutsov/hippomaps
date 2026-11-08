@@ -36,6 +36,7 @@ const EN = {
   more: "Show more",
   noName: "Unnamed",
   back: "Results",
+  close: "Close",
   searchArea: "Search this area",
   myLocation: "Show my location",
   north: "Turn the map to north",
@@ -130,8 +131,7 @@ const EN = {
   threeDNote: "Terrain and buildings; tilt with two fingers or the right mouse button",
   shading: "Relief shading",
   shadingNote: "Light and shadow of the mountains",
-  styles: [["auto", "Day and night"], ["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"],
-    ["marine", "Marine"], ["white", "White"], ["grayscale", "Grayscale"], ["black", "Black"]],
+  styles: [["auto", "Day and night"], ["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"]],
   credit: "Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons. Chains from the name-suggestion-index.",
   voiceCredit: "Voices by Piper; the French voice from the SIWIS database (CC BY 4.0).",
   language: "Language",
@@ -250,20 +250,23 @@ function sunHeight(lon, lat, when = new Date()) {
 let autoDark = false;
 // by car, navigation shows the light style by day and the dark one at night and in tunnels (navLook)
 let navLook = null;
-const shownStyle = () => navLook || (look.style === "auto" ? (autoDark ? "dark" : "light") : look.style);
+// Day and night follows the sun with light and dark; Driving has its own night
+const followsSun = () => look.style === "auto" || look.style === "driving";
+const shownStyle = () => navLook || (look.style === "auto" ? (autoDark ? "dark" : "light")
+  : look.style === "driving" && autoDark ? "driving-night" : look.style);
 const isNight = (lon, lat) => sunHeight(lon, lat) < -0.833; // the sun below the horizon
 {
   const m = /map=[\d.]+\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash);
   autoDark = isNight(m ? +m[2] : 8.54, m ? +m[1] : 47.37);
 }
-const theme = () => (shownStyle() === "dark" || shownStyle() === "black" ? "dark" : "light");
+const theme = () => (["dark", "black", "driving-night"].includes(shownStyle()) ? "dark" : "light");
 document.documentElement.dataset.theme = theme();
 const styleURL = () => {
   const p = new URLSearchParams({ lang: ["de", "fr", "it"].includes(LANG) ? LANG : "en" });
   if (look.shading) p.set("hillshade", "1");
   if (look.threeD) p.set("terrain", "1");
   if (look.threeD && shownStyle() !== "relief") p.set("buildings", "1");
-  return `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${shownStyle()}.json?${p}`;
+  return `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${shownStyle().replace(/-night$/, "")}.json?${p}`;
 };
 
 // ------------------------------------------------------------------ the side bar
@@ -312,6 +315,7 @@ dirBtn.addEventListener("click", () => {
 });
 // the place on the screen: the one opened, or the one place a search found
 function placeNow() {
+  if (!hereView.hidden && state.herePoint) return state.herePoint;
   if (!detailView.hidden && state.selected) {
     const c = center(state.selected);
     if (c) return { ll: c, label: state.selected.properties.name || T.noName };
@@ -340,14 +344,17 @@ const showView = (v) => {
   hereView.hidden = v !== hereView;
   detailView.hidden = v !== detailView;
   routeView.hidden = v !== routeView;
+  root.classList.toggle("lm-planning", v === routeView); // directions have their own fields: no search bar above them
   body.scrollTop = 0;
 };
 const foot = el("div", "lm-foot", {}, [T.credit, root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" "));
 side.append(sheetBtn, top, form, status, body, foot);
 
 // ------------------------------------------------------------------ the map
-// a link with a place on the map (#map=) opens there; otherwise the map starts where the visitor is
-const linkedView = /(^|&)map=/.test(location.hash.slice(1));
+// a link with a place on the map (#map=) opens there; otherwise, and when the place is just the
+// last view of this browser (a reload, a return), the map starts where the visitor is
+const lastView = (() => { try { return localStorage.getItem("hm-last-view"); } catch { return null; } })();
+const linkedView = /(^|&)map=/.test(location.hash.slice(1)) && location.hash !== lastView;
 const map = new maplibregl.Map({
   container: mapEl,
   style: styleURL(),
@@ -400,6 +407,8 @@ const empty = { type: "FeatureCollection", features: [] };
 const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty };
 const ACCENT = "#d0312d";
 map.on("style.load", () => {
+  // 3D buildings see-through, so the map and the route behind them stay in view
+  for (const l of map.getStyle().layers) if (l.type === "fill-extrusion") map.setPaintProperty(l.id, "fill-extrusion-opacity", 0.6);
   for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
   const below = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
   const dashed = ["in", ["get", "kind"], ["literal", ["border", "circle"]]];
@@ -570,7 +579,7 @@ for (const [key, label] of T.styles) {
   b.addEventListener("click", () => {
     look.style = key;
     store.set("hm-style", key);
-    if (key === "auto") autoDark = isNight(map.getCenter().lng, map.getCenter().lat);
+    if (key === "auto" || key === "driving") autoDark = isNight(map.getCenter().lng, map.getCenter().lat);
     document.documentElement.dataset.theme = theme();
     styleGrid.querySelectorAll("[data-style]").forEach((x) => x.setAttribute("aria-checked", String(x.dataset.style === key)));
     restyle();
@@ -642,7 +651,7 @@ function poweredBy() {
 }
 // Automatic follows sunrise and sunset where the map is
 function checkDayNight() {
-  if (look.style !== "auto") return;
+  if (!followsSun() || navLook) return;
   const c = map.getCenter(), dark = isNight(c.lng, c.lat);
   if (dark === autoDark) return;
   autoDark = dark;
@@ -651,8 +660,48 @@ function checkDayNight() {
 }
 setInterval(checkDayNight, 300e3);
 map.on("moveend", checkDayNight);
+let restyleN = 0;
 function restyle() {
-  map.setStyle(styleURL(), { diff: false }); // our layers come back on style.load
+  const n = ++restyleN;
+  if (!shownStyle().endsWith("-night")) return map.setStyle(styleURL(), { diff: false }); // our layers come back on style.load
+  // the night of a style that has none (driving): its colours turned dark
+  fetch(styleURL()).then((r) => r.json()).then((st) => {
+    if (n === restyleN) map.setStyle(nightStyle(st), { diff: false });
+  }).catch(() => { if (n === restyleN) map.setStyle(styleURL(), { diff: false }); });
+}
+// nightStyle turns the colours of a style around in lightness, keeping their hue: light ground and
+// white roads go dark, dark text goes light, orange motorways stay orange but darker
+function nightStyle(st) {
+  const hsl = (r, g, b) => {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+    if (!d) return [0, 0, l];
+    const sat = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, sat, l];
+  };
+  const night = (c) => {
+    let m, rgb, a = 1;
+    if ((m = /^#([0-9a-f]{3,8})$/i.exec(c))) {
+      let h = m[1];
+      if (h.length <= 4) h = [...h].map((x) => x + x).join("");
+      rgb = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+      if (h.length === 8) a = parseInt(h.slice(6, 8), 16) / 255;
+    } else if ((m = /^rgba?\(([^)]+)\)$/i.exec(c))) {
+      const v = m[1].split(/[\s,/]+/).filter(Boolean).map(parseFloat);
+      rgb = v.slice(0, 3);
+      if (v.length > 3) a = v[3];
+    } else if ((m = /^hsla?\(([^)]+)\)$/i.exec(c))) {
+      const v = m[1].split(/[\s,/]+/).filter(Boolean).map(parseFloat);
+      const [h, sat, l] = [v[0], v[1] / 100, v[2] / 100];
+      return `hsla(${h}, ${Math.round(sat * 80)}%, ${Math.round((0.08 + (1 - l) * 0.77) * 100)}%, ${v.length > 3 ? v[3] : 1})`;
+    } else return c;
+    const [h, sat, l] = hsl(...rgb);
+    return `hsla(${Math.round(h)}, ${Math.round(sat * 80)}%, ${Math.round((0.08 + (1 - l) * 0.77) * 100)}%, ${a})`;
+  };
+  const walk = (v) => (typeof v === "string" ? night(v) : Array.isArray(v) ? v.map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)])) : v);
+  for (const l of st.layers || []) if (l.paint) l.paint = walk(l.paint);
+  return st;
 }
 const openMenu = (open) => {
   menu.hidden = backdrop.hidden = !open;
@@ -947,11 +996,16 @@ function showMe(quiet) {
       locBtn.classList.remove("lm-busy");
       if (!quiet) say(err.code === 1 ? T.locBlocked : T.locFailed, true);
     },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    { enableHighAccuracy: true, timeout: quiet ? 60000 : 15000, maximumAge: 60000 }, // at the start, time to answer the question
   );
 }
 locBtn.addEventListener("click", () => showMe(false));
+// allowed later (the question of the browser answered after a while, or in its settings): the map goes there
+navigator.permissions?.query({ name: "geolocation" }).then((st) => {
+  st.addEventListener("change", () => { if (st.state === "granted" && !nav.on) showMe(false); });
+}).catch(() => {});
 map.once("dragstart", () => { state.touched = true; });
+map.on("moveend", () => setTimeout(() => store.set("hm-last-view", location.hash), 0)); // after the hash follows the map
 
 // run searches a text; extra holds place, place2, region and what, as the API takes them
 async function run(text, extra = {}, { push = true, bbox = null, sel = null } = {}) {
@@ -1042,11 +1096,11 @@ qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textCo
   setTimeout(() => { qCopy.textContent = T.copy; }, 1500);
 }));
 
+// the start: the map and the search box, nothing under it
 function intro() {
   clear();
   title.textContent = "";
-  notes.textContent = T.intro;
-  for (const x of T.examples) chips.append(chip(x, () => run(x, {})));
+  notes.textContent = "";
 }
 function clear() {
   placeActs.innerHTML = "";
@@ -1497,8 +1551,17 @@ function renderDetail(f) {
 // The first tap only closes the search box when it is open. A tapped symbol of the map
 // opens that place when the answer has it.
 let hereCtl = null;
+// A tap acts after 280 ms, unless it was the start of a double tap or of a zoom with one finger
+// (tap, then drag): those zoom the map and do nothing else.
+let tapTimer = 0;
+map.on("dblclick", () => clearTimeout(tapTimer));
+map.on("zoomstart", (e) => { if (e.originalEvent) clearTimeout(tapTimer); });
 map.on("click", (e) => {
   if (e.defaultPrevented) return;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(() => onTap(e), 280);
+});
+function onTap(e) {
   if (trafficAt(e)) return;
   if (nav.on) return;
   if (document.activeElement === input || !list.hidden) {
@@ -1522,7 +1585,7 @@ map.on("click", (e) => {
   }
   if (hit) return select(hit, { fly: false });
   here(e.lngLat, symbolAt(e.point));
-});
+}
 // resultAt is the result nearest to a point of the screen, within the size of a finger
 // on a phone (24 px) or of a pointer (12 px); null when none is that near
 function resultAt(pt) {
@@ -1549,6 +1612,7 @@ function symbolAt(pt) {
 }
 function hereDone() {
   hereCtl?.abort();
+  state.herePoint = null;
   setSource("pin", empty);
   setSource("area", empty);
 }
@@ -1569,6 +1633,7 @@ async function here(ll, symbol) {
     hereView.append(back);
   }
   const h = el("h2", "lm-dname", {}, symbol || T.here);
+  state.herePoint = { ll: [lon, lat], get label() { return h.textContent; } };
   const sub = el("p", "lm-dsub", {}, `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
   const note = el("p", "lm-notes lm-here-note", {}, T.hereLooking);
   hereView.append(h, sub);
@@ -1694,7 +1759,7 @@ function renderRoute() {
   routeHead.innerHTML = "";
   const back = el("button", "lm-back", { type: "button" });
   back.innerHTML = svg(ICON.back, 18);
-  back.append(route.back === detailView ? (state.selected?.properties.name || T.back) : route.back === hereView ? T.here : T.back);
+  back.append(route.back === detailView ? (state.selected?.properties.name || T.back) : route.back === hereView ? T.here : state.answer ? T.back : T.close);
   back.addEventListener("click", () => showView(route.back || listView));
   const modes = el("div", "lm-modes", { role: "radiogroup", "aria-label": T.directions });
   for (const [m, label] of T.modes) {
@@ -1735,7 +1800,7 @@ function renderRoute() {
   routeSum.textContent = "";
   route.answer = null;
   routeSteps.innerHTML = "";
-  routeView.append(back, el("h2", "lm-dname", {}, T.directions), routeHead, routeMsg, routeSum, routeSteps);
+  routeView.append(back, routeHead, routeMsg, routeSum, routeSteps);
   drawEnds(null);
 }
 // ------------------------------------------------------------------ start and destination
@@ -2093,11 +2158,12 @@ const arrowSVG = (type, size) =>
 const shieldClass = (r) => (/^A\s?\d/.test(r) ? "lm-shield-a" : /^E\s?\d/.test(r) ? "lm-shield-e" : "lm-shield");
 // how near a turn is said first (alert) and again (pre), and how far off the line is off the route, in metres
 const NAV = {
-  car: { alert: 700, pre: 160, off: 45, zoom: 16.6, arrive: 40 },
-  bike: { alert: 250, pre: 50, off: 30, zoom: 17.4, arrive: 20 },
-  walk: { alert: 120, pre: 25, off: 25, zoom: 18, arrive: 15 },
+  car: { alert: 700, pre: 160, off: 45, arrive: 40 },
+  bike: { alert: 250, pre: 50, off: 30, arrive: 20 },
+  walk: { alert: 120, pre: 25, off: 25, arrive: 15 },
 };
-const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", flat: store.get("hm-nav-2d") === "1", spoken: new Set(), off: 0, rerouting: false };
+// flat: false, navigation follows tilted (its 2D/3D button is gone)
+const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", flat: false, spoken: new Set(), off: 0, rerouting: false };
 
 const navBox = el("div", "lm-nav", { "aria-live": "polite" });
 navBox.hidden = true;
@@ -2238,12 +2304,14 @@ function browserSay(text, lang) {
   speechSynthesis.speak(u);
 }
 const player = new Audio();
+// MP3, or WAV where the browser plays no MP3 (Firefox on Linux without the codecs of the system)
+let sayFormat = player.canPlayType("audio/mpeg") ? "mp3" : "wav";
 const sayCache = new Map(); // lang and text → a promise of a blob URL, or null
 function fetchSay(text, lang = STEP_LANG) {
   if (!SAY || !text || !OUR_VOICES.includes(lang)) return null;
-  const key = `${lang}\n${text}`;
+  const key = `${sayFormat}\n${lang}\n${text}`;
   if (!sayCache.has(key)) {
-    sayCache.set(key, fetch(`${SAY}?${new URLSearchParams({ lang, text })}`)
+    sayCache.set(key, fetch(`${SAY}?${new URLSearchParams({ lang, text, format: sayFormat })}`)
       .then((r) => (r.ok ? r.blob() : null)).then((b) => (b ? URL.createObjectURL(b) : null)).catch(() => null));
   }
   return sayCache.get(key);
@@ -2267,7 +2335,21 @@ async function say1(text, lang = STEP_LANG) {
       try {
         await player.play();
         return;
-      } catch {}
+      } catch (err) {
+        // it could not play this sound: WAV from now on, and this sentence again in it
+        if (err?.name === "NotSupportedError" && sayFormat === "mp3") {
+          sayFormat = "wav";
+          const wav = await Promise.race([fetchSay(text, lang), new Promise((done) => setTimeout(() => done(null), 2500))]);
+          if (n !== sayN || nav.muted) return;
+          if (wav) {
+            player.src = wav;
+            try {
+              await player.play();
+              return;
+            } catch {}
+          }
+        }
+      }
     }
   }
   browserSay(text, lang);
@@ -2310,7 +2392,7 @@ function renderSign(st, toNext) {
 // by car: dark at night where the car is, and in a tunnel of 200 m or more; light otherwise
 function navDayNight(p, at) {
   const want = route.mode !== "car" ? null
-    : isNight(at[0], at[1]) || (nav.d.tunnels || []).some(([a, b, m]) => m >= 200 && p.i >= a && p.i < b) ? "dark" : "light";
+    : isNight(at[0], at[1]) || (nav.d.tunnels || []).some(([a, b, m]) => m >= 200 && p.i >= a && p.i < b) ? "driving-night" : "driving";
   if (want === navLook) return;
   navLook = want;
   document.documentElement.dataset.theme = theme();
@@ -2391,10 +2473,22 @@ function navUpdate(p, rawPos, off = false) {
   navDayNight(p, at);
   if (nav.elev) nav.elev.mark((p.along / (total || 1)) * nav.elev.km);
   if (nav.follow) {
-    map.easeTo({ center: at, bearing: heading, pitch: nav.flat ? 0 : 60, zoom: cfg.zoom, padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
+    map.easeTo({ center: at, bearing: heading, pitch: nav.flat ? 0 : 60, zoom: navZoom(at), padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
   }
   drawNavLine(p);
   if (left <= cfg.arrive) navArrive();
+}
+// The zoom of navigation follows the speed: the map shows the next 25 seconds of the way ahead of
+// the traveller (a common rule of navigation apps), 120 m at least (on foot) and 1 km at most (fast
+// on a motorway), and it changes gently. Ahead is the map above the traveller, which sits low; tilted
+// at 60 degrees the map shows about twice the ground of a flat one there.
+function navZoom(at) {
+  const ms = Math.max(0, nav.sim ? (nav.speed || 0) / 3 : nav.speed || 0);
+  const ahead = Math.min(1000, Math.max(120, ms * 25));
+  const px = mapEl.clientHeight * 0.55 * (nav.flat ? 1 : 2);
+  const target = Math.min(18.6, Math.max(15, Math.log2((78271.5 * Math.cos((at[1] * Math.PI) / 180) * px) / ahead)));
+  nav.zoom = nav.zoom == null ? target : nav.zoom + (target - nav.zoom) * 0.25;
+  return nav.zoom;
 }
 const navPad = () => {
   const h = mapEl.clientHeight;
@@ -2488,6 +2582,7 @@ async function navStart(sim) {
   navCenter.hidden = true;
   navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
   nav.speed = sim ? 0 : null;
+  nav.zoom = null;
   nav.lastAlong = null;
   navSpeed.hidden = true;
   nav.avatar = makeAvatar(route.mode);
@@ -2501,7 +2596,7 @@ async function navStart(sim) {
   });
   nav.avatar.set(nav.d.line[0], bearingOf(nav.d.line[0], nav.d.line[1] || nav.d.line[0]));
   setTimeout(() => map.resize(), 0);
-  try { nav.lock = await navigator.wakeLock?.request("screen"); } catch {}
+  await keepAwake();
   if (sim) {
     // Preview: along the line at three times the speed of each step
     let along = 0, last = performance.now();
@@ -2533,6 +2628,16 @@ async function navStart(sim) {
     }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
   }
 }
+// the screen stays on while navigating; the browser drops the lock when the page is hidden, so it
+// is asked again when the page comes back. With the screen locked a browser does not navigate.
+async function keepAwake() {
+  if (!nav.on || nav.lock || document.visibilityState !== "visible") return;
+  try {
+    nav.lock = await navigator.wakeLock?.request("screen");
+    nav.lock?.addEventListener("release", () => { nav.lock = null; });
+  } catch {}
+}
+document.addEventListener("visibilitychange", keepAwake);
 function navStop() {
   nav.on = false;
   if (navLook) { // back to the style of the menu
