@@ -1,0 +1,45 @@
+package server
+
+import (
+	"context"
+	"io"
+	"net"
+	"net/http"
+	"time"
+)
+
+// search relays GET {base}/api/search/{complete,query,search,...}?… to SearchUpstream with the
+// address of the visitor in X-Forwarded-For (its limits count per visitor, and the server in front
+// of it trusts this one). The answer goes back as it came, with its status.
+func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 80*time.Second) // a search may take a minute
+	defer cancel()
+	u := s.cfg.SearchUpstream + "/" + r.PathValue("rest")
+	if r.URL.RawQuery != "" {
+		u += "?" + r.URL.RawQuery
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	if v := r.Header.Get("Accept-Language"); v != "" {
+		req.Header.Set("Accept-Language", v)
+	}
+	ip := clientIP(r)
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	}
+	req.Header.Set("X-Forwarded-For", ip)
+	resp, err := s.searchClient.Do(req)
+	if err != nil {
+		s.log.Warn("search", "err", err)
+		http.Error(w, `{"error":{"code":"failed","message":"The search failed. Please try again."}}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	for _, h := range []string{"Content-Type", "Cache-Control", "Retry-After"} {
+		if v := resp.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, io.LimitReader(resp.Body, 32<<20))
+}

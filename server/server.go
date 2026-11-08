@@ -23,10 +23,13 @@ import (
 // Config of the server.
 type Config struct {
 	Base      string // the path of the page: /labs/maps
-	SearchAPI string // the API of overpass-search for the browser: /labs/search/api
-	TilesURL  string // the map tiles API: https://api.overpass.ch
-	MapsKey   string // a key of the tiles API for this page
-	Version   string
+	SearchAPI string // the API of overpass-search for the browser: /labs/search/api (SearchUpstream sets it)
+	// SearchUpstream: overpass-search elsewhere (https://overpass.ch/labs/search/api), relayed under
+	// {base}/api/search for a site of its own, as the search API answers its own site only
+	SearchUpstream string
+	TilesURL       string // the map tiles API: https://api.overpass.ch
+	MapsKey        string // a key of the tiles API for this page
+	Version        string
 
 	Pictures      bool          // pictures from Wikimedia Commons
 	PicturesPerIP int           // pictures a visitor gets in PictureWindow
@@ -92,6 +95,7 @@ type Server struct {
 	sayCalls    chan struct{} // calls to the text-to-speech server at once
 
 	trafficCache trafficCache
+	searchClient *http.Client
 }
 
 // New makes the server.
@@ -103,6 +107,11 @@ func New(cfg Config) *Server {
 		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4)}
 	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
 	s.cfg.TrafficURL = strings.TrimRight(cfg.TrafficURL, "/")
+	s.cfg.SearchUpstream = strings.TrimRight(cfg.SearchUpstream, "/")
+	s.searchClient = &http.Client{Timeout: 90 * time.Second}
+	if s.cfg.SearchUpstream != "" {
+		s.cfg.SearchAPI = strings.TrimRight(cfg.Base, "/") + "/api/search"
+	}
 	s.cfg.RoutingURL = strings.TrimRight(cfg.RoutingURL, "/")
 	if s.log == nil {
 		s.log = slog.Default()
@@ -117,10 +126,14 @@ func New(cfg Config) *Server {
 	})
 	s.page = template.Must(template.New("index.html").Funcs(template.FuncMap{"asset": s.asset}).ParseFS(web.Files, "index.html"))
 	base := strings.TrimRight(cfg.Base, "/")
-	s.mux.HandleFunc("GET "+base, s.index)
-	s.mux.HandleFunc("GET "+base+"/{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, base, http.StatusMovedPermanently)
-	})
+	if base == "" { // the page at the root of its own site (hippomaps.ch)
+		s.mux.HandleFunc("GET /{$}", s.index)
+	} else {
+		s.mux.HandleFunc("GET "+base, s.index)
+		s.mux.HandleFunc("GET "+base+"/{$}", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, base, http.StatusMovedPermanently)
+		})
+	}
 	s.mux.Handle("GET "+base+"/static/", http.StripPrefix(base+"/static/", http.HandlerFunc(s.static)))
 	if cfg.Pictures {
 		s.mux.HandleFunc("GET "+base+"/api/picture", s.picture)
@@ -133,6 +146,9 @@ func New(cfg Config) *Server {
 	}
 	if s.cfg.TrafficURL != "" {
 		s.mux.HandleFunc("GET "+base+"/api/traffic", s.traffic)
+	}
+	if s.cfg.SearchUpstream != "" {
+		s.mux.HandleFunc("GET "+base+"/api/search/{rest...}", s.search)
 	}
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	return s

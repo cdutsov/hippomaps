@@ -58,6 +58,7 @@ func config() (server.Config, error) {
 	cfg.Version = Version
 	cfg.Base = env("BASE_PATH", cfg.Base)
 	cfg.SearchAPI = env("SEARCH_API", cfg.SearchAPI)
+	cfg.SearchUpstream = env("SEARCH_UPSTREAM", "")
 	cfg.TilesURL = strings.TrimRight(env("TILES_URL", cfg.TilesURL), "/")
 	cfg.MapsKey = env("MAPS_KEY", "")
 	cfg.UserAgent = env("USER_AGENT", "hippomaps/"+Version+" (+https://gitlab.com/cdutsov/hippomaps)")

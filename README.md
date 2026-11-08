@@ -133,6 +133,7 @@ By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,
 | `ELEVATION_URL` | `https://api.overpass.ch` | the elevation API, for height profiles |
 | `ELEVATION_KEY` | | its key, server side only; empty: no height profiles |
 | `TTS_URL` | | a Piper server (`/say?lang=&text=`, audio/mpeg) for the spoken instructions; empty: the voices of the browser |
+| `SEARCH_UPSTREAM` | | overpass-search of another site (`https://overpass.ch/labs/search/api`), relayed under `{base}/api/search` with the address of the visitor; it sets the search API of the page. For a site of its own: the search API answers its own site only |
 | `TRAFFIC_URL` | | the traffic service next to Valhalla (`/incidents.json`); empty: no traffic on the map |
 | `SAYS_PER_IP` | `600` | new sentences a visitor gets spoken in 10 minutes (those in memory are free) |
 | `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia, which asks for a way to reach the operator |
@@ -155,6 +156,10 @@ web/             index.html, app.js, app.css, icon.svg, and vendor/
 browsers keep their files for a year.
 
 Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons, each under the licence its credit names.
+
+## A site of its own
+
+With `BASE_PATH=/` the page is at the root (hippomaps.ch). `SEARCH_UPSTREAM` relays the search; the key of the map must allow the site (`MAPS_KEY`).
 
 ## Tests
 
