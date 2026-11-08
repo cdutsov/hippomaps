@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""hippomaps in headless Chromium, as a visitor uses it (tests/site-test.sh with BROWSER=1: after a deploy, nightly).
+
+    python3 tests/browser.py https://hippomaps.ch
+
+Prints "ok <what>" per check and "FAIL <what>" per failure; exits 1 on a failure. The browser is
+in Zurich (a granted location) on a phone screen. Checks: the map starts at the location; the
+Directions button opens start and destination, a typed destination gives a route by car with its
+time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
+sentences of the server; the traffic button; the X clears everything; German texts after the
+language of the menu; and no errors of the page on the way. Needs chromium and websocket-client.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+
+import websocket
+
+URL = sys.argv[1].rstrip("/")
+PORT = 9341
+ZURICH = (47.3779, 8.5403)
+fails = []
+
+
+def check(cond, what):
+    print(("ok " if cond else "FAIL ") + what, flush=True)
+    if not cond:
+        fails.append(what)
+
+
+prof = tempfile.mkdtemp(prefix="hm-browser-")
+chrome = subprocess.Popen(["chromium", "--headless=new", "--no-sandbox", "--disable-gpu", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
+                           "--autoplay-policy=no-user-gesture-required", f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}",
+                           "--window-size=390,844", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+try:
+    for _ in range(100):
+        try:
+            tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json"))
+            break
+        except Exception:
+            time.sleep(0.2)
+    ws = websocket.create_connection([t for t in tabs if t["type"] == "page"][0]["webSocketDebuggerUrl"], timeout=60)
+    n, errors = [0], []
+
+    def call(method, **params):
+        n[0] += 1
+        ws.send(json.dumps({"id": n[0], "method": method, "params": params}))
+        while True:
+            m = json.loads(ws.recv())
+            if m.get("method") == "Runtime.exceptionThrown":
+                errors.append(m["params"]["exceptionDetails"].get("exception", {}).get("description", "")[:200])
+            if m.get("method") == "Runtime.consoleAPICalled" and m["params"]["type"] == "error":
+                errors.append(" ".join(str(a.get("value", a.get("description", ""))) for a in m["params"]["args"])[:200])
+            if m.get("id") == n[0]:
+                return m.get("result", m.get("error"))
+
+    def js(expr):
+        r = call("Runtime.evaluate", expression=expr, awaitPromise=True, returnByValue=True)
+        return r.get("result", {}).get("value")
+
+    def wait(expr, secs=30):
+        end = time.time() + secs
+        while time.time() < end:
+            if js(f"!!({expr})"):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def key(name, code, vk):
+        for t in ("keyDown", "keyUp"):
+            call("Input.dispatchKeyEvent", type=t, key=name, code=code, windowsVirtualKeyCode=vk)
+
+    call("Runtime.enable")
+    call("Page.enable")
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setTouchEmulationEnabled", enabled=True)
+    call("Browser.grantPermissions", origin=URL.split("/labs")[0], permissions=["geolocation"])
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+    call("Page.navigate", url=URL)
+
+    check(wait("document.querySelector('.maplibregl-canvas')", 30), "the map draws")
+    check(wait("location.hash.includes('/47.37')", 20), "the map starts at the location")
+
+    # directions: the button, a typed destination, the route by car
+    js("document.querySelector('.lm-dir-btn').click()")
+    check(wait("!document.querySelector('.lm-route').hidden", 5), "the Directions button opens start and destination")
+    check(wait("document.activeElement?.closest('.lm-end-to')", 15), "the destination field is ready to type")
+    js("[...document.querySelectorAll('.lm-mode')][0].click()")
+    wait("document.activeElement?.closest('.lm-end-to')", 5) or js("document.querySelector('.lm-end-to input').focus()")
+    call("Input.insertText", text="Bahnhof Enge Zürich")
+    # headless Chromium can lose the focus of the page: give it back, the field asks again
+    js("const f = document.querySelector('.lm-end-to input'); if (document.activeElement !== f) { f.focus(); f.dispatchEvent(new Event('input')); }")
+    check(wait("[...document.querySelectorAll('.lm-end-list:not([hidden]) .lm-opt-label')].some(e => /Enge/.test(e.textContent))", 20),
+          "the destination field suggests places")
+    # the first suggestion (a click: the page may have lost the focus)
+    js("document.querySelector('.lm-end-list:not([hidden]) .lm-opt')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))")
+    check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30), "a route by car with its time")
+    check(js("document.querySelectorAll('.lm-step').length") >= 2, "the steps of the route")
+    check(js(r"/\d{1,2}:\d{2}/.test(document.querySelector('.lm-sum-eta')?.textContent || '')"), "the arrival time of the route")
+    check(js("(() => { const b = document.querySelector('.lm-nav-start')?.getBoundingClientRect(); return !!b && b.height >= 44 && b.top >= 0 && b.bottom <= innerHeight; })()"),
+          "the Start button, large and in view")
+
+    # navigation: Preview
+    js("document.querySelector('.lm-nav-go .lm-chip').click()")
+    check(wait("document.getElementById('app').classList.contains('lm-navigating')", 5), "Preview starts navigation")
+    check(wait("/\\d/.test(document.querySelector('.lm-nav-dist')?.textContent || '')", 10), "the banner shows the next turn")
+    check(wait("!document.querySelector('.lm-nav-speed').hidden && /km\\/h/.test(document.querySelector('.lm-nav-speed').textContent)", 15),
+          "the speed now")
+    check(wait(r"document.getElementById('app').classList.contains('lm-navigating') && /^\d+$/.test(document.querySelector('.lm-nav-limit').textContent) && !document.querySelector('.lm-nav-limit').hidden", 40), "the speed limit")
+    check(js("!document.querySelector('.lm-sprite')"), "the traveller in 3D")
+    if js("!!document.getElementById('app').dataset.say"):
+        check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/say'))", 20), "the voice of the server speaks")
+    js("document.querySelector('.lm-nav-x').click()")
+    check(wait("!document.getElementById('app').classList.contains('lm-navigating')", 5), "navigation ends")
+    check(wait("(location.hash.split('/')[4] || '0') === '0'", 5), "the map is flat again after navigation")
+
+    # traffic on and off
+    if js("!!document.getElementById('app').dataset.traffic"):
+        before = js("document.querySelector('.lm-traffic-btn').getAttribute('aria-pressed')")
+        js("document.querySelector('.lm-traffic-btn').click()")
+        check(js("document.querySelector('.lm-traffic-btn').getAttribute('aria-pressed')") != before, "the traffic button switches")
+        check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/traffic'))", 15), "traffic loads")
+        js("document.querySelector('.lm-traffic-btn').click()")
+
+    # the X clears everything
+    js("document.querySelector('.lm-route .lm-back')?.click()")
+    js("const i = document.querySelector('.lm-input'); i.value = 'cafés'; i.dispatchEvent(new Event('input')); document.querySelector('.lm-clear').hidden = false")
+    js("document.querySelector('.lm-clear').click()")
+    check(wait("document.querySelector('.lm-input').value === '' && !document.querySelector('.lm-listview').hidden && document.querySelector('.lm-route').hidden", 5),
+          "the X clears the search and the views")
+
+    # an example of the intro far from where the map is: the map moves to its results (Brugg -> Zurich)
+    js("location.hash = '#map=14/47.481/8.211'")
+    wait("location.hash.includes('/47.481')", 5)
+    time.sleep(1)
+    js("[...document.querySelectorAll('.lm-chip')].find(c => /Limmat/.test(c.textContent))?.click()")
+    check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && /\/47\.3[6-9]/.test(location.hash)", 60),
+          "an example of the intro moves the map to its results")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+
+    # German
+    js("const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change'))")
+    time.sleep(1)
+    check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').placeholder)", 30), "the page in German")
+    js("localStorage.removeItem('hm-lang')")
+
+    real = [e for e in errors if "Map cannot fit" not in e]
+    check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
+finally:
+    chrome.terminate()
+    shutil.rmtree(prof, ignore_errors=True)
+sys.exit(1 if fails else 0)

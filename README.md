@@ -164,8 +164,10 @@ With `BASE_PATH=/` the page is at the root (hippomaps.ch). `SEARCH_UPSTREAM` rel
 
 ## Tests
 
-`go test ./...` (also in the Docker build): the server against fakes of Valhalla, Wikimedia, the elevation API, Piper and the
-traffic service. A test of the running site:
-directions with speed limits, lanes, traffic and heights, the voice, traffic, the files. With `BROWSER=1` (the nightly run) it
-adds `tests/hippomaps-browser.py`: the page in headless Chromium on a phone screen, from the start at the location through a
-typed destination, Preview with speed, speed limit, the 3D traveller and the voice, the traffic button, the X, to German.
+- `go test ./...` (also in the Docker build): the server against fakes of Valhalla, Wikimedia, the elevation API, Piper, the
+  traffic service and overpass-search.
+- `tests/site-test.sh` (`PAGE`, default https://hippomaps.ch): the running site: the service, the page (for search engines),
+  files, the key of the map tiles, pictures, directions in Switzerland by car with speed limits, lanes and traffic, heights
+  on foot, the voice, traffic. `BROWSER=1` adds `tests/browser.py`: the page in headless Chromium on a phone screen, from the
+  start at the location through a typed destination (time, arrival, a large Start), Preview with speed, speed limit, the 3D
+  traveller and the voice, the map flat after it, the traffic button, the X, an example far away that moves the map, to German.

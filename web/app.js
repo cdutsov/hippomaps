@@ -1087,8 +1087,12 @@ function showReading(p) {
 }
 
 let quietUntil = 0; // until then the map moves for a search, not for the visitor
+// The padding of an easeTo or flyTo stays with the map, and fitBounds adds its own to it: with
+// both, a box may not fit at all and the map stays put. Every move of the page starts from none.
 const fit = (fn, ms = 1300) => {
   quietUntil = Date.now() + ms;
+  const p = map.getPadding();
+  if (p.top || p.bottom || p.left || p.right) map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
   fn();
 };
 // the visitor moved the map (a drag, the wheel, a pinch, the keys, the buttons): the
@@ -1872,17 +1876,25 @@ async function findRoute() {
   }
   routeMsg.textContent = "";
   route.answer = d;
-  routeSum.replaceChildren(el("span", trafficClass(d), {}, T.duration(d.s)), ` · ${fmtKm(d.km)}`);
+  // the time (coloured by the traffic on the way), the distance, the arrival if leaving now
+  routeSum.replaceChildren(el("span", `lm-sum-time ${trafficClass(d)}`, {}, T.duration(d.s)), el("span", "lm-sum-km", {}, fmtKm(d.km)));
   if (d.delay >= 60) routeSum.append(el("span", `lm-delay ${trafficClass(d)}`, {}, T.delay(Math.round(d.delay / 60))));
+  routeSum.append(el("span", "lm-sum-eta", {}, `${T.arrival} ${clock(d.s)}`));
   const go = el("div", "lm-nav-go");
   const startBtn = el("button", "lm-nav-start", { type: "button" });
-  startBtn.innerHTML = svg(ICON.navigate, 18);
+  startBtn.innerHTML = svg(ICON.navigate, 20);
   startBtn.append(T.start);
   startBtn.addEventListener("click", () => navStart(false));
   const simBtn = el("button", "lm-chip", { type: "button", title: T.previewNote }, T.preview);
   simBtn.addEventListener("click", () => navStart(true));
   go.append(startBtn, simBtn);
   routeSum.after(go);
+  // the time and Start in view: on a phone the sheet shows only its top
+  requestAnimationFrame(() => {
+    const over = go.getBoundingClientRect().bottom + 12 - innerHeight;
+    const room = routeSum.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
+    if (over > 0 && room > 0) body.scrollTop += Math.min(over, room);
+  });
   if (d.elev?.pts?.length > 1) go.after(heightChart(d.elev, { onPoint: showOnRoute }).node);
   loadAvatar();
   if (SAY) fetchSay(d.steps[0]?.pre || d.steps[0]?.text); // the first sentence, ready for Start
@@ -2543,7 +2555,8 @@ function navStop() {
     drawEnds(route.answer?.line || null);
     drawRouteTraffic(route.answer);
     const b = route.answer && extent({ type: "LineString", coordinates: route.answer.line });
-    if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, pitch: 0, bearing: 0, duration: 700 }));
+    // back to the whole route, flat unless the menu has 3D on
+    if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, pitch: look.threeD ? 50 : 0, bearing: 0, duration: 700 }));
   }, 0);
 }
 navEnd.addEventListener("click", navStop);
