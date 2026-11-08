@@ -248,12 +248,6 @@ const setSource = (name, d) => {
 };
 const one = (f) => ({ type: "FeatureCollection", features: f ? [f] : [] });
 for (const layer of ["lm-point", "lm-line", "lm-fill"]) {
-  map.on("click", layer, (e) => {
-    if (e.defaultPrevented) return;
-    e.preventDefault();
-    const f = state.byId.get(e.features[0].properties.id);
-    if (f) select(f, { fly: false });
-  });
   map.on("mouseenter", layer, (e) => {
     map.getCanvas().style.cursor = "pointer";
     const f = state.byId.get(e.features[0].properties.id);
@@ -297,10 +291,20 @@ function setSheet(state) {
 const toggleSheet = () => setSheet(sheet.state === "peek" ? "half" : "peek");
 let pointerAt = 0; // the last release on a drag zone: the click after it is that release again
 sheetBtn.addEventListener("click", () => { if (Date.now() - pointerAt > 500) toggleSheet(); }); // the keyboard
+// snapFrom sets the sheet to the height a drag that began at startH ends nearest to
+function snapFrom(startH) {
+  const h = sheetHeights(), now = side.offsetHeight, dy = now - startH;
+  const order = ["peek", "half", "full"];
+  let i = order.indexOf(sheet.state);
+  if (dy > 50) i = Math.min(2, i + (now > h.half + 80 ? 2 : 1));
+  else if (dy < -50) i = Math.max(0, i - (now < h.half - 80 ? 2 : 1));
+  setSheet(order[Math.min(2, Math.max(0, i))]);
+}
+// a mouse drags the sheet by its handle and title (a narrow window)
 for (const zone of [sheetBtn, head]) {
   let startY = 0, startH = 0, moved = false, id = null;
   zone.addEventListener("pointerdown", (e) => {
-    if (!phone()) return;
+    if (!phone() || e.pointerType !== "mouse") return;
     id = e.pointerId;
     startY = e.clientY;
     startH = side.offsetHeight;
@@ -321,16 +325,48 @@ for (const zone of [sheetBtn, head]) {
     pointerAt = Date.now();
     side.classList.remove("lm-dragging");
     if (!moved) return zone === sheetBtn ? toggleSheet() : setSheet(sheet.state);
-    const h = sheetHeights(), now = side.offsetHeight, dy = now - startH;
-    const order = ["peek", "half", "full"];
-    let i = order.indexOf(sheet.state);
-    if (dy > 50) i = Math.min(2, i + (now > h.half + 80 ? 2 : 1));
-    else if (dy < -50) i = Math.max(0, i - (now < h.half - 80 ? 2 : 1));
-    setSheet(order[Math.min(2, Math.max(0, i))]);
+    snapFrom(startH);
   };
   zone.addEventListener("pointerup", end);
   zone.addEventListener("pointercancel", end);
 }
+// a finger moves the sheet from anywhere on it: above the list always; on the list when the
+// list is at its top and the finger goes down, or when the sheet is not full and it goes up.
+// Otherwise the list scrolls.
+let swipe = null;
+side.addEventListener("touchstart", (e) => {
+  if (!phone() || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  swipe = { x: t.clientX, y: t.clientY, h: side.offsetHeight, mode: "", inList: body.contains(e.target) && !head.contains(e.target) };
+}, { passive: true });
+side.addEventListener("touchmove", (e) => {
+  if (!swipe || e.touches.length !== 1) return;
+  const t = e.touches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y;
+  if (!swipe.mode) {
+    if (Math.abs(dy) < 6 || Math.abs(dy) < Math.abs(dx)) return;
+    const down = dy > 0;
+    swipe.mode = !swipe.inList || (down && body.scrollTop <= 0) || (!down && sheet.state !== "full") ? "sheet" : "scroll";
+    if (swipe.mode === "sheet") {
+      side.classList.add("lm-dragging");
+      if (document.activeElement === input) input.blur();
+      closeList();
+    }
+  }
+  if (swipe.mode !== "sheet") return;
+  e.preventDefault();
+  const h = sheetHeights();
+  side.style.height = `${Math.max(h.peek * 0.8, Math.min(h.full, swipe.h - dy))}px`;
+}, { passive: false });
+const swipeEnd = () => {
+  const sw = swipe;
+  swipe = null;
+  if (!sw || sw.mode !== "sheet") return;
+  side.classList.remove("lm-dragging");
+  pointerAt = Date.now();
+  snapFrom(sw.h);
+};
+side.addEventListener("touchend", swipeEnd);
+side.addEventListener("touchcancel", swipeEnd);
 addEventListener("resize", () => setSheet(sheet.state));
 // the sheet covers the lower part of the map: its height lifts the controls
 new ResizeObserver(() => root.style.setProperty("--sheet", `${side.offsetHeight}px`)).observe(side);
@@ -1012,8 +1048,28 @@ map.on("click", (e) => {
     setSheet(state.answer || !hereView.hidden ? "half" : "peek");
     return;
   }
+  const hit = resultAt(e.point);
+  if (hit) return select(hit, { fly: false });
   here(e.lngLat, symbolAt(e.point));
 });
+// resultAt is the result nearest to a point of the screen, within the size of a finger
+// on a phone (24 px) or of a pointer (12 px); null when none is that near
+function resultAt(pt) {
+  const r = phone() ? 24 : 12;
+  const layers = ["lm-point", "lm-line", "lm-fill"].filter((l) => map.getLayer(l));
+  let best = null, bestD = Infinity;
+  for (const f of map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers })) {
+    const full = state.byId.get(f.properties.id);
+    if (!full) continue;
+    let d = 0;
+    if (f.geometry.type === "Point") {
+      const q = map.project(f.geometry.coordinates);
+      d = Math.hypot(q.x - pt.x, q.y - pt.y);
+    }
+    if (d < bestD) { best = full; bestD = d; }
+  }
+  return bestD <= r * 1.42 ? best : null;
+}
 // symbolAt is the name of a symbol of the map (a shop, a stop) under a point
 function symbolAt(pt) {
   const layers = (map.getStyle()?.layers || []).filter((l) => l.type === "symbol" && /poi|pois/i.test(l.id)).map((l) => l.id);
