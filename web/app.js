@@ -168,11 +168,13 @@ const styleURL = () => {
 const top = el("div", "lm-top");
 const logo = () => {
   const a = el("a", "lm-brand", { href: location.pathname });
-  a.append(el("img", "lm-logo-img", { src: root.dataset.logo, alt: "", width: "28", height: "28" }), "hippomaps");
+  // the name as overpass.ch writes its own: "maps" in the blue of ".ch"
+  const word = el("span", "lm-word", { "aria-label": "hippomaps" });
+  word.append(el("span", "", {}, "hippo"), el("span", "lm-word-maps", {}, "maps"));
+  a.append(el("img", "lm-logo-img", { src: root.dataset.logo, alt: "", width: "28", height: "28" }), word);
   return a;
 };
-const tag = el("span", "lm-tag");
-tag.append("Labs · ", el("a", "", { href: "/" }, "overpass.ch"));
+const tag = el("span", "lm-tag", {}, "Labs");
 const burger = () => {
   const b = el("button", "lm-icon-btn lm-burger", { type: "button", title: T.menu, "aria-label": T.menu, "aria-controls": "lm-menu", "aria-expanded": "false" });
   b.innerHTML = svg(ICON.burger, 22);
@@ -340,8 +342,16 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
     store.set("hm-shading", on ? "1" : "0");
     restyle();
   }),
-  el("p", "lm-menu-foot", {}, T.credit));
+  poweredBy(), el("p", "lm-menu-foot", {}, T.credit));
 root.append(backdrop, menu);
+// poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
+function poweredBy() {
+  const a = el("a", "lm-powered", { href: "/", title: "overpass.ch" });
+  const light = el("img", "lm-powered-light", { src: root.dataset.overpass, alt: "overpass.ch", height: "22" });
+  const dark = el("img", "lm-powered-dark", { src: root.dataset.overpassDark, alt: "overpass.ch", height: "22" });
+  a.append(el("span", "", {}, "Powered by"), light, dark);
+  return a;
+}
 function restyle() {
   map.setStyle(styleURL(), { diff: false }); // our layers come back on style.load
 }

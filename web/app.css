@@ -210,3 +210,14 @@ button { font: inherit; color: inherit; }
     background: var(--bg); color: var(--fg); box-shadow: var(--shadow); }
   .lm-area { left: calc(50% + 20px); }
 }
+
+/* the name: "maps" in the blue of ".ch" in the logo of overpass.ch */
+.lm-word { font-weight: 800; letter-spacing: -.02em; font-size: 1.15rem; }
+.lm-word-maps { color: #0284c7; }
+.lm-top .lm-tag { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.lm-powered { display: flex; align-items: center; gap: .6rem; margin-top: 1.4rem; padding: .8rem; border: 1px solid var(--line); border-radius: 10px;
+  color: var(--muted); text-decoration: none; font-size: .85rem; }
+.lm-powered:hover { background: var(--hot); }
+.lm-powered img { height: 22px; width: auto; display: block; }
+.lm-powered-dark, :root[data-theme=dark] .lm-powered-light { display: none !important; }
+:root[data-theme=dark] .lm-powered-dark { display: block !important; }
