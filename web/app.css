@@ -221,3 +221,13 @@ button { font: inherit; color: inherit; }
 .lm-powered img { height: 22px; width: auto; display: block; }
 .lm-powered-dark, :root[data-theme=dark] .lm-powered-light { display: none !important; }
 :root[data-theme=dark] .lm-powered-dark { display: block !important; }
+
+/* the compass: above the location button; the needle turns with the map */
+.lm-compass { position: absolute; right: 10px; bottom: 160px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0;
+  background: var(--bg); color: var(--fg); box-shadow: var(--shadow); cursor: pointer; display: grid; place-items: center; }
+.lm-compass:hover { background: var(--hot); }
+.lm-needle { transform-origin: 12px 12px; transition: transform .1s linear; }
+.lm-in-area { color: var(--accent); }
+@media (max-width: 760px) {
+  .lm-compass { bottom: calc(var(--sheet, 40dvh) + 62px); }
+}

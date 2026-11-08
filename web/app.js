@@ -29,6 +29,8 @@ const T = {
   back: "Results",
   searchArea: "Search this area",
   myLocation: "Show my location",
+  north: "Turn the map to north",
+  inArea: (name, kind) => `In ${name}${kind ? ` (${kind})` : ""}`,
   here: "Here",
   around: "Around here",
   hereLooking: "Looking at this point…",
@@ -228,19 +230,32 @@ const map = new maplibregl.Map({
   maxPitch: 85,
   attributionControl: { compact: true },
 });
-map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 // the toast over the map: the search again, in what the map shows now
 const areaBtn = el("button", "lm-area", { type: "button" });
 areaBtn.innerHTML = svg(ICON.refresh, 16);
 areaBtn.append(el("span", "", {}, T.searchArea));
 areaBtn.hidden = true;
+// the compass: its needle turns with the map; a tap turns the map to north (and flat, unless 3D)
+const compassBtn = el("button", "lm-compass", { type: "button", title: T.north, "aria-label": T.north });
+compassBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><g class="lm-needle">' +
+  '<path d="M12 3 15.5 12h-7z" fill="#d0312d"/><path d="M12 21 8.5 12h7z" fill="currentColor" opacity=".55"/></g></svg>';
 const locBtn = el("button", "lm-locate", { type: "button", title: T.myLocation, "aria-label": T.myLocation });
 locBtn.innerHTML = svg(ICON.locate, 22);
-mapEl.append(areaBtn, locBtn);
+mapEl.append(areaBtn, compassBtn, locBtn);
+const needle = compassBtn.querySelector(".lm-needle");
+const turnNeedle = () => {
+  needle.style.transform = `rotate(${-map.getBearing()}deg)`;
+  compassBtn.classList.toggle("lm-turned", Math.abs(map.getBearing()) > 0.5 || map.getPitch() > 0.5);
+};
+map.on("rotate", turnNeedle);
+map.on("pitch", turnNeedle);
+map.on("load", turnNeedle);
+compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty };
+const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty };
 const ACCENT = "#d0312d";
 map.on("style.load", () => {
   for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
@@ -268,6 +283,11 @@ map.on("style.load", () => {
   map.addLayer({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
   map.addLayer({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
     paint: { "circle-radius": 7, "circle-color": "#1a73e8", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+  // the area of a tap: its outline in the blue of overpass.ch, with a glow
+  map.addLayer({ id: "lm-area-glow", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": "#0284c7", "line-width": 9, "line-opacity": 0.22, "line-blur": 2 } }, below);
+  map.addLayer({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95 } }, below);
   map.addLayer({ id: "lm-pin", type: "circle", source: "lm-pin",
     paint: { "circle-radius": 8, "circle-color": "#111827", "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
   map.addLayer({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
@@ -1202,12 +1222,14 @@ function symbolAt(pt) {
 function hereDone() {
   hereCtl?.abort();
   setSource("pin", empty);
+  setSource("area", empty);
 }
 async function here(ll, symbol) {
   hereCtl?.abort();
   const ctl = hereCtl = new AbortController();
   const lat = +ll.lat.toFixed(5), lon = +ll.lng.toFixed(5);
   setSource("pin", one({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: {} }));
+  setSource("area", empty);
   setSource("selected", empty);
   state.selected = null;
   hereView.innerHTML = "";
@@ -1239,8 +1261,20 @@ async function here(ll, symbol) {
   if (ctl.signal.aborted) return;
   const fs = d.results?.features || [];
   for (const f of fs) state.byId.set(f.properties.id, f);
-  h.textContent = d.place?.label || symbol || T.here;
-  sub.textContent = [d.place?.detail, `${lat.toFixed(5)}, ${lon.toFixed(5)}`].filter(Boolean).join(" · ");
+  // the area tapped (a country far out, a lake or a park close in) leads when the map is out
+  // far; close in the address leads, and the area follows
+  const area = d.area, zoom = map.getZoom();
+  setSource("area", d.lines || empty);
+  const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  if (area && (zoom < 14 || !d.place)) {
+    h.textContent = area.label;
+    sub.textContent = [area.detail, coords].filter(Boolean).join(" · ");
+    if (d.place && d.place.label !== area.label) sub.after(el("p", "lm-dsub", {}, d.place.label));
+  } else {
+    h.textContent = d.place?.label || symbol || T.here;
+    sub.textContent = [d.place?.detail, coords].filter(Boolean).join(" · ");
+    if (area) sub.after(el("p", "lm-dsub lm-in-area", {}, T.inArea(area.label, area.detail)));
+  }
   note.textContent = fs.length ? "" : T.hereNothing;
   note.hidden = fs.length > 0;
   if (fs.length) {
