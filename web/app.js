@@ -73,6 +73,7 @@ const EN = {
   myPlace: "Your location",
   mapPoint: "Point on the map",
   tapStart: "Tap the map to set the start, or use your location.",
+  tapEnd: "Type the destination, or tap it on the map.",
   useLocation: "Use my location",
   routing: "Finding the route…",
   modes: [["car", "Car"], ["bike", "Bike"], ["walk", "Walk"]],
@@ -266,7 +267,15 @@ goBtn.innerHTML = svg(ICON.search, 20);
 const list = el("ul", "lm-suggest", { id: "lm-list", role: "listbox" });
 list.hidden = true;
 combo.append(input, clearBtn, goBtn, list);
-form.append(combo);
+// Directions at all times, beside the search: the fields for start and destination
+const dirBtn = el("button", "lm-dir-btn", { type: "button", title: T.directions, "aria-label": T.directions });
+dirBtn.innerHTML = svg(ICON.route, 20);
+dirBtn.hidden = !ROUTE;
+dirBtn.addEventListener("click", () => {
+  if (routeView.hidden) directions(null);
+  routeView.querySelector(route.to ? ".lm-end-from input" : ".lm-end-to input")?.focus();
+});
+form.append(combo, dirBtn);
 
 const status = el("div", "lm-status", { role: "status", "aria-live": "polite" });
 status.hidden = true;
@@ -867,7 +876,8 @@ const qPre = el("pre");
 const qCopy = el("button", "lm-copy", { type: "button" }, T.copy);
 query.append(qSum, qPre, qCopy);
 query.hidden = true;
-head.append(title, notes);
+const placeActs = el("div", "lm-actions lm-place-acts"); // Directions when the search found one place
+head.append(title, notes, placeActs);
 listView.append(head, chips, count, results, moreBtn, query);
 qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textContent).then(() => {
   qCopy.textContent = T.copied;
@@ -881,6 +891,7 @@ function intro() {
   for (const x of T.examples) chips.append(chip(x, () => run(x, {})));
 }
 function clear() {
+  placeActs.innerHTML = "";
   state.searchable = false;
   areaBtn.hidden = true;
   setSource("results", empty);
@@ -989,6 +1000,8 @@ function show(d, sel) {
   if (box?.length === 4 && !pick) fitBox(box, place ? 16 : 16.5);
   if (place) {
     count.textContent = "";
+    const c = center(place);
+    if (c && ROUTE) placeActs.append(routeButton(() => directions({ ll: c, label: place.properties.name || d.text })));
     return;
   }
   state.searchable = true; // moving the map offers the search there
@@ -1323,9 +1336,16 @@ map.on("click", (e) => {
   }
   const hit = resultAt(e.point);
   if (!routeView.hidden) {
+    // a tap sets the start, or the destination while only that is missing
     const c = hit && center(hit);
-    return setFrom(c ? { ll: c, label: hit.properties.name || T.mapPoint }
-      : { ll: [+e.lngLat.lng.toFixed(5), +e.lngLat.lat.toFixed(5)], label: symbolAt(e.point) || T.mapPoint });
+    const p = c ? { ll: c, label: hit.properties.name || T.mapPoint }
+      : { ll: [+e.lngLat.lng.toFixed(5), +e.lngLat.lat.toFixed(5)], label: symbolAt(e.point) || T.mapPoint };
+    if (route.from && !route.to) {
+      route.to = p;
+      renderRoute();
+      return findRoute();
+    }
+    return setFrom(p);
   }
   if (hit) return select(hit, { fly: false });
   here(e.lngLat, symbolAt(e.point));
@@ -1517,7 +1537,7 @@ function renderRoute() {
     });
     routeHead.append(use);
   }
-  routeMsg.textContent = route.from ? "" : T.tapStart;
+  routeMsg.textContent = !route.from ? T.tapStart : !route.to ? T.tapEnd : "";
   routeSum.textContent = "";
   route.answer = null;
   routeSteps.innerHTML = "";

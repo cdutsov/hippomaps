@@ -16,6 +16,9 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - Languages English, German, French and Italian (`web/i18n.js`): the language of the browser, or the one chosen in the menu
   (`hm-lang`; the page loads again). It sets the texts, the names on the map, the steps of directions and the voice. The
   readings of the search come from overpass-search and stay English.
+- A Directions button beside the search box at all times opens the fields for start and destination (the location of the
+  visitor as the start when known, the destination to type, or to tap on the map); a search that finds one place shows
+  Directions beside its name.
 - A 2D/3D button above the compass: on the map the 3D of the menu (terrain, buildings, the map tilted); in navigation the
   map that follows, flat or tilted.
 - The map opens where the visitor is: the browser asks for the location once (a link with `#map=` opens there instead; no
