@@ -1,0 +1,936 @@
+// hippomaps: a search box with suggestions, the results and the page of a place in a
+// side bar, and the map beside it. The search is the API of overpass-search (data-api):
+// /complete while typing, /query for the reading, /search for the results. Pictures and
+// logos come from data-pictures, which reads Wikimedia Commons. Text from OpenStreetMap
+// only ever goes in as text, never as HTML.
+import * as maplibregl from "./vendor/maplibre-gl-6.13.0/maplibre-gl.mjs";
+
+maplibregl.setWorkerCount(Math.max(maplibregl.getWorkerCount(), 2));
+
+const root = document.getElementById("app");
+const side = root.querySelector(".lm-side");
+const mapEl = root.querySelector(".lm-map");
+const API = root.dataset.api.replace(/\/$/, "");
+const PICTURES = root.dataset.pictures || "";
+const LANG = (navigator.language || "en").slice(0, 2).toLowerCase();
+const placeKeys = ["place", "place2", "region"];
+const extraKeys = [...placeKeys, "what", "view"]; // view=1: the same search in the map view
+
+const T = {
+  placeholder: "Search places, or what and where",
+  examples: ["cafés", "Migros", "museums in Bern", "playgrounds near me", "restaurants open now", "hotels along the Limmat in Zurich"],
+  intro: "Search in plain words: a place, a chain, or what and where. A word alone searches the map view.",
+  searching: "Searching…",
+  locating: "Finding your location…",
+  results: (n) => (n === 1 ? "1 result" : `${n.toLocaleString("en")} results`),
+  shown: (n, all) => `${n.toLocaleString("en")} of ${all.toLocaleString("en")} shown`,
+  more: "Show more",
+  noName: "Unnamed",
+  back: "Results",
+  searchArea: "Search this area",
+  myLocation: "Show my location",
+  locBlocked: "Location is blocked for this page. Allow it in the settings of the browser, then try again.",
+  locFailed: "Your location could not be found.",
+  locMissing: "This browser does not share a location.",
+  otherReadings: "Or search for",
+  otherPlaces: "Other places",
+  tryHere: "Search here",
+  query: "Overpass query",
+  copy: "Copy",
+  copied: "Copied",
+  open: "Open",
+  closed: "Closed",
+  opens: (t) => `opens ${t}`,
+  closes: (t) => `closes ${t}`,
+  failed: "The search failed. Please try again.",
+  tooLong: "The search took too long. Try a smaller place, or a less common feature.",
+  errors: {
+    zoom_in: "Zoom in to search the map view, or add a place to the search.",
+    need_location: "Share your location, or zoom the map to where you are, or add a place to the search.",
+  },
+  directions: "Directions",
+  website: "Website",
+  call: "Call",
+  osm: "OpenStreetMap",
+  allTags: "All tags",
+  photo: "Photo",
+  logo: "Logo",
+  dark: "Dark map",
+  light: "Light map",
+  credit: "Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons. Chains from the name-suggestion-index.",
+};
+
+// ------------------------------------------------------------------ helpers
+const el = (tag, cls, attrs = {}, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+};
+const svg = (d, size = 18) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON = {
+  search: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13zM15.5 15.5 21 21",
+  back: "M15 18l-6-6 6-6",
+  close: "M18 6 6 18M6 6l12 12",
+  pin: "M12 21s-7-6.2-7-11.2A7 7 0 0 1 19 9.8C19 14.8 12 21 12 21zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
+  phone: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z",
+  globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18",
+  mail: "M4 6h16v12H4zM4 7l8 6 8-6",
+  info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.5",
+  route: "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM6 15V9a3 3 0 0 1 3-3h6",
+  map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
+  wheel: "M12 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM11 8v6h5l2 5M8 11a5 5 0 1 0 6 7",
+  food: "M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 0-3 2-3 5s1 4 3 4v9",
+  moon: "M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z",
+  book: "M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4zM5 16a4 4 0 0 1 4-4h10",
+  locate: "M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3",
+  refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
+};
+const human = (v) => (v ? v.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
+const tagsOf = (p) => (typeof p.tags === "string" ? JSON.parse(p.tags) : p.tags) || {};
+const kindOf = (p) => {
+  const [k, v] = (p.type || "").split("=");
+  return { key: k || "", label: v && v !== "yes" ? human(v) : human(k) };
+};
+const KEY_COLOURS = { amenity: "#e8590c", shop: "#7048e8", tourism: "#1c7ed6", leisure: "#2f9e44", historic: "#a05a2c", natural: "#2b8a3e",
+  highway: "#495057", railway: "#495057", public_transport: "#1971c2", office: "#4c6ef5", craft: "#b7791f", healthcare: "#e03131", building: "#868e96" };
+const addressOf = (t) => {
+  const street = [t["addr:street"] || t["addr:place"], t["addr:housenumber"]].filter(Boolean).join(" ");
+  const town = [t["addr:postcode"], t["addr:city"]].filter(Boolean).join(" ");
+  return [street, town].filter(Boolean).join(", ");
+};
+const safeURL = (v) => {
+  if (!v) return "";
+  const s = v.split(";")[0].trim();
+  try {
+    const u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : "";
+  } catch { return ""; }
+};
+const shortURL = (u) => u.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+const fold = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const center = (f) => {
+  if (f.geometry.type === "Point") return f.geometry.coordinates;
+  const b = extent(f.geometry);
+  return b ? [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2] : null;
+};
+function extent(g) {
+  let w = 180, s = 90, e = -180, n = -90;
+  const walk = (c) => {
+    if (typeof c[0] === "number") { w = Math.min(w, c[0]); e = Math.max(e, c[0]); s = Math.min(s, c[1]); n = Math.max(n, c[1]); }
+    else c.forEach(walk);
+  };
+  walk(g.coordinates);
+  return w <= e ? [w, s, e, n] : null;
+}
+const km = (a, b) => {
+  const r = Math.PI / 180, x = (b[0] - a[0]) * r * Math.cos(((a[1] + b[1]) / 2) * r), y = (b[1] - a[1]) * r;
+  return Math.sqrt(x * x + y * y) * 6371;
+};
+const fmtKm = (d) => (d < 1 ? `${Math.round(d * 100) * 10} m` : `${d.toFixed(d < 10 ? 1 : 0)} km`);
+
+// ------------------------------------------------------------------ theme
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const theme = () => (store.get("theme") === "dark" ? "dark" : "light");
+document.documentElement.dataset.theme = theme();
+const styleURL = () => `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${theme()}.json?lang=${["de", "fr", "it"].includes(LANG) ? LANG : "en"}`;
+
+// ------------------------------------------------------------------ the side bar
+const top = el("div", "lm-top");
+const brand = el("a", "lm-brand", { href: location.pathname }, "hippomaps");
+const tag = el("span", "lm-tag");
+tag.append("Labs · ", el("a", "", { href: "/" }, "overpass.ch"));
+const themeBtn = el("button", "lm-icon-btn", { type: "button", title: theme() === "dark" ? T.light : T.dark, "aria-label": theme() === "dark" ? T.light : T.dark });
+themeBtn.innerHTML = svg(ICON.moon);
+const sheetBtn = el("button", "lm-sheet-btn", { type: "button", "aria-label": "Show or hide the list" });
+top.append(brand, tag, themeBtn);
+
+const form = el("form", "lm-form", { role: "search" });
+const combo = el("div", "lm-combo");
+const input = el("input", "lm-input", { type: "search", role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false",
+  "aria-controls": "lm-list", "aria-label": T.placeholder, placeholder: T.placeholder, autocomplete: "off", spellcheck: "false", maxlength: "160", enterkeyhint: "search" });
+const clearBtn = el("button", "lm-clear", { type: "button", "aria-label": "Clear" });
+clearBtn.innerHTML = svg(ICON.close, 16);
+clearBtn.hidden = true;
+const goBtn = el("button", "lm-go", { type: "submit", "aria-label": "Search" });
+goBtn.innerHTML = svg(ICON.search, 20);
+const list = el("ul", "lm-suggest", { id: "lm-list", role: "listbox" });
+list.hidden = true;
+combo.append(input, clearBtn, goBtn, list);
+form.append(combo);
+
+const status = el("div", "lm-status", { role: "status", "aria-live": "polite" });
+status.hidden = true;
+const body = el("div", "lm-body");
+const listView = el("section", "lm-listview");
+const detailView = el("section", "lm-detail");
+detailView.hidden = true;
+body.append(listView, detailView);
+const foot = el("div", "lm-foot", {}, T.credit);
+side.append(sheetBtn, top, form, status, body, foot);
+
+// ------------------------------------------------------------------ the map
+const map = new maplibregl.Map({
+  container: mapEl,
+  style: styleURL(),
+  center: [8.54, 47.37],
+  zoom: 13,
+  hash: "map",
+  attributionControl: { compact: true },
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
+// the toast over the map: the search again, in what the map shows now
+const areaBtn = el("button", "lm-area", { type: "button" });
+areaBtn.innerHTML = svg(ICON.refresh, 16);
+areaBtn.append(el("span", "", {}, T.searchArea));
+areaBtn.hidden = true;
+const locBtn = el("button", "lm-locate", { type: "button", title: T.myLocation, "aria-label": T.myLocation });
+locBtn.innerHTML = svg(ICON.locate, 22);
+mapEl.append(areaBtn, locBtn);
+
+const empty = { type: "FeatureCollection", features: [] };
+const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty };
+const ACCENT = "#d0312d";
+map.on("style.load", () => {
+  for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
+  const below = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+  const dashed = ["in", ["get", "kind"], ["literal", ["border", "circle"]]];
+  const pts = ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]];
+  const polys = ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]];
+  map.addLayer({ id: "lm-drawn-dashed", type: "line", source: "lm-lines", filter: dashed,
+    paint: { "line-color": "#1f5fbf", "line-width": ["match", ["get", "kind"], "circle", 1.2, 2], "line-dasharray": [3, 2], "line-opacity": 0.8 } }, below);
+  map.addLayer({ id: "lm-drawn", type: "line", source: "lm-lines", filter: ["!", dashed], layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": ["match", ["get", "kind"], "road", "#c2410c", "river", "#0284c7", "#1f5fbf"], "line-width": ["match", ["get", "kind"], "shape", 1.5, 3], "line-opacity": 0.85 } }, below);
+  map.addLayer({ id: "lm-fill", type: "fill", source: "lm-results", filter: polys, paint: { "fill-color": ACCENT, "fill-opacity": 0.15 } }, below);
+  map.addLayer({ id: "lm-line", type: "line", source: "lm-results", filter: ["!", pts], layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": ACCENT, "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.5, 16, 4] } }, below);
+  map.addLayer({ id: "lm-point", type: "circle", source: "lm-results", filter: pts, paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, ["case", ["boolean", ["get", "place"], false], 8, 3], 15, ["case", ["boolean", ["get", "place"], false], 10, 7]],
+    "circle-color": ["case", ["boolean", ["get", "place"], false], "#1f5fbf", ACCENT],
+    "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
+  map.addLayer({ id: "lm-hover", type: "circle", source: "lm-hover", filter: pts,
+    paint: { "circle-radius": 11, "circle-color": ACCENT, "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+  map.addLayer({ id: "lm-hover-line", type: "line", source: "lm-hover", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 4, "line-opacity": 0.5 } });
+  map.addLayer({ id: "lm-sel-line", type: "line", source: "lm-selected", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 5, "line-opacity": 0.65 } });
+  map.addLayer({ id: "lm-sel", type: "circle", source: "lm-selected", filter: pts,
+    paint: { "circle-radius": 13, "circle-color": "#111827", "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
+  map.addLayer({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
+  map.addLayer({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
+    paint: { "circle-radius": 7, "circle-color": "#1a73e8", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+  map.addLayer({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
+    layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
+      "text-max-width": 10, "text-optional": true },
+    paint: { "text-color": theme() === "dark" ? "#ffb4a9" : "#7f1d1d", "text-halo-color": theme() === "dark" ? "#111" : "#fff", "text-halo-width": 1.5 } });
+});
+const setSource = (name, d) => {
+  sources[name] = d || empty;
+  map.getSource(`lm-${name}`)?.setData(sources[name]);
+};
+const one = (f) => ({ type: "FeatureCollection", features: f ? [f] : [] });
+for (const layer of ["lm-point", "lm-line", "lm-fill"]) {
+  map.on("click", layer, (e) => {
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    const f = state.byId.get(e.features[0].properties.id);
+    if (f) select(f, { fly: false });
+  });
+  map.on("mouseenter", layer, (e) => {
+    map.getCanvas().style.cursor = "pointer";
+    const f = state.byId.get(e.features[0].properties.id);
+    if (f) hover(f);
+  });
+  map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; hover(null); });
+}
+const viewBox = () => {
+  const b = map.getBounds();
+  return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(",");
+};
+
+themeBtn.addEventListener("click", () => {
+  store.set("theme", theme() === "dark" ? "light" : "dark");
+  document.documentElement.dataset.theme = theme();
+  themeBtn.title = themeBtn.ariaLabel = theme() === "dark" ? T.light : T.dark;
+  map.setStyle(styleURL(), { diff: false });
+});
+sheetBtn.addEventListener("click", () => root.classList.toggle("lm-collapsed"));
+// on a phone the sheet covers the lower part of the map: its height lifts the controls
+new ResizeObserver(() => root.style.setProperty("--sheet", `${side.offsetHeight}px`)).observe(side);
+
+// ------------------------------------------------------------------ state
+const state = {
+  text: "", extra: {}, answer: null, features: [], byId: new Map(), shown: 0, selected: null, searchable: false, me: null,
+  country: "", // of the place searched, when the answer says it: for public holidays
+  pushedSel: false, // the page of a place has its own entry in the history: Back goes to the list
+};
+
+// ------------------------------------------------------------------ suggestions
+let options = [], active = -1, suggestTimer = 0, suggestCtl = null, suggestFor = "", chosen = null;
+const closeList = () => {
+  list.hidden = true;
+  input.setAttribute("aria-expanded", "false");
+  input.removeAttribute("aria-activedescendant");
+  active = -1;
+};
+const markActive = (i) => {
+  active = i;
+  list.querySelectorAll("[role=option]").forEach((o, j) => o.setAttribute("aria-selected", String(j === i)));
+  if (i >= 0) {
+    input.setAttribute("aria-activedescendant", `lm-opt-${i}`);
+    list.querySelector(`#lm-opt-${i}`)?.scrollIntoView({ block: "nearest" });
+  }
+};
+const placeOf = (s) => Object.fromEntries(placeKeys.filter((k) => s[k]).map((k) => [k, s[k]]));
+const renderList = (items) => {
+  options = items;
+  list.innerHTML = "";
+  if (!items.length) return closeList();
+  items.forEach((s, i) => {
+    const li = el("li", `lm-opt lm-opt-${s.kind}`, { role: "option", id: `lm-opt-${i}`, "aria-selected": "false" });
+    const ic = el("span", "lm-opt-icon");
+    ic.innerHTML = svg(s.kind === "place" ? ICON.pin : ICON.search, 16);
+    const txt = el("span", "lm-opt-text");
+    txt.append(el("span", "lm-opt-label", {}, s.label));
+    if (s.detail) txt.append(el("span", "lm-opt-detail", {}, s.detail));
+    li.append(ic, txt);
+    li.addEventListener("mousedown", (e) => { e.preventDefault(); pick(i); });
+    list.append(li);
+  });
+  list.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+  markActive(-1);
+};
+const suggest = () => {
+  const q = input.value;
+  if (q.trim().length < 2) return Promise.resolve(closeList());
+  suggestCtl?.abort();
+  suggestCtl = new AbortController();
+  return fetch(`${API}/complete?${new URLSearchParams({ q, lang: LANG, bbox: viewBox() })}`, { signal: suggestCtl.signal })
+    .then((r) => (r.ok ? r.json() : { suggestions: [] }))
+    .then((d) => {
+      if (input.value !== q || document.activeElement !== input) return;
+      suggestFor = q;
+      renderList(d.suggestions || []);
+    })
+    .catch(() => {});
+};
+const pick = (i) => {
+  const s = options[i];
+  if (!s) return;
+  input.value = s.text;
+  chosen = null;
+  closeList();
+  run(s.text, placeOf(s));
+};
+const accept = (s) => {
+  input.value = s.kind === "what" ? `${s.text} ` : s.text;
+  chosen = { text: s.text, extra: placeOf(s) };
+  options = [];
+  closeList();
+  suggest();
+};
+input.addEventListener("input", () => {
+  clearBtn.hidden = !input.value;
+  clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(suggest, 150);
+});
+input.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    if (list.hidden) { suggest(); return; }
+    e.preventDefault();
+    const n = options.length;
+    markActive(e.key === "ArrowDown" ? (active + 1) % n : (active - 1 + n) % n);
+  } else if (e.key === "Enter" && !list.hidden && active >= 0) {
+    e.preventDefault();
+    pick(active);
+  } else if (e.key === "Tab" && !e.shiftKey && !list.hidden && options.length && suggestFor === input.value) {
+    e.preventDefault();
+    accept(active >= 0 ? options[active] : options[0]);
+  } else if (e.key === "Escape") {
+    if (!list.hidden) { e.preventDefault(); closeList(); }
+  }
+});
+input.addEventListener("focus", () => root.classList.remove("lm-collapsed"));
+input.addEventListener("blur", () => setTimeout(closeList, 120));
+clearBtn.addEventListener("click", () => {
+  input.value = "";
+  clearBtn.hidden = true;
+  input.focus();
+  closeList();
+});
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  clearTimeout(suggestTimer);
+  suggestCtl?.abort();
+  closeList();
+  const text = input.value.trim();
+  if (text) run(text, chosen && chosen.text.trim() === text ? chosen.extra : {});
+});
+
+// ------------------------------------------------------------------ searching
+let runCtl = null;
+const say = (msg, bad) => {
+  status.textContent = msg || "";
+  status.hidden = !msg;
+  status.classList.toggle("lm-bad", !!bad);
+};
+const problem = (d) => T.errors[d.error?.code] || d.error?.message || T.failed;
+const locate = () => {
+  if (state.me && Date.now() - state.me.at < 5 * 60e3) return Promise.resolve(state.me.v);
+  if (!navigator.geolocation) return Promise.resolve("");
+  return new Promise((done) =>
+    navigator.geolocation.getCurrentPosition(
+      (pos) => done(meAt(pos)),
+      () => done(""),
+      { timeout: 8000, maximumAge: 300e3 },
+    ));
+};
+// meAt keeps a position of the visitor and draws it: a dot, and the circle of its accuracy
+function meAt(pos) {
+  const c = [pos.coords.longitude, pos.coords.latitude];
+  state.me = { v: `${c[1].toFixed(5)},${c[0].toFixed(5)}`, at: Date.now(), at2: c };
+  const r = Math.min(pos.coords.accuracy || 0, 5000), ring = [];
+  for (let i = 0; i <= 48; i++) {
+    const a = (i / 48) * 2 * Math.PI;
+    ring.push([c[0] + (r / (111320 * Math.cos((c[1] * Math.PI) / 180))) * Math.cos(a), c[1] + (r / 110574) * Math.sin(a)]);
+  }
+  setSource("me", { type: "FeatureCollection", features: [
+    { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} },
+    { type: "Feature", geometry: { type: "Point", coordinates: c }, properties: {} },
+  ] });
+  return state.me.v;
+}
+// the button asks the browser, which asks the visitor the first time
+locBtn.addEventListener("click", () => {
+  if (!navigator.geolocation) return say(T.locMissing, true);
+  locBtn.classList.add("lm-busy");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      locBtn.classList.remove("lm-busy");
+      locBtn.classList.add("lm-on");
+      meAt(pos);
+      if (status.classList.contains("lm-bad")) say("");
+      fit(() => map.flyTo({ center: state.me.at2, zoom: Math.max(map.getZoom(), 15), duration: 900, padding: pad() }));
+    },
+    (err) => {
+      locBtn.classList.remove("lm-busy");
+      say(err.code === 1 ? T.locBlocked : T.locFailed, true);
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+  );
+});
+
+// run searches a text; extra holds place, place2, region and what, as the API takes them
+async function run(text, extra = {}, { push = true, bbox = null, sel = null } = {}) {
+  runCtl?.abort();
+  const ctl = runCtl = new AbortController();
+  input.value = text;
+  clearBtn.hidden = !text;
+  const params = new URLSearchParams({ q: text, bbox: bbox || viewBox() });
+  for (const k of extraKeys) if (extra[k]) params.set(k, extra[k]);
+  state.text = text;
+  state.extra = extra;
+  if (push) writeURL(sel);
+  areaBtn.hidden = true;
+  say(T.searching);
+  root.classList.remove("lm-collapsed");
+  const limit = setTimeout(() => ctl.abort("timeout"), 75e3);
+  try {
+    const qr = await fetch(`${API}/query?${params}`, { signal: ctl.signal });
+    const p = await qr.json().catch(() => ({}));
+    if (ctl.signal.aborted) return;
+    const wants = p.wants_location || p.error?.code === "need_location";
+    if (!qr.ok && !wants) return say(problem(p), true);
+    if (qr.ok) showReading(p);
+    if (wants) {
+      say(T.locating);
+      const me = await locate();
+      if (ctl.signal.aborted) return;
+      if (me) params.set("me", me);
+      say(T.searching);
+    }
+    const r = await fetch(`${API}/search?${params}`, { signal: ctl.signal });
+    const d = await r.json().catch(() => ({}));
+    if (ctl.signal.aborted) return;
+    if (!r.ok) return say(problem(d), true);
+    say("");
+    show(d, sel);
+  } catch (err) {
+    if (ctl.signal.reason === "timeout") say(T.tooLong, true);
+    else if (err.name !== "AbortError") say(T.failed, true);
+  } finally {
+    clearTimeout(limit);
+  }
+}
+
+// the search in the address bar: ?q=…&place=…&sel=node/1, and the map in #map=
+function writeURL(sel, replace = false) {
+  const u = new URL(location.href);
+  u.search = "";
+  if (state.text) u.searchParams.set("q", state.text);
+  for (const k of extraKeys) if (state.extra[k]) u.searchParams.set(k, state.extra[k]);
+  if (sel) u.searchParams.set("sel", sel);
+  if (u.href === location.href) return;
+  if (replace) history.replaceState(null, "", u);
+  else history.pushState(null, "", u);
+}
+window.addEventListener("popstate", () => {
+  state.pushedSel = false;
+  const u = new URLSearchParams(location.search);
+  const q = u.get("q") || "";
+  const sel = u.get("sel");
+  const extra = Object.fromEntries(extraKeys.map((k) => [k, u.get(k) || ""]));
+  if (q && q === state.text && JSON.stringify(extra) === JSON.stringify(Object.fromEntries(extraKeys.map((k) => [k, state.extra[k] || ""])))) {
+    const f = sel && state.byId.get(sel);
+    if (f) select(f, { push: false }); else showList();
+  } else if (q) run(q, extra, { push: false, sel });
+  else { state.text = ""; input.value = ""; clear(); intro(); }
+});
+
+// ------------------------------------------------------------------ the list
+const head = el("div", "lm-head");
+const title = el("h1", "lm-title");
+const notes = el("p", "lm-notes");
+const chips = el("div", "lm-chips");
+const count = el("p", "lm-count");
+const results = el("ol", "lm-results");
+const moreBtn = el("button", "lm-more", { type: "button" }, T.more);
+moreBtn.hidden = true;
+const query = el("details", "lm-query");
+const qSum = el("summary", "", {}, T.query);
+const qPre = el("pre");
+const qCopy = el("button", "lm-copy", { type: "button" }, T.copy);
+query.append(qSum, qPre, qCopy);
+query.hidden = true;
+head.append(title, notes);
+listView.append(head, chips, count, results, moreBtn, query);
+qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textContent).then(() => {
+  qCopy.textContent = T.copied;
+  setTimeout(() => { qCopy.textContent = T.copy; }, 1500);
+}));
+
+function intro() {
+  clear();
+  title.textContent = "";
+  notes.textContent = T.intro;
+  for (const x of T.examples) chips.append(chip(x, () => run(x, {})));
+}
+function clear() {
+  state.searchable = false;
+  areaBtn.hidden = true;
+  setSource("results", empty);
+  setSource("lines", empty);
+  setSource("selected", empty);
+  setSource("hover", empty);
+  state.features = [];
+  state.byId = new Map();
+  state.selected = null;
+  chips.innerHTML = "";
+  results.innerHTML = "";
+  count.textContent = "";
+  moreBtn.hidden = true;
+  query.hidden = true;
+  detailView.hidden = true;
+  listView.hidden = false;
+}
+const chip = (label, onClick, cls = "") => {
+  const b = el("button", `lm-chip ${cls}`.trim(), { type: "button" }, label);
+  b.addEventListener("click", onClick);
+  return b;
+};
+const chipRow = (name, items) => {
+  if (!items.length) return;
+  const row = el("div", "lm-chiprow");
+  row.append(el("span", "lm-chipname", {}, name), ...items);
+  chips.append(row);
+};
+function showReading(p) {
+  clear();
+  title.textContent = p.understood || "";
+  notes.textContent = (p.notes || []).join(" ");
+  qPre.textContent = p.query || "";
+  query.hidden = !p.query;
+}
+
+let quietUntil = 0; // until then the map moves for a search, not for the visitor
+const fit = (fn, ms = 1300) => {
+  quietUntil = Date.now() + ms;
+  fn();
+};
+// the visitor moved the map (a drag, the wheel, a pinch, the keys, the buttons): the
+// moves of the map itself, to show a search, do not count
+let touched = false;
+for (const ev of ["pointerdown", "wheel", "touchstart", "keydown"]) mapEl.addEventListener(ev, () => { touched = true; }, { passive: true, capture: true });
+map.on("moveend", () => {
+  if (touched && Date.now() > quietUntil && state.searchable) areaBtn.hidden = false;
+  touched = false;
+});
+areaBtn.addEventListener("click", () => {
+  const extra = { ...state.extra, view: "1" };
+  for (const k of [...placeKeys, "what"]) delete extra[k]; // the places of the sentence go; the what of another reading too
+  run(state.text, extra);
+});
+
+function show(d, sel) {
+  clear();
+  state.answer = d;
+  const found = d.results?.features || [];
+  state.features = d.order === "distance" ? found : found.filter((f) => f.properties.name).concat(found.filter((f) => !f.properties.name));
+  for (const f of found) state.byId.set(f.properties.id, f);
+  state.searchable = false;
+  state.country = d.open?.country || "";
+  ohCache.clear();
+  setSource("results", d.results);
+  setSource("lines", d.lines);
+  const place = found.length === 1 && found[0].properties.place ? found[0] : null;
+  title.textContent = place ? place.properties.name || d.text : d.understood;
+  notes.textContent = [place?.properties.detail, ...(d.notes || [])].filter(Boolean).join(" ");
+  chipRow(T.tryHere, (d.try || []).map((x) => chip(x.label, () => run(x.q, {}))));
+  chipRow(T.otherReadings, (d.alternatives || []).map((a) => chip(a.label, () => run(state.text, { ...state.extra, what: a.what }))));
+  const where = (p) => [p.label, (p.detail || "").split(" · ")[0]].filter(Boolean).join(", ");
+  chipRow(T.otherPlaces, (d.places || []).slice(0, 4).map((p) => {
+    const c = chip(where(p), () => run(state.text, { ...state.extra, place: p.place }), "lm-chip-place");
+    c.title = [p.label, p.detail].filter(Boolean).join(" · ");
+    return c;
+  }));
+  qPre.textContent = d.query || "";
+  query.hidden = !d.query;
+  const box = d.results?.bbox;
+  const pick = sel && state.byId.get(sel);
+  if (box?.length === 4 && !pick) {
+    fit(() => map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: pad(), maxZoom: place ? 16 : 16.5, duration: 800 }));
+  }
+  if (place) {
+    count.textContent = "";
+    return;
+  }
+  state.searchable = true; // moving the map offers the search there
+  count.textContent = T.results(d.total ?? found.length);
+  if (d.truncated) count.textContent += ` · ${T.shown(found.length, d.total)}`;
+  state.shown = 0;
+  renderMore();
+  if (d.open) openNow(d.open);
+  else if (found.some((f) => f.properties.opening_hours)) loadHours().then(() => markHours());
+  if (pick) select(pick, { push: false });
+}
+const pad = () => (matchMedia("(max-width: 760px)").matches
+  ? { top: 40, left: 30, right: 30, bottom: Math.min(innerHeight * 0.5, side.offsetHeight) + 20 }
+  : { top: 50, left: 50, right: 50, bottom: 50 });
+
+const PAGE = 40;
+function renderMore() {
+  const next = state.features.slice(state.shown, state.shown + PAGE);
+  for (const f of next) results.append(card(f));
+  state.shown += next.length;
+  moreBtn.hidden = state.shown >= state.features.length;
+}
+moreBtn.addEventListener("click", renderMore);
+
+function card(f) {
+  const p = f.properties, t = tagsOf(p), k = kindOf(p);
+  const li = el("li");
+  const b = el("button", "lm-card", { type: "button", "data-id": p.id });
+  const thumb = el("span", "lm-thumb");
+  thumb.style.setProperty("--c", KEY_COLOURS[k.key] || "#868e96");
+  thumb.textContent = (k.label || p.name || "?").slice(0, 1).toUpperCase();
+  const text = el("span", "lm-card-text");
+  text.append(el("span", "lm-card-name", {}, p.name || T.noName));
+  const sub = [k.label, t.brand && t.brand !== p.name ? t.brand : ""].filter(Boolean).join(" · ");
+  if (sub) text.append(el("span", "lm-card-sub", {}, sub));
+  const addr = addressOf(t);
+  const c = center(f);
+  const dist = state.me?.at2 && c ? fmtKm(km(state.me.at2, c)) : "";
+  if (addr || dist) text.append(el("span", "lm-card-addr", {}, [dist, addr].filter(Boolean).join(" · ")));
+  if (p.opening_hours) text.append(el("span", "lm-card-hours", { "data-hours": "" }));
+  b.append(text, thumb);
+  b.addEventListener("click", () => select(f));
+  b.addEventListener("mouseenter", () => hover(f));
+  b.addEventListener("mouseleave", () => hover(null));
+  li.append(b);
+  if (hasPicture(t)) lazyPicture(thumb, t);
+  if (OH) markHours(li);
+  return li;
+}
+function hover(f) {
+  setSource("hover", one(f));
+  results.querySelectorAll(".lm-card.lm-hot").forEach((c) => c.classList.remove("lm-hot"));
+  if (f) results.querySelector(`[data-id="${CSS.escape(f.properties.id)}"]`)?.classList.add("lm-hot");
+}
+
+// ------------------------------------------------------------------ pictures
+const hasPicture = (t) => PICTURES && (t.wikidata || t["brand:wikidata"] || t.wikimedia_commons || /wikimedia\.org/.test(t.image || ""));
+const commonsOf = (t) => {
+  if (t.wikimedia_commons?.startsWith("File:")) return t.wikimedia_commons;
+  const m = /^https?:\/\/(?:commons\.wikimedia\.org\/wiki\/(File:[^?#]+)|upload\.wikimedia\.org\/wikipedia\/commons\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/?#]+))/.exec(t.image || "");
+  if (!m) return "";
+  try { return m[1] ? decodeURIComponent(m[1]) : `File:${decodeURIComponent(m[2])}`; } catch { return ""; }
+};
+const pictures = new Map(); // params -> promise of {url, kind, credit, page} or null
+let picQueue = [], picRunning = 0;
+const pump = () => {
+  while (picRunning < 4 && picQueue.length) {
+    const job = picQueue.shift();
+    picRunning++;
+    job().finally(() => { picRunning--; pump(); });
+  }
+};
+function picture(t, w) {
+  const q = new URLSearchParams();
+  if (t.wikidata) q.set("wikidata", t.wikidata);
+  if (t["brand:wikidata"]) q.set("brand", t["brand:wikidata"]);
+  const c = commonsOf(t);
+  if (c) q.set("commons", c);
+  q.set("w", String(w));
+  const key = q.toString();
+  if (!pictures.has(key)) {
+    pictures.set(key, new Promise((done) => {
+      picQueue.push(() => fetch(`${PICTURES}?${key}`)
+        .then(async (r) => {
+          if (r.status !== 200) return done(null); // 204: the place does not have one
+          const blob = await r.blob();
+          let credit = "";
+          try { credit = decodeURIComponent((r.headers.get("X-Picture-Credit") || "").replace(/\+/g, " ")); } catch {}
+          done({ url: URL.createObjectURL(blob), kind: r.headers.get("X-Picture-Kind") || "photo", credit, page: r.headers.get("X-Picture-Page") || "" });
+        })
+        .catch(() => done(null)));
+      pump();
+    }));
+  }
+  return pictures.get(key);
+}
+const seen = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    seen.unobserve(e.target);
+    const t = JSON.parse(e.target.dataset.tags);
+    picture(t, 120).then((pic) => {
+      if (!pic) return;
+      const img = el("img", pic.kind === "logo" ? "lm-logo" : "", { src: pic.url, alt: "", loading: "lazy", title: pic.credit });
+      e.target.textContent = "";
+      e.target.classList.add("lm-has-img");
+      e.target.append(img);
+    });
+  }
+}, { root: body, rootMargin: "200px" });
+const lazyPicture = (thumb, t) => {
+  thumb.dataset.tags = JSON.stringify({ wikidata: t.wikidata, "brand:wikidata": t["brand:wikidata"], wikimedia_commons: t.wikimedia_commons, image: t.image });
+  seen.observe(thumb);
+};
+
+// ------------------------------------------------------------------ opening hours
+let OH = null, ohLoading = null;
+const loadHours = () => (ohLoading ||= import("./vendor/opening_hours-3.15.0/opening_hours.mjs").then((m) => { OH = m.default; }).catch(() => {}));
+const ohCache = new Map();
+// noHolidays drops the rules of public holidays ("PH off", "Su,PH 10:00-18:00"): opening_hours.js
+// needs the country, and the region in some, to know the holidays. On other days the hours are the same.
+const noHolidays = (v) => v.replace(/\s*,\s*PH\b/g, "").replace(/\bPH\s*,\s*/g, "")
+  .split(";").filter((r) => !/^\s*PH\b/.test(r)).join(";").trim();
+const hoursOf = (f) => {
+  const p = f.properties;
+  if (!OH || !p.opening_hours) return null;
+  if (ohCache.has(p.id)) return ohCache.get(p.id);
+  const c = center(f) || [0, 0];
+  const cc = (tagsOf(p)["addr:country"] || state.country || "").toLowerCase();
+  const read = (v, country) => {
+    const oh = new OH(v, { lat: c[1], lon: c[0], address: { country_code: country, state: "" } }, { mode: 0, locale: "en" });
+    oh.getState(new Date()); // a holiday the country does not have fails here, not in the constructor
+    return oh;
+  };
+  let oh = null;
+  const v = p.opening_hours;
+  try { oh = read(cc || !/\bPH\b/.test(v) ? v : noHolidays(v), cc); } catch {
+    try { oh = read(noHolidays(v), ""); } catch { oh = null; }
+  }
+  ohCache.set(p.id, oh);
+  return oh;
+};
+const hm = (d) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+const dayHm = (d) => {
+  const today = new Date();
+  return d.toDateString() === today.toDateString() ? hm(d) : `${d.toLocaleDateString("en-GB", { weekday: "short" })} ${hm(d)}`;
+};
+// stateText is "Open · closes 18:00", for the list and the page of a place
+function stateText(oh) {
+  const now = new Date();
+  const open = oh.getState(now);
+  const next = oh.getNextChange(now);
+  const when = next ? (open ? T.closes(dayHm(next)) : T.opens(dayHm(next))) : "";
+  return { open, text: [open ? T.open : T.closed, when].filter(Boolean).join(" · ") };
+}
+function markHours(scope = results) {
+  for (const s of scope.querySelectorAll("[data-hours]")) {
+    const f = state.byId.get(s.closest(".lm-card")?.dataset.id);
+    const oh = f && hoursOf(f);
+    if (!oh) continue;
+    const st = stateText(oh);
+    s.textContent = st.text;
+    s.classList.toggle("lm-open", st.open);
+    s.classList.toggle("lm-closed", !st.open);
+  }
+}
+// openNow keeps the places open at the time a search asks ("open now", "open on Sunday")
+async function openNow(o) {
+  await loadHours();
+  if (!OH) return;
+  const now = new Date();
+  const at = (day, minute) => {
+    const x = new Date(now);
+    if (day >= 0) x.setDate(x.getDate() + ((day - x.getDay() + 7) % 7));
+    if (minute >= 0) x.setHours(Math.floor(minute / 60), minute % 60, 0, 0); else x.setHours(0, 0, 0, 0);
+    return x;
+  };
+  const isOpen = (oh, day) => {
+    if (o.now) return oh.getState(now);
+    const from = at(day, o.minute);
+    if (o.minute >= 0) return oh.getState(from);
+    const to = new Date(from); to.setDate(to.getDate() + 1);
+    return oh.getOpenIntervals(from, to).length > 0;
+  };
+  const all = state.features.length;
+  state.features = state.features.filter((f) => {
+    const oh = hoursOf(f);
+    try { return oh && (o.weekend ? isOpen(oh, 6) && isOpen(oh, 0) : isOpen(oh, o.day)); } catch { return false; }
+  });
+  const keep = new Set(state.features.map((f) => f.properties.id));
+  setSource("results", { ...state.answer.results, features: state.answer.results.features.filter((f) => keep.has(f.properties.id)) });
+  count.textContent = `${state.features.length.toLocaleString("en")} ${o.label}, of ${all.toLocaleString("en")} with opening hours`;
+  notes.textContent = notes.textContent.replace(/The opening hours were not checked[^.]*\./, "").trim();
+  results.innerHTML = "";
+  state.shown = 0;
+  renderMore();
+}
+
+// ------------------------------------------------------------------ the page of a place
+function showList() {
+  state.selected = null;
+  setSource("selected", empty);
+  detailView.hidden = true;
+  listView.hidden = false;
+}
+function select(f, { push = true, fly = true } = {}) {
+  state.selected = f;
+  setSource("selected", one(f));
+  if (push) {
+    writeURL(f.properties.id);
+    state.pushedSel = true;
+  }
+  const c = center(f);
+  if (fly && c) {
+    const b = extent(f.geometry);
+    if (f.geometry.type === "Point" || !b) fit(() => map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 16), duration: 600, padding: pad() }));
+    else fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 17, duration: 600 }));
+  }
+  renderDetail(f);
+  listView.hidden = true;
+  detailView.hidden = false;
+  body.scrollTop = 0;
+  root.classList.remove("lm-collapsed");
+}
+function renderDetail(f) {
+  const p = f.properties, t = tagsOf(p), k = kindOf(p);
+  detailView.innerHTML = "";
+  const back = el("button", "lm-back", { type: "button" });
+  back.innerHTML = svg(ICON.back, 18);
+  back.append(T.back);
+  back.addEventListener("click", () => {
+    if (state.pushedSel) return history.back();
+    showList();
+    writeURL(null, true);
+  });
+  detailView.append(back);
+  const fig = el("figure", "lm-pic");
+  fig.hidden = true;
+  detailView.append(fig);
+  if (hasPicture(t)) {
+    picture(t, 500).then((pic) => {
+      if (!pic || state.selected !== f) return;
+      fig.hidden = false;
+      fig.classList.toggle("lm-pic-logo", pic.kind === "logo");
+      fig.append(el("img", "", { src: pic.url, alt: p.name || "" }));
+      const cap = el("figcaption");
+      cap.append(`${pic.kind === "logo" ? T.logo : T.photo}${pic.credit ? `: ${pic.credit}` : ""} · `);
+      const a = el("a", "", { href: pic.page, target: "_blank", rel: "noopener" }, "Wikimedia Commons");
+      cap.append(a);
+      fig.append(cap);
+    });
+  }
+  detailView.append(el("h2", "lm-dname", {}, p.name || T.noName));
+  const sub = [k.label, t.brand && t.brand !== p.name ? t.brand : "", t.cuisine ? human(t.cuisine.split(";").join(", ")) : ""].filter(Boolean).join(" · ");
+  if (sub) detailView.append(el("p", "lm-dsub", {}, sub));
+  const oh = hoursOf(f);
+  if (oh) {
+    const st = stateText(oh);
+    detailView.append(el("p", `lm-dstate ${st.open ? "lm-open" : "lm-closed"}`, {}, st.text));
+  } else if (p.opening_hours && !OH) loadHours().then(() => { if (OH && state.selected === f) renderDetail(f); }); // once: hours it cannot read stay text
+
+  const c = center(f);
+  const actions = el("div", "lm-actions");
+  const action = (label, href, icon) => {
+    const a = el("a", "lm-action", { href, target: "_blank", rel: "noopener nofollow" });
+    a.innerHTML = svg(icon, 18);
+    a.append(el("span", "", {}, label));
+    actions.append(a);
+  };
+  if (c) {
+    const from = state.me ? `from=${state.me.at2[1].toFixed(6)}%2C${state.me.at2[0].toFixed(6)}&` : "";
+    action(T.directions, `https://www.openstreetmap.org/directions?${from}to=${c[1].toFixed(6)}%2C${c[0].toFixed(6)}`, ICON.route);
+  }
+  const web = safeURL(t.website || t["contact:website"]);
+  if (web) action(T.website, web, ICON.globe);
+  const phone = (t.phone || t["contact:phone"] || "").split(";")[0].trim();
+  if (phone) action(T.call, `tel:${phone.replace(/[^+\d]/g, "")}`, ICON.phone);
+  if (/^(node|way|relation)\/\d+$/.test(p.id || "")) action(T.osm, `https://www.openstreetmap.org/${p.id}`, ICON.map);
+  detailView.append(actions);
+
+  const rows = el("ul", "lm-rows");
+  const row = (icon, content) => {
+    const li = el("li");
+    const i = el("span", "lm-row-icon");
+    i.innerHTML = svg(icon, 18);
+    li.append(i, content);
+    rows.append(li);
+  };
+  const addr = addressOf(t);
+  if (addr) row(ICON.pin, el("span", "", {}, addr));
+  if (p.opening_hours) {
+    const box = el("span", "lm-hours");
+    let text = p.opening_hours;
+    try { if (oh) text = oh.prettifyValue({ conf: { locale: "en" } }); } catch {}
+    for (const part of text.split(/\s*;\s*/)) box.append(el("span", "", {}, part));
+    row(ICON.clock, box);
+  }
+  if (web) row(ICON.globe, el("a", "", { href: web, target: "_blank", rel: "noopener nofollow" }, shortURL(web)));
+  if (phone) row(ICON.phone, el("a", "", { href: `tel:${phone.replace(/[^+\d]/g, "")}` }, phone));
+  const mail = (t.email || t["contact:email"] || "").split(";")[0].trim();
+  if (/^[^@\s]+@[^@\s]+$/.test(mail)) row(ICON.mail, el("a", "", { href: `mailto:${mail}` }, mail));
+  if (t.wheelchair) row(ICON.wheel, el("span", "", {}, `Wheelchair: ${human(t.wheelchair)}`));
+  if (t.description) row(ICON.info, el("span", "", {}, t.description));
+  const wp = /^([a-z-]{2,12}):(.+)$/.exec(t.wikipedia || "");
+  if (wp) row(ICON.book, el("a", "", { href: `https://${wp[1]}.wikipedia.org/wiki/${encodeURIComponent(wp[2].replace(/ /g, "_"))}`, target: "_blank", rel: "noopener" }, `Wikipedia: ${wp[2]}`));
+  if (rows.children.length) detailView.append(rows);
+
+  const keys = Object.keys(t);
+  if (keys.length) {
+    const all = el("details", "lm-tags");
+    all.append(el("summary", "", {}, T.allTags));
+    const dl = el("dl");
+    for (const key of keys) dl.append(el("dt", "", {}, key), el("dd", "", {}, t[key]));
+    if (p.opening_hours) dl.append(el("dt", "", {}, "opening_hours"), el("dd", "", {}, p.opening_hours));
+    all.append(dl);
+    detailView.append(all);
+  }
+}
+
+// ------------------------------------------------------------------ start
+map.once("load", () => {
+  const u = new URLSearchParams(location.search);
+  const q = u.get("q");
+  if (q) {
+    const extra = Object.fromEntries(extraKeys.map((k) => [k, u.get(k) || ""]));
+    run(q, extra, { push: false, sel: u.get("sel") });
+  } else intro();
+});
+if (!root.dataset.key) say("The map is not configured on this server: MAPS_KEY is missing.", true);
