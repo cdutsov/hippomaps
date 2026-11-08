@@ -27,6 +27,12 @@ func newFake(t *testing.T) *fakeWikimedia {
 		f.calls.Add(1)
 		q := r.URL.Query()
 		switch {
+		case r.URL.Path == "/wd" && q.Get("action") == "query" && q.Get("list") == "search":
+			if q.Get("srsearch") == "haswbstatement:P402=1682682" { // the relation of Thun
+				io.WriteString(w, `{"query":{"search":[{"title":"Q1"}]}}`)
+				return
+			}
+			io.WriteString(w, `{"query":{"search":[]}}`)
 		case r.URL.Path == "/wd" && q.Get("action") == "wbgetclaims":
 			item, prop := q.Get("entity"), q.Get("property")
 			switch {
@@ -157,6 +163,21 @@ func TestPictures(t *testing.T) {
 		t.Errorf("not kept: %d calls more", f.calls.Load()-n)
 	}
 	// nothing to show
+	// a town found by the search: its relation names the item, whose photo it gets; kept in memory
+	before := f.calls.Load()
+	if w := get(s, "/labs/maps/api/picture?osm=relation/1682682&w=500"); w.Code != 200 || w.Header().Get("X-Picture-Kind") != "photo" {
+		t.Errorf("a relation: %d %v", w.Code, w.Header())
+	}
+	get(s, "/labs/maps/api/picture?osm=relation/1682682&w=500")
+	if w := get(s, "/labs/maps/api/picture?osm=relation/7"); w.Code != 204 {
+		t.Errorf("a relation without an item: %d", w.Code)
+	}
+	if w := get(s, "/labs/maps/api/picture?osm=node/7"); w.Code != 400 {
+		t.Errorf("a node: %d", w.Code)
+	}
+	if c := f.calls.Load() - before; c > 5 {
+		t.Errorf("calls to Wikimedia for a relation, twice, and another: %d", c)
+	}
 	if w := get(s, "/labs/maps/api/picture?wikidata=Q99"); w.Code != 204 {
 		t.Errorf("none: %d", w.Code)
 	}

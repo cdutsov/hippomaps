@@ -313,6 +313,10 @@ dirBtn.addEventListener("click", () => {
   if (routeView.hidden) directions(null);
   routeView.querySelector(route.to ? ".lm-end-from input" : ".lm-end-to input")?.focus();
 });
+// beside the search only while the panel has no Directions of its own (a place found or opened has)
+function showDirBtn() {
+  dirBtn.hidden = !ROUTE || !detailView.hidden || (!listView.hidden && placeActs.childElementCount > 0);
+}
 // the place on the screen: the one opened, or the one place a search found
 function placeNow() {
   if (!hereView.hidden && state.herePoint) return state.herePoint;
@@ -345,6 +349,7 @@ const showView = (v) => {
   detailView.hidden = v !== detailView;
   routeView.hidden = v !== routeView;
   root.classList.toggle("lm-planning", v === routeView); // directions have their own fields: no search bar above them
+  showDirBtn();
   body.scrollTop = 0;
 };
 const foot = el("div", "lm-foot", {}, [T.credit, root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" "));
@@ -724,7 +729,8 @@ document.addEventListener("dblclick", (e) => { if (!mapEl.contains(e.target)) e.
 const phone = () => matchMedia("(max-width: 760px)").matches;
 const sheet = { state: "half" };
 const sheetHeights = () => ({
-  peek: Math.min(form.offsetTop + form.offsetHeight + 64, innerHeight * 0.4),
+  // peek: the search box and the title under it; the search box alone while nothing is under it
+  peek: Math.min(form.offsetTop + form.offsetHeight + (title.textContent || notes.textContent ? 64 : 14), innerHeight * 0.4),
   half: Math.round(innerHeight * 0.48),
   full: innerHeight - 56,
 });
@@ -1090,7 +1096,9 @@ query.append(qSum, qPre, qCopy);
 query.hidden = true;
 const placeActs = el("div", "lm-actions lm-place-acts"); // Directions when the search found one place
 head.append(title, notes, placeActs);
-listView.append(head, chips, count, results, moreBtn, query);
+const placePic = el("figure", "lm-pic lm-place-pic"); // the photo of a town or region found
+placePic.hidden = true;
+listView.append(head, placePic, chips, count, results, moreBtn, query);
 qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textContent).then(() => {
   qCopy.textContent = T.copied;
   setTimeout(() => { qCopy.textContent = T.copy; }, 1500);
@@ -1101,9 +1109,13 @@ function intro() {
   clear();
   title.textContent = "";
   notes.textContent = "";
+  setSheet("peek"); // on a phone the map, and the search box at the bottom
 }
 function clear() {
   placeActs.innerHTML = "";
+  showDirBtn();
+  placePic.hidden = true;
+  placePic.innerHTML = "";
   state.placeTarget = null;
   state.searchable = false;
   areaBtn.hidden = true;
@@ -1220,6 +1232,19 @@ function show(d, sel) {
     const c = center(place);
     if (c) state.placeTarget = { ll: c, label: place.properties.name || d.text };
     if (c && ROUTE) placeActs.append(routeButton(() => directions(state.placeTarget)));
+    showDirBtn();
+    const id = place.properties.id;
+    if (PICTURES && /^relation\/\d+$/.test(id || "")) {
+      picture({}, 500, id).then((pic) => {
+        if (!pic || state.answer !== d) return;
+        placePic.hidden = false;
+        placePic.append(el("img", "", { src: pic.url, alt: place.properties.name || "" }));
+        const cap = el("figcaption");
+        cap.append(`${T.photo}${pic.credit ? `: ${pic.credit}` : ""} · `);
+        cap.append(el("a", "", { href: pic.page, target: "_blank", rel: "noopener" }, "Wikimedia Commons"));
+        placePic.append(cap);
+      });
+    }
     return;
   }
   state.searchable = true; // moving the map offers the search there
@@ -1300,8 +1325,10 @@ const pump = () => {
     job().finally(() => { picRunning--; pump(); });
   }
 };
-function picture(t, w) {
+// t: the tags of a place; osm: a relation ("relation/1682682") whose item of Wikidata has the picture
+function picture(t, w, osm) {
   const q = new URLSearchParams();
+  if (osm) q.set("osm", osm);
   if (t.wikidata) q.set("wikidata", t.wikidata);
   if (t["brand:wikidata"]) q.set("brand", t["brand:wikidata"]);
   const c = commonsOf(t);
@@ -2320,6 +2347,22 @@ function fetchSay(text, lang = STEP_LANG) {
 function preSay(steps) {
   for (const st of steps) if (st) for (const t of [st.alert, st.pre || st.text]) fetchSay(t);
 }
+// all the sentences of a route, in its order, two at a time: a new sentence may take the voice of
+// the server several seconds, so they are there before the turns come (the next turns go first,
+// through preSay)
+let sayQueue = [], sayQueueRunning = 0;
+function preSayAll(steps) {
+  sayQueue = steps.flatMap((st) => [st.alert, st.pre || st.text]).filter(Boolean);
+  const next = () => {
+    while (sayQueueRunning < 2 && sayQueue.length) {
+      const p = fetchSay(sayQueue.shift());
+      if (!p) continue;
+      sayQueueRunning++;
+      p.finally(() => { sayQueueRunning--; next(); });
+    }
+  };
+  next();
+}
 let sayN = 0;
 async function say1(text, lang = STEP_LANG) {
   if (nav.muted || !text) return;
@@ -2328,7 +2371,9 @@ async function say1(text, lang = STEP_LANG) {
   if (hasSpeech) speechSynthesis.cancel();
   const p = fetchSay(text, lang);
   if (p) {
-    const url = await Promise.race([p, new Promise((done) => setTimeout(() => done(null), 2500))]);
+    // late: the voice of the browser after 2.5 s, if it has one for the language; else the server's up to 8 s
+    const wait = hasSpeech && bestVoice(lang) ? 2500 : 8000;
+    const url = await Promise.race([p, new Promise((done) => setTimeout(() => done(null), wait))]);
     if (n !== sayN || nav.muted) return;
     if (url) {
       player.src = url;
@@ -2560,6 +2605,7 @@ async function reroute(ll) {
     const d = await r.json();
     if (r.ok && nav.on) {
       navLoad(d);
+      preSayAll(d.steps);
       nav.first = true;
       if (nav.lastFix) onFix(nav.lastFix); // the banner at once, not at the next fix
     }
@@ -2570,6 +2616,7 @@ async function navStart(sim) {
   if (!route.answer) return;
   if (!nav.muted) unlockSound();
   preSay(route.answer.steps.slice(0, 2));
+  preSayAll(route.answer.steps);
   nav.on = true;
   nav.sim = sim;
   nav.follow = true;
@@ -2651,6 +2698,7 @@ function navStop() {
   nav.lock = null;
   nav.avatar?.remove();
   nav.avatar = null;
+  sayQueue = [];
   navElev.hidden = true;
   navBox.hidden = true;
   root.classList.remove("lm-navigating", "lm-nav-elev-on");

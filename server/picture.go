@@ -24,10 +24,14 @@ import (
 //	brand     the logo (P154), else the small logo (P8972), of the item of the chain
 //	wikidata  the logo of the item of the place
 //
+// osm=relation/<id> (a town or a region found by the search, which carries no tags) stands for
+// the item of Wikidata that names that relation (P402), found by the search of Wikidata.
+//
 // Answers of Wikidata and Commons are kept in memory, the bytes too, up to a limit.
 
 var (
 	qidRe  = regexp.MustCompile(`^Q[1-9][0-9]{0,11}$`)
+	osmRe  = regexp.MustCompile(`^relation/([1-9][0-9]{0,11})$`)
 	fileRe = regexp.MustCompile(`^[^#<>\[\]|{}/\x00-\x1f\x7f]{1,240}\.[A-Za-z]{3,4}$`)
 	tagRe  = regexp.MustCompile(`<[^>]*>`)
 )
@@ -94,9 +98,11 @@ func commonsFile(v string) string {
 // picture serves a thumbnail: 204 when the place does not have one, 429 over the limit of the
 // visitor, 503 when the calls to Wikimedia stay taken.
 func (s *Server) picture(w http.ResponseWriter, r *http.Request) {
-	width, ok := widths[r.URL.Query().Get("w")]
-	cands := candidates(r.URL.Query())
-	if !ok || len(cands) == 0 {
+	q := r.URL.Query()
+	width, ok := widths[q.Get("w")]
+	osm := osmRe.FindStringSubmatch(q.Get("osm"))
+	cands := candidates(q)
+	if !ok || (len(cands) == 0 && osm == nil) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -115,7 +121,22 @@ func (s *Server) picture(w http.ResponseWriter, r *http.Request) {
 	case <-ctx.Done():
 		return
 	}
-	p, err := s.find(ctx, cands, width)
+	if len(cands) == 0 { // a relation: its item first
+		item, err := s.itemOf(ctx, osm[1])
+		if err != nil {
+			s.log.Warn("picture failed", "err", err)
+			http.Error(w, "upstream", http.StatusBadGateway)
+			return
+		}
+		if item != "" {
+			cands = candidates(url.Values{"wikidata": {item}})
+		}
+	}
+	var p *picture
+	var err error
+	if len(cands) > 0 {
+		p, err = s.find(ctx, cands, width)
+	}
 	h := w.Header()
 	if err != nil {
 		s.log.Warn("picture failed", "err", err)
@@ -206,6 +227,31 @@ func (s *Server) claim(ctx context.Context, item, prop string) (string, error) {
 	}
 	s.cache.put(key, []byte(file))
 	return file, nil
+}
+
+// itemOf is the item of Wikidata of an OSM relation (P402), "" when none has it; kept in memory
+func (s *Server) itemOf(ctx context.Context, relation string) (string, error) {
+	key := "osm:relation/" + relation
+	if v, ok := s.cache.get(key); ok {
+		return string(v), nil
+	}
+	q := url.Values{"action": {"query"}, "list": {"search"}, "srsearch": {"haswbstatement:P402=" + relation}, "srlimit": {"1"}, "format": {"json"}}
+	var d struct {
+		Query struct {
+			Search []struct {
+				Title string `json:"title"`
+			} `json:"search"`
+		} `json:"query"`
+	}
+	if err := s.getJSON(ctx, s.cfg.WikidataAPI+"?"+q.Encode(), &d); err != nil {
+		return "", err
+	}
+	item := ""
+	if len(d.Query.Search) > 0 && qidRe.MatchString(d.Query.Search[0].Title) {
+		item = d.Query.Search[0].Title
+	}
+	s.cache.put(key, []byte(item))
+	return item, nil
 }
 
 // thumbnail is the thumbnail of a file on Commons at a width, with its credit; nil when

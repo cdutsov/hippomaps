@@ -174,6 +174,14 @@ try:
           "a search far away moves the map to its results")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
 
+    # a town: its photo, and no second Directions beside the search
+    js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Thun'; document.querySelector('.lm-form').requestSubmit(); })()")
+    check(wait("document.querySelector('.lm-place-acts .lm-action')", 40) and wait("document.querySelector('.lm-dir-btn').hidden", 3),
+          "a place found: Directions under its name only")
+    check(wait("!document.querySelector('.lm-place-pic').hidden && document.querySelector('.lm-place-pic img')?.naturalWidth > 0", 30), "a place found: its photo")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+    check(wait("!document.querySelector('.lm-dir-btn').hidden", 3), "the Directions button back after the X")
+
     # German
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)

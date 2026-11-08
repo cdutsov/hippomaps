@@ -423,3 +423,6 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-planning .lm-form { display: none; }
 .lm-route > .lm-back { position: sticky; top: 0; z-index: 2; width: 100%; background: var(--bg); padding-top: .55rem; padding-bottom: .45rem; }
 .lm-navigating .lm-dim { display: none; } /* in navigation the map follows tilted */
+/* the photo of a town or region found, under its name and Directions */
+.lm-place-pic { margin: .2rem 1rem .7rem; }
+.lm-place-pic img { border-radius: 10px; }
