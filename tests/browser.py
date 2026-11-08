@@ -232,6 +232,30 @@ try:
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
     js("document.querySelector('.lm-input').blur()")
 
+    # the X of a card: the card and its highlight go
+    js("location.hash = '#map=16/47.3700/8.5400'")
+    time.sleep(1.5)
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 200, "y": 200}])
+    call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 10)
+    js("document.querySelector('.lm-here:not([hidden]) .lm-card-x, .lm-detail:not([hidden]) .lm-card-x')?.click()")
+    check(wait("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden", 5), "the X closes the card of a point")
+    # day and night follow the visitor, not the map: the style stays when the map goes to New York
+    theme0 = js("document.documentElement.dataset.theme")
+    js("location.hash = '#map=12/40.7128/-74.0060'")
+    time.sleep(3)
+    check(js("document.documentElement.dataset.theme") == theme0, "day and night stay with the visitor when the map goes far away")
+
+    # shared links: a place, a route
+    call("Page.navigate", url=URL + "/?at=46.94797,7.44745&n=Zytglogge")
+    check(wait("!document.querySelector('.lm-here').hidden && /Zytglogge/.test(document.querySelector('.lm-here .lm-dname')?.textContent || '')", 30)
+          and js("!!document.querySelector('.lm-here .lm-share')"), "a shared place opens with its name and Share")
+    call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=47.36690,8.54500&tn=Bellevue&mode=walk")
+    check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && /Zurich HB/.test(document.querySelector('.lm-end-from input')?.value || '') && document.querySelector('.lm-mode[aria-checked=true]')?.textContent.includes('Walk')", 40),
+          "a shared route opens with its start, destination and mode")
+    check(js("!!document.querySelector('.lm-nav-go .lm-share')"), "Share beside Start")
+    js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+
     # German
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)

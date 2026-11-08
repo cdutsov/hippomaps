@@ -60,6 +60,8 @@ const EN = {
   query: "Overpass query",
   copy: "Copy",
   copied: "Copied",
+  share: "Share",
+  linkCopied: "Link copied",
   open: "Open",
   closed: "Closed",
   opens: (t) => `opens ${t}`,
@@ -178,6 +180,7 @@ const ICON = {
   mail: "M4 6h16v12H4zM4 7l8 6 8-6",
   info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.5",
   route: "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM6 15V9a3 3 0 0 1 3-3h6",
+  share: "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4",
   star: "M12 3.2l2.6 5.5 6 .8-4.4 4.1 1.1 5.9L12 16.6l-5.3 2.9 1.1-5.9-4.4-4.1 6-.8z",
   recent: "M12 21a9 9 0 1 0-9-9M3 12V7M3 12h5M12 7v5l3 2",
   map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
@@ -270,10 +273,11 @@ const followsSun = () => look.style === "auto" || look.style === "driving";
 const shownStyle = () => navLook || (look.style === "auto" ? (autoDark ? "dark" : "light")
   : look.style === "driving" && autoDark ? "driving-night" : look.style);
 const isNight = (lon, lat) => sunHeight(lon, lat) < -0.833; // the sun below the horizon
-{
-  const m = /map=[\d.]+\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash);
-  autoDark = isNight(m ? +m[2] : 8.54, m ? +m[1] : 47.37);
-}
+// day or night where the visitor is, by their clock: the sun at their location once known, else the
+// hours of the device (day 07–19); not where the map is (looking at America from Europe at night stays night)
+let meForSun = null;
+const nightNow = () => (meForSun ? isNight(meForSun[0], meForSun[1]) : ((h) => h < 7 || h >= 19)(new Date().getHours()));
+autoDark = nightNow();
 const theme = () => (["dark", "black", "driving-night"].includes(shownStyle()) ? "dark" : "light");
 document.documentElement.dataset.theme = theme();
 const styleURL = () => {
@@ -732,7 +736,7 @@ for (const [key, label] of T.styles) {
   b.addEventListener("click", () => {
     look.style = key;
     store.set("hm-style", key);
-    if (key === "auto" || key === "driving") autoDark = isNight(map.getCenter().lng, map.getCenter().lat);
+    if (key === "auto" || key === "driving") autoDark = nightNow();
     document.documentElement.dataset.theme = theme();
     styleGrid.querySelectorAll("[data-style]").forEach((x) => x.setAttribute("aria-checked", String(x.dataset.style === key)));
     restyle();
@@ -812,17 +816,17 @@ function poweredBy() {
   a.append(el("span", "", {}, T.poweredBy), light, dark);
   return a;
 }
-// Automatic follows sunrise and sunset where the map is
+// Day and night and Driving follow sunrise and sunset where the visitor is (nightNow), checked every 5 minutes
 function checkDayNight() {
   if (!followsSun() || navLook) return;
-  const c = map.getCenter(), dark = isNight(c.lng, c.lat);
+  const dark = nightNow();
   if (dark === autoDark) return;
   autoDark = dark;
   document.documentElement.dataset.theme = theme();
   restyle();
 }
 setInterval(checkDayNight, 300e3);
-map.on("moveend", checkDayNight);
+
 let restyleN = 0;
 function restyle() {
   const n = ++restyleN;
@@ -1028,6 +1032,45 @@ function starButton(place) {
   b.addEventListener("click", () => { toggleStar(get()); show(); });
   return b;
 }
+// ------------------------------------------------------------------ sharing
+// Share: the share sheet of the phone, else the link copied. Links: a point or place
+// ?at=lat,lon&n=name, a route ?from=lat,lon&to=lat,lon&mode=car (without from: the location of the
+// visitor), a search with its place ?q=…&sel=… (the address the page writes itself)
+const pageURL = () => location.origin + location.pathname;
+const ll5 = (ll) => `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`;
+function pointLink(ll, name) {
+  const q = new URLSearchParams({ at: ll5(ll) });
+  if (name) q.set("n", name);
+  return `${pageURL()}?${q}#map=17/${ll[1].toFixed(5)}/${ll[0].toFixed(5)}`;
+}
+function routeLink() {
+  const q = new URLSearchParams();
+  if (route.from && !route.from.me) q.set("from", ll5(route.from.ll)), q.set("fn", route.from.label || "");
+  if (route.to) q.set("to", ll5(route.to.ll)), q.set("tn", route.to.label || "");
+  q.set("mode", route.mode);
+  return `${pageURL()}?${q}`;
+}
+// what: () => {title, url}
+function shareButton(what, iconOnly = false) {
+  const b = el("button", `lm-action lm-share${iconOnly ? " lm-icon-only" : ""}`, { type: "button", title: T.share, "aria-label": T.share });
+  b.innerHTML = svg(ICON.share, 18);
+  const label = el("span", "", {}, T.share);
+  b.append(label);
+  b.addEventListener("click", async () => {
+    const { title, url } = what();
+    if (navigator.share) {
+      try { await navigator.share({ title, url }); return; } catch (err) { if (err?.name === "AbortError") return; }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      label.textContent = T.linkCopied;
+      b.classList.add("lm-done");
+      setTimeout(() => { label.textContent = T.share; b.classList.remove("lm-done"); }, 2000);
+    } catch { prompt(T.share, url); }
+  });
+  return b;
+}
+
 // a starred place opened: the map there, and the card of the point with its name
 function openStar(x) {
   fit(() => map.flyTo({ center: x.ll, zoom: Math.max(map.getZoom(), 16), duration: 900, padding: pad() }));
@@ -1197,6 +1240,8 @@ const locate = () => {
 };
 // meAt keeps a position of the visitor and draws it: a dot, and the circle of its accuracy
 function meAt(pos) {
+  meForSun = [pos.coords.longitude, pos.coords.latitude];
+  setTimeout(checkDayNight, 0); // the sun where the visitor is
   const c = [pos.coords.longitude, pos.coords.latitude];
   state.me = { v: `${c[1].toFixed(5)},${c[0].toFixed(5)}`, at: Date.now(), at2: c };
   const r = Math.min(pos.coords.accuracy || 0, 5000), ring = [];
@@ -1467,6 +1512,7 @@ function show(d, sel) {
     if (c) state.placeTarget = { ll: c, label: place.properties.name || d.text };
     if (c && ROUTE) placeActs.append(routeButton(() => directions(state.placeTarget)));
     if (c) placeActs.append(starButton({ ll: c, name: place.properties.name || d.text, detail: place.properties.detail || "" }));
+    placeActs.append(shareButton(() => ({ title: place.properties.name || d.text, url: location.href }), true));
     showDirBtn();
     const id = place.properties.id;
     if (PICTURES && /^relation\/\d+$/.test(id || "")) {
@@ -1723,7 +1769,7 @@ function renderDetail(f) {
     showList();
     if (state.from !== "here") writeURL(null, true);
   });
-  detailView.append(back);
+  detailView.append(back, closeX());
   const fig = el("figure", "lm-pic");
   fig.hidden = true;
   detailView.append(fig);
@@ -1758,11 +1804,12 @@ function renderDetail(f) {
     actions.append(a);
   };
   if (c && ROUTE) actions.append(routeButton(() => directions({ ll: c, label: p.name || kindOf(p).label || T.noName })));
-  if (c) actions.append(starButton({ ll: c, name: p.name || kindOf(p).label || T.noName, detail: kindOf(p).label }));
   else if (c) {
     const from = state.me ? `from=${state.me.at2[1].toFixed(6)}%2C${state.me.at2[0].toFixed(6)}&` : "";
     action(T.directions, `https://www.openstreetmap.org/directions?${from}to=${c[1].toFixed(6)}%2C${c[0].toFixed(6)}`, ICON.route);
   }
+  if (c) actions.append(starButton({ ll: c, name: p.name || kindOf(p).label || T.noName, detail: kindOf(p).label }));
+  if (c) actions.append(shareButton(() => ({ title: p.name || kindOf(p).label || "hippomaps", url: location.href.includes("sel=") ? location.href : pointLink(c, p.name) })));
   const web = safeURL(t.website || t["contact:website"]);
   if (web) action(T.website, web, ICON.globe);
   const phone = (t.phone || t["contact:phone"] || "").split(";")[0].trim();
@@ -1887,6 +1934,20 @@ function hereDone() {
   setSource("pin", empty);
   setSource("area", empty);
 }
+// the X of a card: the card and what it highlights go; back to the results, or to the start
+function closeCard() {
+  hereDone();
+  setSource("selected", empty);
+  state.selected = null;
+  if (state.answer) { showList(); setSheet("half"); }
+  else { showView(listView); intro(); }
+}
+const closeX = () => {
+  const x = el("button", "lm-icon-btn lm-card-x", { type: "button", title: T.close, "aria-label": T.close });
+  x.innerHTML = svg(ICON.close, 18);
+  x.addEventListener("click", closeCard);
+  return x;
+};
 // back: from directions, the card has Directions to go back to the route
 async function here(ll, symbol, backToRoute = false) {
   hereCtl?.abort();
@@ -1910,6 +1971,7 @@ async function here(ll, symbol, backToRoute = false) {
     back.addEventListener("click", () => { hereDone(); showView(listView); });
     hereView.append(back);
   }
+  hereView.append(closeX());
   const h = el("h2", "lm-dname", {}, symbol || T.here);
   state.herePoint = { ll: [lon, lat], get label() { return h.textContent; } };
   const sub = el("p", "lm-dsub", {}, `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
@@ -1919,6 +1981,7 @@ async function here(ll, symbol, backToRoute = false) {
     const acts = el("div", "lm-actions lm-here-actions");
     acts.append(routeButton(() => directions({ ll: [lon, lat], label: h.textContent })));
     acts.append(starButton(() => ({ ll: [lon, lat], name: h.textContent, detail: `${lat.toFixed(5)}, ${lon.toFixed(5)}` })));
+    acts.append(shareButton(() => ({ title: h.textContent, url: pointLink([lon, lat], h.textContent) })));
     hereView.append(acts);
   }
   hereView.append(note);
@@ -2232,7 +2295,7 @@ async function findRoute() {
   startBtn.addEventListener("click", () => navStart(false));
   const simBtn = el("button", "lm-chip", { type: "button", title: T.previewNote }, T.preview);
   simBtn.addEventListener("click", () => navStart(true));
-  go.append(startBtn, simBtn);
+  go.append(startBtn, simBtn, shareButton(() => ({ title: `${route.from?.label || ""} → ${route.to?.label || ""}`, url: routeLink() }), true));
   routeSum.after(go);
   // the time and Start in view: on a phone the sheet shows only its top
   requestAnimationFrame(() => {
@@ -3001,9 +3064,19 @@ map.once("load", () => {
   drawStars();
   loadTransit();
   const u = new URLSearchParams(location.search);
+  const pt = (v) => { const m = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(v || ""); return m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180 ? [+m[2], +m[1]] : null; };
+  const at = pt(u.get("at")), to = pt(u.get("to"));
   if (startQ) {
     const extra = Object.fromEntries(extraKeys.map((k) => [k, u.get(k) || ""]));
     run(startQ, extra, { push: false, sel: u.get("sel") });
+  } else if (to) { // a shared route
+    if (["car", "bike", "walk"].includes(u.get("mode"))) route.mode = u.get("mode");
+    const from = pt(u.get("from"));
+    directions({ ll: to, label: u.get("tn") || T.mapPoint });
+    if (from) setFrom({ ll: from, label: u.get("fn") || T.mapPoint }); // before the location: it fills only a start still missing
+  } else if (at) { // a shared place
+    fit(() => map.jumpTo({ center: at, zoom: Math.max(map.getZoom(), 16) }));
+    here({ lng: at[0], lat: at[1] }, u.get("n") || "");
   } else if (!linkedView) showMe(true);
 });
 if (!root.dataset.key) say("The map is not configured on this server: MAPS_KEY is missing.", true);
