@@ -76,6 +76,8 @@ const T = {
   unmute: "Sound on",
   recenter: "Re-centre",
   overview: "Whole route",
+  flatMap: "Flat map",
+  tiltedMap: "Tilted map",
   arrival: "Arrival",
   left: "left",
   rerouting: "New route…",
@@ -1700,7 +1702,7 @@ const NAV = {
   bike: { alert: 250, pre: 50, off: 30, zoom: 17.4, arrive: 20 },
   walk: { alert: 120, pre: 25, off: 25, zoom: 18, arrive: 15 },
 };
-const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", spoken: new Set(), off: 0, rerouting: false };
+const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", flat: store.get("hm-nav-2d") === "1", spoken: new Set(), off: 0, rerouting: false };
 
 const navBox = el("div", "lm-nav", { "aria-live": "polite" });
 navBox.hidden = true;
@@ -1725,7 +1727,13 @@ navCenter.innerHTML = svg(ICON.navigate, 16);
 navCenter.append(T.recenter);
 navCenter.hidden = true;
 navBottom.append(navMute, navEta, navOverview, navEnd);
-navBox.append(navBanner, navSign, navThen, navLimit, navElev, navCenter, navBottom);
+// 2D or 3D: the map flat or tilted while following, kept as hm-nav-2d; the button names the other
+const navDim = el("button", "lm-nav-dim", { type: "button" });
+const showDim = () => {
+  navDim.textContent = nav.flat ? "3D" : "2D";
+  navDim.title = navDim.ariaLabel = nav.flat ? T.tiltedMap : T.flatMap;
+};
+navBox.append(navBanner, navSign, navThen, navLimit, navElev, navCenter, navDim, navBottom);
 mapEl.append(navBox);
 
 // distances on the earth, in metres, near a point: x east, y north
@@ -1742,6 +1750,7 @@ function navLoad(d) {
   navElev.innerHTML = "";
   nav.elev = d.elev?.pts?.length > 1 ? heightChart(d.elev, { compact: true }) : null;
   navElev.hidden = !nav.elev;
+  root.classList.toggle("lm-nav-elev-on", !!nav.elev);
   if (nav.elev) navElev.append(nav.elev.node);
   nav.idx = 0;
   nav.spoken = new Set();
@@ -1945,7 +1954,7 @@ function navUpdate(p, rawPos, off = false) {
   nav.avatar?.set(at, heading, nav.sim ? 480 : 900, nav.speed || 0);
   if (nav.elev) nav.elev.mark((p.along / (total || 1)) * nav.elev.km);
   if (nav.follow) {
-    map.easeTo({ center: at, bearing: heading, pitch: 60, zoom: cfg.zoom, padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
+    map.easeTo({ center: at, bearing: heading, pitch: nav.flat ? 0 : 60, zoom: cfg.zoom, padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
   }
   drawNavLine(p);
   if (left <= cfg.arrive) navArrive();
@@ -2094,7 +2103,7 @@ function navStop() {
   nav.avatar = null;
   navElev.hidden = true;
   navBox.hidden = true;
-  root.classList.remove("lm-navigating");
+  root.classList.remove("lm-navigating", "lm-nav-elev-on");
   setTimeout(() => {
     map.resize();
     drawEnds(route.answer?.line || null);
@@ -2103,6 +2112,13 @@ function navStop() {
   }, 0);
 }
 navEnd.addEventListener("click", navStop);
+showDim();
+navDim.addEventListener("click", () => {
+  nav.flat = !nav.flat;
+  store.set("hm-nav-2d", nav.flat ? "1" : "0");
+  showDim();
+  if (nav.follow) map.easeTo({ pitch: nav.flat ? 0 : 60, duration: 500 });
+});
 navMute.addEventListener("click", () => {
   nav.muted = !nav.muted;
   store.set("hm-mute", nav.muted ? "1" : "0");

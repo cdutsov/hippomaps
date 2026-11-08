@@ -31,7 +31,7 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - Navigation, turn by turn, from the directions: Start follows the location of the browser, Preview drives the route at three
   times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a car, a cyclist or a
   walker in 3D (`web/avatar.js`, three.js, loaded with the first route; wheels, pedals and legs move with the speed; the flat
-  sprite when WebGL fails); the next turn with its arrow, its distance and the street; by car the sign of the junction in its
+  sprite when WebGL fails; larger on a flat map); a button turns the map flat (2D) or tilted (3D), kept as `hm-nav-2d`; the next turn with its arrow, its distance and the street; by car the sign of the junction in its
   last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; arrival
   time, time and distance left. The instructions of Valhalla are spoken in the language of the browser: with `TTS_URL` by
   the Piper voices of the server in German, English, French and Italian (`/api/say`, fetched up to three turns ahead), else, or

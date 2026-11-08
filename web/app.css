@@ -335,3 +335,9 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-elev-left { flex: none; font-size: .8rem; color: var(--muted); max-width: 40%; text-align: right; }
 .lm-elev-left:empty { display: none; }
 .lm-nav-elev:not([hidden]) ~ .lm-nav-center { bottom: 150px; }
+/* in navigation: 2D or 3D above the compass; both above the height strip when it shows */
+.lm-nav-dim { position: absolute; right: 10px; bottom: 146px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--bg);
+  color: var(--fg); font: inherit; font-size: .85rem; font-weight: 700; box-shadow: var(--shadow); cursor: pointer; }
+.lm-nav-dim:hover { background: var(--hot); }
+.lm-navigating.lm-nav-elev-on .lm-compass { bottom: 146px; }
+.lm-nav-elev-on .lm-nav-dim { bottom: 196px; }

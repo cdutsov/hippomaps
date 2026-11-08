@@ -249,7 +249,7 @@ export function avatar(map, maplibregl, mode) {
   sun.position.set(-40, -30, 90); // high in the south-west
   scene.add(sun);
 
-  const size = mode === "car" ? 2 : 2.7; // pixels of the screen per unit of the model
+  const size = mode === "car" ? 2 : 1.9; // pixels of the screen per unit of the model
   let renderer = null;
   let from = null, to = null, t0 = 0, dur = 0, hFrom = 0, hTo = 0, speed = 0, last = 0;
   const now = () => performance.now();
@@ -276,7 +276,8 @@ export function avatar(map, maplibregl, mode) {
       turn.rotation.y = (-heading * Math.PI) / 180;
       const alt = map.queryTerrainElevation?.(ll) || 0;
       const mc = maplibregl.MercatorCoordinate.fromLngLat(ll, alt);
-      const s = size / (512 * 2 ** map.getZoom());
+      // from straight above a traveller shows less of itself: larger on a flat map
+      const s = (size * (1 + 0.5 * Math.max(0, 1 - map.getPitch() / 60))) / (512 * 2 ** map.getZoom());
       const l = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(s, -s, s));
       camera.projectionMatrix = new THREE.Matrix4().fromArray(args.defaultProjectionData.mainMatrix).multiply(l);
       renderer.resetState();
