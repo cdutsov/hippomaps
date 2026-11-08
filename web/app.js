@@ -2683,7 +2683,8 @@ navCenter.addEventListener("click", () => { nav.follow = true; navCenter.hidden 
 // the visitor moves the map: it stops following until Re-centre
 for (const ev of ["pointerdown", "wheel", "touchstart"]) {
   mapEl.addEventListener(ev, (e) => {
-    if (!nav.on || navBox.contains(e.target)) return;
+    // the map itself, not the buttons over it (the menu, traffic, the compass)
+    if (!nav.on || !e.target.closest?.(".maplibregl-canvas-container")) return;
     nav.follow = false;
     navCenter.hidden = false;
   }, { passive: true, capture: true });

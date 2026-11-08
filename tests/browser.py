@@ -124,6 +124,12 @@ try:
           "the speed now")
     check(wait(r"document.getElementById('app').classList.contains('lm-navigating') && /^\d+$/.test(document.querySelector('.lm-nav-limit').textContent) && !document.querySelector('.lm-nav-limit').hidden", 40), "the speed limit")
     check(js("!document.querySelector('.lm-sprite')"), "the traveller in 3D")
+    # the menu while navigating: the map keeps following
+    js("document.querySelector('.lm-map-burger').click()")
+    time.sleep(0.5)
+    js("document.querySelector('.lm-menu .lm-icon-btn')?.click()")
+    time.sleep(0.5)
+    check(js("document.querySelector('.lm-nav-center').hidden"), "the menu while navigating leaves the map following")
     if js("!!document.getElementById('app').dataset.say"):
         check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/say'))", 20), "the voice of the server speaks")
     js("document.querySelector('.lm-nav-x').click()")
