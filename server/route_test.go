@@ -46,6 +46,17 @@ var routeLine = [][2]float64{{8.5403, 47.3779}, {8.2, 47.2}, {7.4391, 46.949}}
 func fakeValhalla(t *testing.T, calls *atomic.Int32, last *map[string]any) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
+		if r.Method == http.MethodPost && r.URL.Path == "/trace_attributes" {
+			var req map[string]any
+			json.NewDecoder(r.Body).Decode(&req)
+			if req["encoded_polyline"] != encodePolyline(routeLine, 1e6) || req["shape_match"] != "edge_walk" {
+				w.WriteHeader(400)
+				return
+			}
+			io.WriteString(w, `{"edges":[{"speed_limit":50,"begin_shape_index":0,"end_shape_index":1},{"speed_limit":"unlimited","begin_shape_index":1,"end_shape_index":1},`+
+				`{"speed_limit":120,"begin_shape_index":1,"end_shape_index":2}]}`)
+			return
+		}
 		if r.Method != http.MethodPost || r.URL.Path != "/route" {
 			http.NotFound(w, r)
 			return
@@ -60,7 +71,9 @@ func fakeValhalla(t *testing.T, calls *atomic.Int32, last *map[string]any) *http
 			return
 		}
 		io.WriteString(w, `{"trip":{"summary":{"length":124.321,"time":5400.4},"legs":[{"shape":"`+encodePolyline(routeLine, 1e6)+
-			`","maneuvers":[{"instruction":"Drive west.","length":60.1,"time":2500,"type":1,"begin_shape_index":0},`+
+			`","maneuvers":[{"instruction":"Drive west.","length":60.1,"time":2500,"type":1,"begin_shape_index":0,"end_shape_index":1,`+
+			`"verbal_pre_transition_instruction":"Drive west on A1.","street_names":["A1"],"highway":true,`+
+			`"sign":{"exit_number_elements":[{"text":"52"}],"exit_branch_elements":[{"text":"A1"},{"text":"E 25"}],"exit_toward_elements":[{"text":"Bern"},{"text":"Basel"}]}},`+
 			`{"instruction":"You have arrived.","length":0,"time":0,"type":4,"begin_shape_index":2}]}]}}`)
 	}))
 	t.Cleanup(srv.Close)
@@ -94,12 +107,23 @@ func TestRoute(t *testing.T) {
 	if a.Steps[1].At != a.Line[2] || a.Steps[0].Text != "Drive west." {
 		t.Errorf("steps: %+v", a.Steps)
 	}
+	st := a.Steps[0]
+	if st.Pre != "Drive west on A1." || st.Street != "A1" || !st.Highway || st.Exit != "52" || st.End != 1 ||
+		strings.Join(st.Routes, ",") != "A1,E 25" || strings.Join(st.Toward, ",") != "Bern,Basel" {
+		t.Errorf("step for navigation: %+v", st)
+	}
+	if len(a.Limits) != 2 || a.Limits[0] != [3]int{0, 1, 50} || a.Limits[1] != [3]int{1, 2, 120} {
+		t.Errorf("limits: %v", a.Limits)
+	}
 	if last["costing"] != "auto" || last["language"] != "de-DE" || last["units"] != "kilometers" {
 		t.Errorf("request: %v", last)
 	}
 	get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk&lang=xx")
 	if last["costing"] != "pedestrian" || last["language"] != "en-US" {
 		t.Errorf("walk: %v", last)
+	}
+	if w := get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk"); strings.Contains(w.Body.String(), `"limits"`) {
+		t.Errorf("limits on foot: %s", w.Body)
 	}
 
 	n := calls.Load()

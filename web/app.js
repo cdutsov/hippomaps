@@ -68,6 +68,23 @@ const T = {
   routing: "Finding the route…",
   modes: [["car", "Car"], ["bike", "Bike"], ["walk", "Walk"]],
   routeFailed: "The route could not be found. Please try again.",
+  start: "Start",
+  preview: "Preview",
+  previewNote: "A drive along the route, three times as fast",
+  endNav: "End navigation",
+  mute: "Sound off",
+  unmute: "Sound on",
+  recenter: "Re-centre",
+  overview: "Whole route",
+  arrival: "Arrival",
+  left: "left",
+  rerouting: "New route…",
+  arrived: "You have arrived.",
+  noGPS: "Navigation needs your location. Allow it in the settings of the browser, then try again.",
+  waitGPS: "Waiting for your location…",
+  then: "Then",
+  exit: "Exit",
+  speedLimit: (v) => `Speed limit ${v}`,
   duration: (s) => {
     const m = Math.max(1, Math.round(s / 60));
     return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
@@ -119,6 +136,10 @@ const ICON = {
   burger: "M4 7h16M4 12h16M4 17h16",
   locate: "M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
+  navigate: "M12 2 20 21l-8-4-8 4z",
+  sound: "M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12",
+  muted: "M4 9v6h4l5 4V5L8 9zM17 9l5 6M22 9l-5 6",
+  overview: "M4 6h16M4 12h10M4 18h6",
   car: "M5 17h14v-5l-2-5H7l-2 5zM5 12h14M7.5 17v2M16.5 17v2M8 14.5h.01M16 14.5h.01",
   bike: "M5.5 18a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM18.5 18a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5.5 14.5 9 8h6l3.5 6.5M9 8l3 6.5 3-6.5M8 5h3",
   walk: "M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM10 21l2-6 3 3v3M12 15l-1-6 4 2 2 3M11 9l-3 2-1 3",
@@ -1218,7 +1239,7 @@ function renderDetail(f) {
 // opens that place when the answer has it.
 let hereCtl = null;
 map.on("click", (e) => {
-  if (e.defaultPrevented) return;
+  if (e.defaultPrevented || nav.on) return;
   if (document.activeElement === input || !list.hidden) {
     closeList();
     input.blur();
@@ -1429,6 +1450,7 @@ function renderRoute() {
   }
   routeMsg.textContent = route.from ? "" : T.tapStart;
   routeSum.textContent = "";
+  route.answer = null;
   routeSteps.innerHTML = "";
   routeView.append(back, el("h2", "lm-dname", {}, T.directions), routeHead, routeMsg, routeSum, routeSteps);
   drawEnds(null);
@@ -1441,6 +1463,8 @@ async function findRoute() {
   routeMsg.textContent = T.routing;
   routeSum.textContent = "";
   routeSteps.innerHTML = "";
+  routeView.querySelector(".lm-nav-go")?.remove();
+  route.answer = null;
   drawEnds(null);
   let d;
   try {
@@ -1456,7 +1480,17 @@ async function findRoute() {
     return;
   }
   routeMsg.textContent = "";
+  route.answer = d;
   routeSum.textContent = `${T.duration(d.s)} · ${fmtKm(d.km)}`;
+  const go = el("div", "lm-nav-go");
+  const startBtn = el("button", "lm-nav-start", { type: "button" });
+  startBtn.innerHTML = svg(ICON.navigate, 18);
+  startBtn.append(T.start);
+  startBtn.addEventListener("click", () => navStart(false));
+  const simBtn = el("button", "lm-chip", { type: "button", title: T.previewNote }, T.preview);
+  simBtn.addEventListener("click", () => navStart(true));
+  go.append(startBtn, simBtn);
+  routeSum.after(go);
   for (const st of d.steps) {
     const li = el("li", "lm-step");
     const b = el("button", "", { type: "button" });
@@ -1469,6 +1503,374 @@ async function findRoute() {
   drawEnds(d.line);
   const b = extent({ type: "LineString", coordinates: d.line });
   if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 700 }));
+}
+
+// ------------------------------------------------------------------ navigation
+// Turn by turn along the route of the directions: the map tilted and turned with the way, a
+// sprite for the car, the bike or the walker, the next turn with its distance (and the sign of a
+// motorway by car), the speed limit, the spoken instructions of Valhalla, a new route when the
+// visitor leaves this one. Start follows the location of the browser; Preview drives the route
+// at three times its speed.
+const SPRITE = {
+  car: '<svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="19" fill="#1a73e8" fill-opacity=".18"/>' +
+    '<rect x="12.5" y="6" width="15" height="28" rx="6" fill="#1a73e8" stroke="#fff" stroke-width="2"/>' +
+    '<path d="M15 14.5q5-3 10 0l-1.2 4h-7.6z" fill="#cfe3ff"/><path d="M16 28.5h8l1 2.5h-10z" fill="#cfe3ff"/>' +
+    '<rect x="11" y="11" width="2" height="3.5" rx="1" fill="#0b3d91"/><rect x="27" y="11" width="2" height="3.5" rx="1" fill="#0b3d91"/></svg>',
+  bike: '<svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="19" fill="#1a73e8" fill-opacity=".18"/>' +
+    '<rect x="18.5" y="5" width="3" height="10" rx="1.5" fill="#111827"/><rect x="18.5" y="25" width="3" height="10" rx="1.5" fill="#111827"/>' +
+    '<path d="M12 13h16" stroke="#111827" stroke-width="2.4" stroke-linecap="round"/>' +
+    '<path d="M20 13v12" stroke="#1a73e8" stroke-width="3"/><ellipse cx="20" cy="20" rx="6" ry="4.5" fill="#1a73e8" stroke="#fff" stroke-width="1.6"/>' +
+    '<circle cx="20" cy="18.5" r="3" fill="#f2c9a0" stroke="#fff" stroke-width="1"/></svg>',
+  walk: '<svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="19" fill="#1a73e8" fill-opacity=".18"/>' +
+    '<path d="M20 4 25 11h-10z" fill="#1a73e8"/><ellipse cx="20" cy="21" rx="9" ry="5" fill="#1a73e8" stroke="#fff" stroke-width="2"/>' +
+    '<circle cx="20" cy="21" r="4" fill="#f2c9a0" stroke="#fff" stroke-width="1.5"/></svg>',
+};
+// arrows for the maneuver types of Valhalla
+const ARROW = {
+  straight: "M12 21V4M6 10l6-6 6 6",
+  right: "M7 21v-8a4 4 0 0 1 4-4h9M15 4l5 5-5 5",
+  left: "M17 21v-8a4 4 0 0 0-4-4H4M9 4 4 9l5 5",
+  slightRight: "M9 21v-7l8-8M11 5h7v7",
+  slightLeft: "M15 21v-7L7 6M13 5H6v7",
+  sharpRight: "M7 3v9l10 8M18 13v8h-8",
+  sharpLeft: "M17 3v9L7 20M6 13v8h8",
+  uturnLeft: "M16 21V9a4 4 0 0 0-8 0v7M4 13l4 4 4-4",
+  uturnRight: "M8 21V9a4 4 0 0 1 8 0v7M12 13l4 4 4-4",
+  roundabout: "M12 21v-6M12 15a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M14.5 9.5 19 5M14 5h5v5",
+  arrive: "M12 21s-6-5.4-6-10a6 6 0 0 1 12 0c0 4.6-6 10-6 10zM12 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  merge: "M12 21v-8L7 4M12 13l5-9M17 9V4h-5",
+};
+const arrowOf = (type) => ({
+  2: "right", 3: "left", 4: "arrive", 5: "arrive", 6: "arrive", 9: "slightRight", 10: "right", 11: "sharpRight",
+  12: "uturnRight", 13: "uturnLeft", 14: "sharpLeft", 15: "left", 16: "slightLeft", 18: "slightRight", 19: "slightLeft",
+  20: "slightRight", 21: "slightLeft", 23: "slightRight", 24: "slightLeft", 25: "merge", 26: "roundabout", 27: "roundabout",
+  37: "merge", 38: "merge",
+}[type] || "straight");
+const arrowSVG = (type, size) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="${ARROW[arrowOf(type)]}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+// the colours of route numbers on a sign: motorways (A) red, European routes green, others blue
+const shieldClass = (r) => (/^A\s?\d/.test(r) ? "lm-shield-a" : /^E\s?\d/.test(r) ? "lm-shield-e" : "lm-shield");
+// how near a turn is said first (alert) and again (pre), and how far off the line is off the route, in metres
+const NAV = {
+  car: { alert: 700, pre: 160, off: 45, zoom: 16.6, arrive: 40 },
+  bike: { alert: 250, pre: 50, off: 30, zoom: 17.4, arrive: 20 },
+  walk: { alert: 120, pre: 25, off: 25, zoom: 18, arrive: 15 },
+};
+const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", spoken: new Set(), off: 0, rerouting: false };
+
+const navBox = el("div", "lm-nav", { "aria-live": "polite" });
+navBox.hidden = true;
+const navBanner = el("div", "lm-nav-banner");
+const navSign = el("div", "lm-nav-sign");
+const navThen = el("div", "lm-nav-then");
+const navLimit = el("div", "lm-nav-limit");
+const navBottom = el("div", "lm-nav-bottom");
+const navEta = el("div", "lm-nav-eta");
+const navBtn = (icon, label, cls = "") => {
+  const b = el("button", `lm-nav-btn ${cls}`.trim(), { type: "button", title: label, "aria-label": label });
+  b.innerHTML = svg(icon, 22);
+  return b;
+};
+const navEnd = navBtn(ICON.close, T.endNav, "lm-nav-x");
+const navMute = navBtn(ICON.sound, T.mute);
+const navOverview = navBtn(ICON.overview, T.overview);
+const navCenter = el("button", "lm-nav-center", { type: "button" });
+navCenter.innerHTML = svg(ICON.navigate, 16);
+navCenter.append(T.recenter);
+navCenter.hidden = true;
+navBottom.append(navMute, navEta, navOverview, navEnd);
+navBox.append(navBanner, navSign, navThen, navLimit, navCenter, navBottom);
+mapEl.append(navBox);
+
+// distances on the earth, in metres, near a point: x east, y north
+const M = 111320;
+const flat = (a, lat0) => [a[0] * M * Math.cos((lat0 * Math.PI) / 180), a[1] * M];
+const bearingOf = (a, b) => {
+  const [ax, ay] = flat(a, a[1]), [bx, by] = flat(b, a[1]);
+  return (Math.atan2(bx - ax, by - ay) * 180) / Math.PI;
+};
+// prepare a route answer for following: the distance along the line at each point
+function navLoad(d) {
+  const line = d.line, cum = [0];
+  for (let i = 1; i < line.length; i++) {
+    const [ax, ay] = flat(line[i - 1], line[i][1]), [bx, by] = flat(line[i], line[i][1]);
+    cum.push(cum[i - 1] + Math.hypot(bx - ax, by - ay));
+  }
+  nav.d = d;
+  nav.cum = cum;
+  nav.idx = 0;
+  nav.spoken = new Set();
+  nav.off = 0;
+}
+// snap a point to the line: the nearest point from a little behind the last one to well ahead
+function snap(p, wide) {
+  const line = nav.d.line, cum = nav.cum;
+  const from = wide ? 0 : Math.max(0, nav.idx - 3), to = wide ? line.length - 1 : Math.min(line.length - 1, nav.idx + 400);
+  let best = { dist: Infinity, i: nav.idx, t: 0 };
+  const P = flat(p, p[1]);
+  for (let i = from; i < to; i++) {
+    const A = flat(line[i], p[1]), B = flat(line[i + 1], p[1]);
+    const dx = B[0] - A[0], dy = B[1] - A[1], len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / len2)) : 0;
+    const dist = Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]);
+    if (dist < best.dist) best = { dist, i, t };
+  }
+  const a = line[best.i], b = line[Math.min(best.i + 1, line.length - 1)];
+  return { ...best, ll: [a[0] + (b[0] - a[0]) * best.t, a[1] + (b[1] - a[1]) * best.t], along: cum[best.i] + (cum[best.i + 1] - cum[best.i] || 0) * best.t,
+    heading: bearingOf(a, b) };
+}
+// the point at a distance along the line (Preview)
+function pointAt(along) {
+  const cum = nav.cum, line = nav.d.line;
+  let i = Math.max(0, Math.min(nav.idx, cum.length - 2));
+  while (i < cum.length - 2 && cum[i + 1] < along) i++;
+  const seg = cum[i + 1] - cum[i] || 1, t = Math.max(0, Math.min(1, (along - cum[i]) / seg));
+  const a = line[i], b = line[i + 1];
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+function say1(text) {
+  if (nav.muted || !text || !("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = { en: "en-US", de: "de-DE", fr: "fr-FR", it: "it-IT", es: "es-ES", nl: "nl-NL", pt: "pt-PT" }[LANG] || "en-US";
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+const clock = (s) => new Date(Date.now() + s * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// the sign of the next junction, by car, in its last 2 km
+function renderSign(st, toNext) {
+  navSign.innerHTML = "";
+  const show = route.mode === "car" && toNext < 2000 && (st.exit || st.toward?.length || st.routes?.length || st.exit_name);
+  navSign.hidden = !show;
+  if (!show) return;
+  navSign.className = `lm-nav-sign ${st.highway || st.exit ? "lm-sign-motorway" : "lm-sign-road"}`;
+  const top = el("div", "lm-sign-top");
+  if (st.exit) top.append(el("span", "lm-sign-exit", {}, `${T.exit} ${st.exit}`));
+  for (const r of (st.routes || []).slice(0, 3)) top.append(el("span", shieldClass(r), {}, r));
+  if (top.children.length) navSign.append(top);
+  if (st.exit_name) navSign.append(el("div", "lm-sign-name", {}, st.exit_name));
+  for (const t of (st.toward || []).slice(0, 3)) navSign.append(el("div", "lm-sign-to", {}, t));
+}
+// the state of the trip at a point on the line
+function navUpdate(p, rawPos, off = false) {
+  const d = nav.d, steps = d.steps, cfg = NAV[route.mode];
+  nav.idx = p.i;
+  // the step being driven: the last that starts at or before this point
+  let k = 0;
+  while (k + 1 < steps.length && nav.cum[steps[k + 1].i] <= p.along + 1) k++;
+  const next = steps[k + 1] || steps[k];
+  const toNext = Math.max(0, nav.cum[Math.min(next.i, nav.cum.length - 1)] - p.along);
+  const total = nav.cum[nav.cum.length - 1];
+  const left = Math.max(0, total - p.along);
+  // time left: the rest of this step by its share, and the steps after it
+  const cur = steps[k], span = (nav.cum[next.i] - nav.cum[cur.i]) || 1;
+  let s = (cur.s || 0) * Math.min(1, toNext / span);
+  for (let j = k + 1; j < steps.length; j++) s += steps[j].s || 0;
+  // the banner: the turn, how far, onto what
+  navBanner.innerHTML = "";
+  const arrow = el("div", "lm-nav-arrow");
+  arrow.innerHTML = arrowSVG(next.type, 44);
+  const txt = el("div", "lm-nav-text");
+  txt.append(el("div", "lm-nav-dist", {}, fmtKm(toNext / 1000)));
+  // the street to turn into; a bare route number ("1") says less than the instruction
+  txt.append(el("div", "lm-nav-instr", {}, next.street && !/^[\d\s/]+$/.test(next.street) && next.type !== 4 ? next.street : next.text));
+  if (next.roundabout) txt.lastChild.textContent = next.text;
+  navBanner.append(arrow, txt);
+  renderSign(next, toNext);
+  // the turn after, when it comes soon after this one
+  const after = steps[k + 2];
+  navThen.innerHTML = "";
+  navThen.hidden = !(after && toNext < 1000 && nav.cum[after.i] - nav.cum[next.i] < 250);
+  if (!navThen.hidden) {
+    navThen.append(T.then);
+    const a = el("span", "lm-nav-then-arrow");
+    a.innerHTML = arrowSVG(after.type, 20);
+    navThen.append(a);
+  }
+  // the speed limit here, by car
+  const lim = route.mode === "car" && (d.limits || []).find((l) => l[0] <= p.i && p.i < l[1]);
+  navLimit.hidden = !lim;
+  if (lim) {
+    navLimit.textContent = lim[2];
+    navLimit.title = navLimit.ariaLabel = T.speedLimit(lim[2]);
+  }
+  navEta.innerHTML = "";
+  navEta.append(el("strong", "", {}, clock(s)), el("span", "", {}, `${T.duration(s)} · ${fmtKm(left / 1000)}`));
+  // the spoken instructions: early, then at the turn; after the turn what comes
+  const n = steps.indexOf(next);
+  if (k === 0 && !nav.spoken.has("0")) {
+    nav.spoken.add("0");
+    say1(steps[0].pre || steps[0].text);
+  } else if (toNext <= cfg.pre && !nav.spoken.has(`${n}p`)) {
+    nav.spoken.add(`${n}p`).add(`${n}a`);
+    say1(next.pre || next.text);
+  } else if (toNext <= cfg.alert && toNext > cfg.pre * 1.8 && !nav.spoken.has(`${n}a`) && next.alert) {
+    nav.spoken.add(`${n}a`);
+    say1(next.alert);
+  }
+  // the camera and the sprite
+  // off the route: the real position, and the heading of the device when it has one
+  const at = off ? rawPos : p.ll, heading = off && rawPos.heading != null ? rawPos.heading : p.heading;
+  nav.marker.setLngLat(at).setRotation(heading);
+  if (nav.follow) {
+    map.easeTo({ center: at, bearing: heading, pitch: 60, zoom: cfg.zoom, padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
+  }
+  drawNavLine(p);
+  if (left <= cfg.arrive) navArrive();
+}
+const navPad = () => {
+  const h = mapEl.clientHeight;
+  return { top: Math.round(h * 0.42), bottom: 90, left: 20, right: 20 };
+};
+function drawNavLine(p) {
+  const rest = [p.ll, ...nav.d.line.slice(p.i + 1)];
+  setSource("route", { type: "FeatureCollection", features: [
+    { type: "Feature", geometry: { type: "LineString", coordinates: rest }, properties: {} },
+    { type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } },
+  ] });
+}
+function navArrive() {
+  if (nav.arrived) return;
+  nav.arrived = true;
+  stopTracking();
+  navBanner.innerHTML = "";
+  const arrow = el("div", "lm-nav-arrow");
+  arrow.innerHTML = arrowSVG(4, 44);
+  navBanner.append(arrow, el("div", "lm-nav-text lm-nav-instr", {}, T.arrived));
+  navSign.hidden = navThen.hidden = navLimit.hidden = true;
+  const last = nav.d.steps[nav.d.steps.length - 1];
+  if (!nav.spoken.has("end")) {
+    nav.spoken.add("end");
+    say1(last?.pre || T.arrived);
+  }
+}
+function stopTracking() {
+  if (nav.watch != null) navigator.geolocation.clearWatch(nav.watch);
+  nav.watch = null;
+  clearInterval(nav.timer);
+  nav.timer = 0;
+}
+// a fix of the location: on the line, or off it (then, a few times running, a new route)
+function onFix(pos) {
+  if (!nav.on || nav.arrived) return;
+  nav.lastFix = pos;
+  const ll = [pos.coords.longitude, pos.coords.latitude];
+  const first = nav.first; // the first fix on a new route counts as on it: the route starts at the road nearest to it
+  const p = snap(ll, first);
+  nav.first = false;
+  const cfg = NAV[route.mode], acc = Math.min(pos.coords.accuracy || 0, 60);
+  if (!first && p.dist > cfg.off + acc) {
+    nav.off++;
+    const h = pos.coords.heading;
+    ll.heading = h != null && !Number.isNaN(h) && pos.coords.speed > 1 ? h : null;
+    navUpdate(p, ll, true);
+    if (nav.off >= 3 && !nav.rerouting) reroute(ll);
+    return;
+  }
+  nav.off = 0;
+  navUpdate(p, ll);
+}
+async function reroute(ll) {
+  nav.rerouting = true;
+  navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
+  say1(T.rerouting.replace("…", ""));
+  try {
+    const q = new URLSearchParams({ from: `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`, to: `${route.to.ll[1].toFixed(5)},${route.to.ll[0].toFixed(5)}`, mode: route.mode, lang: LANG });
+    const r = await fetch(`${ROUTE}?${q}`);
+    const d = await r.json();
+    if (r.ok && nav.on) {
+      navLoad(d);
+      nav.first = true;
+      if (nav.lastFix) onFix(nav.lastFix); // the banner at once, not at the next fix
+    }
+  } catch {}
+  setTimeout(() => { nav.rerouting = false; }, 10e3); // not more often than every 10 s
+}
+async function navStart(sim) {
+  if (!route.answer) return;
+  nav.on = true;
+  nav.sim = sim;
+  nav.follow = true;
+  nav.arrived = false;
+  nav.first = true;
+  navLoad(route.answer);
+  root.classList.add("lm-navigating");
+  navBox.hidden = false;
+  navCenter.hidden = true;
+  navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
+  const sprite = el("div", "lm-sprite");
+  sprite.innerHTML = SPRITE[route.mode];
+  nav.marker = new maplibregl.Marker({ element: sprite, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(nav.d.line[0]).addTo(map);
+  setTimeout(() => map.resize(), 0);
+  try { nav.lock = await navigator.wakeLock?.request("screen"); } catch {}
+  if (sim) {
+    // Preview: along the line at three times the speed of each step
+    let along = 0, last = performance.now();
+    const speedAt = () => {
+      const st = [...nav.d.steps].reverse().find((x) => nav.cum[x.i] <= along) || nav.d.steps[0];
+      return st.s > 0 ? (st.km * 1000) / st.s : 10;
+    };
+    nav.timer = setInterval(() => {
+      const now = performance.now();
+      along += speedAt() * 3 * ((now - last) / 1000);
+      last = now;
+      const total = nav.cum[nav.cum.length - 1];
+      const ll = pointAt(Math.min(along, total));
+      const p = snap(ll, false);
+      navUpdate(p, null);
+      if (along >= total) navArrive();
+    }, 500);
+    navUpdate(snap(nav.d.line[0], true), null);
+  } else {
+    navBanner.innerHTML = "";
+    navBanner.append(el("div", "lm-nav-text lm-nav-instr", {}, T.waitGPS));
+    navSign.hidden = navThen.hidden = navLimit.hidden = true;
+    say1(""); // a first word inside the tap, so that the browser lets the page speak later
+    nav.watch = navigator.geolocation.watchPosition(onFix, (err) => {
+      if (err.code === 1) {
+        navBanner.innerHTML = "";
+        navBanner.append(el("div", "lm-nav-text lm-nav-instr", {}, T.noGPS));
+      }
+    }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
+  }
+}
+function navStop() {
+  nav.on = false;
+  stopTracking();
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  nav.lock?.release?.().catch(() => {});
+  nav.lock = null;
+  nav.marker?.remove();
+  navBox.hidden = true;
+  root.classList.remove("lm-navigating");
+  setTimeout(() => {
+    map.resize();
+    drawEnds(route.answer?.line || null);
+    const b = route.answer && extent({ type: "LineString", coordinates: route.answer.line });
+    if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, pitch: 0, bearing: 0, duration: 700 }));
+  }, 0);
+}
+navEnd.addEventListener("click", navStop);
+navMute.addEventListener("click", () => {
+  nav.muted = !nav.muted;
+  store.set("hm-mute", nav.muted ? "1" : "0");
+  navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
+  navMute.title = navMute.ariaLabel = nav.muted ? T.unmute : T.mute;
+  if (nav.muted && "speechSynthesis" in window) speechSynthesis.cancel();
+});
+navOverview.addEventListener("click", () => {
+  nav.follow = false;
+  navCenter.hidden = false;
+  const b = extent({ type: "LineString", coordinates: nav.d.line.slice(nav.idx) });
+  if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 140, bottom: 110, left: 40, right: 40 }, pitch: 0, bearing: 0, maxZoom: 16, duration: 700 });
+});
+navCenter.addEventListener("click", () => { nav.follow = true; navCenter.hidden = true; });
+// the visitor moves the map: it stops following until Re-centre
+for (const ev of ["pointerdown", "wheel", "touchstart"]) {
+  mapEl.addEventListener(ev, (e) => {
+    if (!nav.on || navBox.contains(e.target)) return;
+    nav.follow = false;
+    navCenter.hidden = false;
+  }, { passive: true, capture: true });
 }
 
 // ------------------------------------------------------------------ start

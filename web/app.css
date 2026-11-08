@@ -260,3 +260,54 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 @media (max-width: 760px) {
   .lm-compass { bottom: calc(var(--sheet, 40dvh) + 62px); }
 }
+
+/* navigation: the map alone, the next turn on top, the trip below */
+.lm-nav-go { display: flex; gap: .5rem; align-items: center; padding: .2rem 1rem .7rem; border-bottom: 1px solid var(--line); }
+.lm-nav-start { display: inline-flex; align-items: center; gap: .4rem; border: 0; border-radius: 20px; background: var(--accent); color: var(--bg);
+  font: inherit; font-weight: 600; padding: .5rem 1.2rem; cursor: pointer; }
+.lm-nav-start:hover { filter: brightness(1.08); }
+.lm.lm-navigating { grid-template-columns: 1fr; }
+.lm.lm-navigating .lm-side { display: none; }
+.lm.lm-navigating .lm-map { grid-area: 1 / 1; }
+.lm-navigating .lm-area, .lm-navigating .lm-locate, .lm-navigating .lm-map-burger, .lm-navigating .maplibregl-ctrl-bottom-right { display: none !important; }
+.lm-navigating .lm-compass { bottom: 96px; }
+.lm-nav { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.lm-nav > * { pointer-events: auto; }
+.lm-nav-banner { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; max-width: 460px; display: flex; gap: .8rem;
+  align-items: center; background: #0e5c3a; color: #fff; border-radius: 14px; padding: .7rem 1rem; box-shadow: 0 4px 18px rgba(0, 0, 0, .3); }
+.lm-nav-arrow { flex: none; display: grid; place-items: center; }
+.lm-nav-text { min-width: 0; }
+.lm-nav-dist { font-size: 1.9rem; font-weight: 700; line-height: 1.05; letter-spacing: -.01em; }
+.lm-nav-instr { font-size: 1.05rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lm-nav-then { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 86px); left: 18px; display: inline-flex; align-items: center; gap: .3rem;
+  background: #0a4229; color: #fff; border-radius: 0 0 10px 10px; padding: .25rem .7rem; font-size: .85rem; }
+.lm-nav-then-arrow { display: grid; }
+/* the sign of the junction: green for motorways, blue for other roads (as in Switzerland) */
+.lm-nav-sign { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 90px); right: 10px; max-width: 230px; color: #fff; border: 2px solid #fff;
+  outline: 2px solid rgba(0, 0, 0, .25); border-radius: 6px; padding: .45rem .7rem; box-shadow: 0 3px 12px rgba(0, 0, 0, .3); font-weight: 600; }
+.lm-sign-motorway { background: #00843d; }
+.lm-sign-road { background: #1d5aa8; }
+.lm-sign-top { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .25rem; }
+.lm-sign-exit { background: #fff; color: #00843d; border-radius: 3px; padding: 0 .35rem; font-size: .8rem; }
+.lm-sign-road .lm-sign-exit { color: #1d5aa8; }
+.lm-shield, .lm-shield-a, .lm-shield-e { border-radius: 3px; padding: 0 .35rem; font-size: .8rem; border: 1.5px solid #fff; }
+.lm-shield-a { background: #d52b1e; }
+.lm-shield-e { background: #00843d; }
+.lm-shield { background: #1d5aa8; }
+.lm-sign-name { font-size: .8rem; opacity: .9; }
+.lm-sign-to { font-size: 1rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lm-nav-limit { position: absolute; left: 14px; bottom: 96px; width: 58px; height: 58px; border-radius: 50%; background: #fff; border: 6px solid #d52b1e;
+  color: #111; display: grid; place-items: center; font-weight: 800; font-size: 1.3rem; box-shadow: 0 2px 10px rgba(0, 0, 0, .3); }
+.lm-nav-center { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: .35rem; border: 0;
+  border-radius: 20px; background: var(--bg); color: var(--accent); font: inherit; font-weight: 600; padding: .5rem 1rem; box-shadow: var(--shadow); cursor: pointer; }
+.lm-nav-bottom { position: absolute; left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; display: flex;
+  align-items: center; gap: .5rem; background: var(--bg); color: var(--fg); border-radius: 16px; padding: .5rem .6rem; box-shadow: 0 4px 18px rgba(0, 0, 0, .25); }
+.lm-nav-eta { flex: 1; display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.lm-nav-eta strong { font-size: 1.3rem; color: var(--green); }
+.lm-nav-eta span { color: var(--muted); font-size: .85rem; }
+.lm-nav-btn { border: 0; background: var(--bg2); color: var(--fg); width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; }
+.lm-nav-btn:hover { background: var(--hot); }
+.lm-nav-x { background: #d52b1e; color: #fff; }
+.lm-nav-x:hover { background: #b3241a; }
+.lm-sprite { width: 40px; height: 40px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); }
+.lm-sprite svg { display: block; }

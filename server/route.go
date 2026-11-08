@@ -17,9 +17,13 @@ import (
 //
 //	GET {base}/api/route?from=47.37,8.54&to=46.95,7.44&mode=car|bike|walk&lang=en
 //
-// answers {"km","s","line":[[lon,lat],…],"steps":[{"text","km","s","at":[lon,lat],"type"}]},
-// or {"error":{"code","message"}}: 400 bad_request and too_far, 404 no_route, 429 too_many,
-// 503 busy, 502 failed.
+// answers {"km","s","line":[[lon,lat],…],"steps":[…],"limits":[[from,to,kmh],…]}, or
+// {"error":{"code","message"}}: 400 bad_request and too_far, 404 no_route, 429 too_many,
+// 503 busy, 502 failed. A step has the text, its length and time, where it starts on the line
+// (at, i, end), the spoken texts for navigation (alert before, pre at the turn, post after),
+// the street, and what a sign shows (exit number and name, route numbers, toward). limits are
+// the speed limits along the line by car (indexes of line), from a second call to Valhalla
+// (trace_attributes); without them when that call fails.
 
 // modes are the modes of the page, as Valhalla costings, with the longest trip in a line (km).
 var modes = map[string]struct {
@@ -35,18 +39,35 @@ var modes = map[string]struct {
 var languages = map[string]string{"en": "en-US", "de": "de-DE", "fr": "fr-FR", "it": "it-IT", "es": "es-ES", "nl": "nl-NL", "pt": "pt-PT"}
 
 type routeStep struct {
-	Text string     `json:"text"`
-	Km   float64    `json:"km"`
-	S    float64    `json:"s"`
-	At   [2]float64 `json:"at"` // lon, lat
-	Type int        `json:"type"`
+	Text       string     `json:"text"`
+	Km         float64    `json:"km"`
+	S          float64    `json:"s"`
+	At         [2]float64 `json:"at"` // lon, lat
+	Type       int        `json:"type"`
+	I          int        `json:"i"`   // index of line where the step starts
+	End        int        `json:"end"` // and ends
+	Alert      string     `json:"alert,omitempty"`
+	Pre        string     `json:"pre,omitempty"`
+	Post       string     `json:"post,omitempty"`
+	Street     string     `json:"street,omitempty"`
+	Highway    bool       `json:"highway,omitempty"`
+	Roundabout int        `json:"roundabout,omitempty"` // the exit to take
+	Exit       string     `json:"exit,omitempty"`       // the number of the exit
+	ExitName   string     `json:"exit_name,omitempty"`
+	Routes     []string   `json:"routes,omitempty"` // route numbers on the sign
+	Toward     []string   `json:"toward,omitempty"`
 }
 
 type routeAnswer struct {
-	Km    float64      `json:"km"`
-	S     float64      `json:"s"`
-	Line  [][2]float64 `json:"line"`
-	Steps []routeStep  `json:"steps"`
+	Km     float64      `json:"km"`
+	S      float64      `json:"s"`
+	Line   [][2]float64 `json:"line"`
+	Steps  []routeStep  `json:"steps"`
+	Limits [][3]int     `json:"limits,omitempty"`
+}
+
+type signElement struct {
+	Text string `json:"text"`
 }
 
 // valhallaRoute is the part of an answer of Valhalla /route the page needs.
@@ -59,11 +80,24 @@ type valhallaRoute struct {
 		Legs []struct {
 			Shape     string `json:"shape"`
 			Maneuvers []struct {
-				Instruction string  `json:"instruction"`
-				Length      float64 `json:"length"`
-				Time        float64 `json:"time"`
-				Type        int     `json:"type"`
-				Begin       int     `json:"begin_shape_index"`
+				Instruction string   `json:"instruction"`
+				Length      float64  `json:"length"`
+				Time        float64  `json:"time"`
+				Type        int      `json:"type"`
+				Begin       int      `json:"begin_shape_index"`
+				End         int      `json:"end_shape_index"`
+				Alert       string   `json:"verbal_transition_alert_instruction"`
+				Pre         string   `json:"verbal_pre_transition_instruction"`
+				Post        string   `json:"verbal_post_transition_instruction"`
+				Streets     []string `json:"street_names"`
+				Highway     bool     `json:"highway"`
+				Roundabout  int      `json:"roundabout_exit_count"`
+				Sign        struct {
+					Number []signElement `json:"exit_number_elements"`
+					Branch []signElement `json:"exit_branch_elements"`
+					Toward []signElement `json:"exit_toward_elements"`
+					Name   []signElement `json:"exit_name_elements"`
+				} `json:"sign"`
 			} `json:"maneuvers"`
 		} `json:"legs"`
 	} `json:"trip"`
@@ -178,11 +212,17 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	leg := v.Trip.Legs[0]
 	a.Line = decodePolyline(leg.Shape, 1e6)
 	for _, m := range leg.Maneuvers {
-		st := routeStep{Text: m.Instruction, Km: round(m.Length, 3), S: math.Round(m.Time), Type: m.Type}
+		st := routeStep{Text: m.Instruction, Km: round(m.Length, 3), S: math.Round(m.Time), Type: m.Type, I: m.Begin, End: m.End,
+			Alert: m.Alert, Pre: m.Pre, Post: m.Post, Street: strings.Join(m.Streets, " / "), Highway: m.Highway, Roundabout: m.Roundabout,
+			Exit: strings.Join(texts(m.Sign.Number), " "), ExitName: strings.Join(texts(m.Sign.Name), " / "),
+			Routes: texts(m.Sign.Branch), Toward: texts(m.Sign.Toward)}
 		if m.Begin >= 0 && m.Begin < len(a.Line) {
 			st.At = a.Line[m.Begin]
 		}
 		a.Steps = append(a.Steps, st)
+	}
+	if mode.costing == "auto" {
+		a.Limits = s.speedLimits(ctx, leg.Shape)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -223,6 +263,59 @@ func decodePolyline(s string, precision float64) [][2]float64 {
 		lat += d[0]
 		lon += d[1]
 		out = append(out, [2]float64{float64(lon) / precision, float64(lat) / precision})
+	}
+	return out
+}
+
+func texts(es []signElement) []string {
+	var out []string
+	for _, e := range es {
+		if e.Text != "" {
+			out = append(out, e.Text)
+		}
+	}
+	return out
+}
+
+// speedLimits are the posted limits along a route line by car, as [from, to, km/h] in indexes
+// of the line, from Valhalla trace_attributes; nil when Valhalla does not answer.
+func (s *Server) speedLimits(ctx context.Context, shape string) [][3]int {
+	body, _ := json.Marshal(map[string]any{
+		"encoded_polyline": shape, "costing": "auto", "shape_match": "edge_walk",
+		"filters": map[string]any{"attributes": []string{"edge.speed_limit", "edge.begin_shape_index", "edge.end_shape_index"}, "action": "include"},
+	})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RoutingURL+"/trace_attributes", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	resp, err := s.routeClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	var v struct {
+		Edges []struct {
+			Limit json.RawMessage `json:"speed_limit"` // a number, or "unlimited"
+			Begin int             `json:"begin_shape_index"`
+			End   int             `json:"end_shape_index"`
+		} `json:"edges"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&v) != nil {
+		return nil
+	}
+	var out [][3]int
+	for _, e := range v.Edges {
+		kmh := 0
+		if n, err := strconv.Atoi(string(e.Limit)); err == nil && n > 0 && n < 200 {
+			kmh = n
+		}
+		if kmh == 0 {
+			continue
+		}
+		if k := len(out) - 1; k >= 0 && out[k][2] == kmh && out[k][1] >= e.Begin {
+			out[k][1] = e.End
+			continue
+		}
+		out = append(out, [3]int{e.Begin, e.End, kmh})
 	}
 	return out
 }

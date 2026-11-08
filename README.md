@@ -24,6 +24,14 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
   on foot. The start is the location of the visitor, or a tap on the map; a button swaps start and destination. The line on
   the map, time and length, and the steps in the language of the browser; a tap on a step moves the map there. The mode is
   kept in the browser (`hm-mode`).
+- Navigation, turn by turn, from the directions: Start follows the location of the browser, Preview drives the route at three
+  times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a small sprite of a
+  car, a bike or a walker; the next turn with its arrow, its distance and the street; by car the sign of the junction in its
+  last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; arrival
+  time, time and distance left. The instructions of Valhalla are spoken (Web Speech, in the language of the browser; a button
+  turns the sound off, kept as `hm-mute`). Off the route for three fixes, a new route from where the visitor is (at most every
+  10 s). A move of the map stops the following until Re-centre; Whole route shows the rest of it. The screen stays on (Wake
+  Lock) while the page is open.
 - The map: results as points and shapes, the lines of the answer (a border, a road, a river, the circles around the places of a
   chain), hover and selection in step with the list.
 - "Search this area": after the visitor moves the map, the same search in the view (`view=1`; the place of the sentence goes).
@@ -59,7 +67,10 @@ of Wikidata and Commons and the thumbnails are kept in memory for a day.
 ## Directions
 
 `GET {base}/api/route?from=lat,lon&to=lat,lon&mode=car|bike|walk&lang=de` asks Valhalla (`ROUTING_URL` + `/route`) and answers
-`{"km","s","line":[[lon,lat],…],"steps":[{"text","km","s","at":[lon,lat],"type"}]}`. Errors are
+`{"km","s","line":[[lon,lat],…],"steps":[…],"limits":[[from,to,kmh],…]}`. A step has its text, length and time, where it
+starts and ends on the line (`at`, `i`, `end`), the spoken texts (`alert`, `pre`, `post`), the street, and what the sign of the
+junction shows (`exit`, `exit_name`, `routes`, `toward`). `limits` are the speed limits by car, in indexes of `line`, from a
+second call to Valhalla (`trace_attributes`); missing when that call fails. Errors are
 `{"error":{"code","message"}}`: 400 `bad_request` or `too_far` (more than 1500 km in a line by car, 300 by bike, 100 on foot),
 404 `no_route`, 429 `too_many`, 503 `busy`, 502 `failed`. Four calls to Valhalla at a time.
 
