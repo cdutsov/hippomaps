@@ -25,6 +25,10 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - "Search this area": after the visitor moves the map, the same search in the view (`view=1`; the place of the sentence goes).
 - The location of the visitor: a button that asks the browser once, shows a dot with its accuracy and moves the map there; the
   searches with "near me" and "nearest" ask for it too.
+- What is here: the first tap on the map closes the search box; a tap then drops a pin and shows the address and the named
+  things around the point (`/here` of overpass-search), with pictures; a tapped symbol of the map opens that place.
+- On a phone: the side bar is a sheet at three heights (the title, half, almost all), dragged by its handle and its title; a
+  search closes the keyboard and leaves the map in view; only the map zooms, and pull to refresh is off.
 - The address holds the search and the place shown: `?q=…&sel=node/1#map=15/47.37/8.54`; Back goes from a place to the list.
 - Light and dark, with the choice of the site (`localStorage` `theme`).
 
