@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ch.hippomaps.app",
+      "sha256_cert_fingerprints": ["51:63:C5:AF:A0:52:39:44:7A:40:FA:E9:AC:15:8E:0E:43:E1:34:6B:BD:3B:DB:8F:FC:24:BC:AB:55:14:67:DE"]
+    }
+  }
+]

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="offline_title">Pas de connexion</string>
+    <string name="offline_text">hippomaps n’a pas pu être chargé. La carte se recharge d’elle-même dès que le téléphone est de nouveau en ligne.</string>
+    <string name="retry">Réessayer</string>
+    <string name="nav_channel">Navigation</string>
+    <string name="nav_running">Navigation avec hippomaps</string>
+    <string name="nav_stop">Arrêter</string>
+</resources>

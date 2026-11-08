@@ -1,0 +1,14 @@
+# build outputs
+/dist/
+build/
+.gradle/
+.kotlin/
+local.properties
+*.iml
+.idea/
+captures/
+# keys never belong here (the release key is in /root/.config/hippomaps-android)
+*.jks
+*.keystore
+*.p12
+signing.properties

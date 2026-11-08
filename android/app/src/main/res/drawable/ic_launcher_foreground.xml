@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 108 dp layer: the icon drawn at 80 dp, so its blue square edge stays outside the 72 dp mask
+     and the hippo inside the 66 dp safe circle -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/hm_icon"
+    android:inset="14dp" />

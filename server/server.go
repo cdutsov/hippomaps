@@ -166,6 +166,16 @@ func New(cfg Config) *Server {
 	if s.cfg.PublicURL != "" {
 		s.mux.HandleFunc("GET /robots.txt", s.robots)
 		s.mux.HandleFunc("GET /sitemap.xml", s.sitemap)
+		// the app for Android opens the links of the site (android/README.md)
+		s.mux.HandleFunc("GET /.well-known/assetlinks.json", func(w http.ResponseWriter, r *http.Request) {
+			b, err := fs.ReadFile(web.Files, "assetlinks.json")
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(b)
+		})
 	}
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	return s

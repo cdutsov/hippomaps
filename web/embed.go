@@ -4,5 +4,5 @@ package web
 
 import "embed"
 
-//go:embed index.html app.js avatar.js i18n.js app.css icon-32.png icon-192.png apple-touch-icon.png overpass-logo.png overpass-logo-dark.png vendor
+//go:embed assetlinks.json index.html app.js avatar.js i18n.js app.css icon-32.png icon-192.png apple-touch-icon.png overpass-logo.png overpass-logo-dark.png vendor
 var Files embed.FS

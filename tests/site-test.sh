@@ -43,6 +43,9 @@ code=$(get "$PAGE/robots.txt")
 [[ $code == 200 ]] && grep -q "^Sitemap: $PAGE/sitemap.xml" "$TMP/b" && grep -q "^Disallow: /api/" "$TMP/b" && ok "robots.txt with the sitemap" || ko "robots.txt: HTTP $code"
 code=$(get "$PAGE/sitemap.xml")
 [[ $code == 200 ]] && grep -qF "<loc>$PAGE/</loc>" "$TMP/b" && ok "sitemap.xml" || ko "sitemap.xml: HTTP $code"
+# the app for Android opens links of the site: its signing key in assetlinks.json
+code=$(get "$PAGE/.well-known/assetlinks.json")
+[[ $code == 200 ]] && jq -e '.[0].target.package_name == "ch.hippomaps.app" and (.[0].target.sha256_cert_fingerprints | length) > 0' "$TMP/b" >/dev/null && ok "assetlinks.json for the app" || ko "assetlinks.json: HTTP $code"
 
 echo "Files"
 app=$(grep -o '/static/app.js?v=[0-9a-f]*' "$TMP/page" | head -n1)

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">hippomaps</string>
+    <string name="offline_title">No connection</string>
+    <string name="offline_text">hippomaps could not be loaded. It loads again by itself once the phone is online.</string>
+    <string name="retry">Try again</string>
+    <string name="nav_channel">Navigation</string>
+    <string name="nav_running">Navigating with hippomaps</string>
+    <string name="nav_stop">Stop</string>
+</resources>
