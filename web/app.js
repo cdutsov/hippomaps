@@ -32,6 +32,7 @@ const T = {
   here: "Here",
   around: "Around here",
   hereLooking: "Looking at this point…",
+  mapLost: "The map stopped drawing in this browser: it took the graphics back. Reload the page; with 3D off the map needs less memory.",
   hereNothing: "Nothing with a name right here. Zoom in closer, or tap a symbol of the map.",
   locBlocked: "Location is blocked for this page. Allow it in the settings of the browser, then try again.",
   locFailed: "Your location could not be found.",
@@ -566,7 +567,10 @@ form.addEventListener("submit", (e) => {
   suggestCtl?.abort();
   closeList();
   const text = input.value.trim();
-  if (phone()) input.blur(); // the keyboard goes, and the map is in view again
+  if (phone()) { // the keyboard goes, and the map is in view again (Safari may leave the page scrolled)
+    input.blur();
+    scrollTo(0, 0);
+  }
   if (text) run(text, chosen && chosen.text.trim() === text ? chosen.extra : {});
 });
 
@@ -760,8 +764,32 @@ const fit = (fn, ms = 1300) => {
 };
 // the visitor moved the map (a drag, the wheel, a pinch, the keys, the buttons): the
 // moves of the map itself, to show a search, do not count
-let touched = false;
-for (const ev of ["pointerdown", "wheel", "touchstart", "keydown"]) mapEl.addEventListener(ev, () => { touched = true; }, { passive: true, capture: true });
+let touched = false, touchedAt = 0;
+for (const ev of ["pointerdown", "wheel", "touchstart", "keydown"]) {
+  mapEl.addEventListener(ev, () => { touched = true; touchedAt = Date.now(); }, { passive: true, capture: true });
+}
+// fitBox shows the box of an answer. On a phone the keyboard closes while a fast answer comes, and
+// the view changes size after the map moved: when the view settles within 2.5 s, the box is
+// fitted again, unless the visitor touched the map since.
+let lastFit = null, refitTimer = 0;
+function fitBox(box, maxZoom) {
+  lastFit = { box, maxZoom, at: Date.now() };
+  fit(() => map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: pad(), maxZoom, duration: 800 }));
+}
+(window.visualViewport || window).addEventListener("resize", () => {
+  clearTimeout(refitTimer);
+  refitTimer = setTimeout(() => {
+    if (!lastFit || Date.now() - lastFit.at > 2500 || touchedAt > lastFit.at) return;
+    map.resize();
+    const b = lastFit.box;
+    fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: lastFit.maxZoom, duration: 300 }));
+    map.once("moveend", () => map.triggerRepaint());
+  }, 150);
+});
+// a phone may take the graphics of the map back when its memory runs short: the map then stops
+// drawing, and the visitor needs to know why
+map.on("webglcontextlost", () => say(T.mapLost, true));
+map.on("webglcontextrestored", () => { say(""); map.triggerRepaint(); });
 map.on("moveend", () => {
   if (touched && Date.now() > quietUntil && state.searchable) areaBtn.hidden = false;
   touched = false;
@@ -799,9 +827,7 @@ function show(d, sel) {
   setSheet(place ? "peek" : "half");
   const box = d.results?.bbox;
   const pick = sel && state.byId.get(sel);
-  if (box?.length === 4 && !pick) {
-    fit(() => map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: pad(), maxZoom: place ? 16 : 16.5, duration: 800 }));
-  }
+  if (box?.length === 4 && !pick) fitBox(box, place ? 16 : 16.5);
   if (place) {
     count.textContent = "";
     return;
