@@ -132,7 +132,8 @@ done
 # the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about two minutes
 if [[ ${BROWSER:-0} == 1 ]]; then
 	echo "Browser"
-	if out=$(timeout 300 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); then
+	# once more when it fails: a slow tile or answer of a server once is no failure of the page
+	if out=$(timeout 300 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1) || out=$(timeout 300 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); then
 		while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
 	else
 		while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)

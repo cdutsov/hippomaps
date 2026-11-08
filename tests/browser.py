@@ -71,6 +71,14 @@ try:
             time.sleep(0.3)
         return False
 
+    def tap(selector):  # a finger on the middle of an element, as on a phone
+        r = js(f"(() => {{ const e = document.querySelector({json.dumps(selector)}); if (!e) return null; const b = e.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; }})()")
+        if not r:
+            return False
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": r[0], "y": r[1]}])
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        return True
+
     def key(name, code, vk):
         for t in ("keyDown", "keyUp"):
             call("Input.dispatchKeyEvent", type=t, key=name, code=code, windowsVirtualKeyCode=vk)
@@ -109,9 +117,23 @@ try:
     check(wait("[...document.querySelectorAll('.lm-end-list:not([hidden]) .lm-opt-label')].some(e => /Enge/.test(e.textContent))", 20),
           "the destination field suggests places")
     # the first suggestion (a click: the page may have lost the focus)
-    js("document.querySelector('.lm-end-list:not([hidden]) .lm-opt')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))")
+    tap(".lm-end-list:not([hidden]) .lm-opt")
     check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30), "a route by car with its time")
     check(js("document.querySelectorAll('.lm-step').length") >= 2, "the steps of the route")
+    # another start typed over "Your location", its suggestion tapped: the route starts there
+    tap(".lm-end-from input")
+    call("Input.insertText", text="Paradeplatz Zürich")
+    wait("[...document.querySelectorAll('.lm-end-list:not([hidden]) .lm-opt-label')].some(e => /Paradeplatz/.test(e.textContent))", 20)
+    tap(".lm-end-list:not([hidden]) .lm-opt")
+    check(wait("/Paradeplatz/.test(document.querySelector('.lm-end-from input').value) && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30),
+          "a start typed over your location and tapped: the route starts there")
+    # with start and destination set, a tap on the map shows the place; its card goes back to the route as it was
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 120, "y": 160}])
+    call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    check(wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 10), "a tap on the map with a route: the place shown")
+    js("document.querySelector('.lm-here:not([hidden]) .lm-back, .lm-detail:not([hidden]) .lm-back')?.click()")
+    check(wait("!document.querySelector('.lm-route').hidden && /Paradeplatz/.test(document.querySelector('.lm-end-from input').value)", 10),
+          "back to the route: the start kept")
     check(js(r"/\d{1,2}:\d{2}/.test(document.querySelector('.lm-sum-eta')?.textContent || '')"), "the arrival time of the route")
     check(js("(() => { const b = document.querySelector('.lm-nav-start')?.getBoundingClientRect(); return !!b && b.height >= 44 && b.top >= 0 && b.bottom <= innerHeight; })()"),
           "the Start button, large and in view")
@@ -181,6 +203,33 @@ try:
     check(wait("!document.querySelector('.lm-place-pic').hidden && document.querySelector('.lm-place-pic img')?.naturalWidth > 0", 30), "a place found: its photo")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
     check(wait("!document.querySelector('.lm-dir-btn').hidden", 3), "the Directions button back after the X")
+
+    # a place starred: in the empty search box, and on the map; the last search there too
+    js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Thun'; document.querySelector('.lm-form').requestSubmit(); })()")
+    wait("document.querySelector('.lm-place-acts .lm-star')", 40)
+    js("document.querySelector('.lm-place-acts .lm-star').click()")
+    check(js("document.querySelector('.lm-place-acts .lm-star').getAttribute('aria-pressed') === 'true' && JSON.parse(localStorage.getItem('hm-stars') || '[]').some(s => s.name === 'Thun')"),
+          "a place starred and kept")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+    js("document.querySelector('.lm-input').focus()")
+    check(wait("[...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-star .lm-opt-label')].some(e => e.textContent === 'Thun') && [...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-recent .lm-opt-label')].some(e => e.textContent === 'Thun')", 5),
+          "the empty search box offers the starred place and the last search")
+    js("document.querySelector('.lm-input').blur()")
+
+    # the bubbles: a search of the map view; Transit switches its lines
+    js("[...document.querySelectorAll('.lm-bubble')].find(b => /Restaurants/.test(b.textContent))?.click()")
+    check(wait("/\\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelector('.lm-input').value === 'restaurants'", 60),
+          "the Restaurants bubble searches the map view")
+    if js("!!document.getElementById('app').dataset.transit"):
+        js("document.querySelector('.lm-bubble-transit').click()")
+        check(js("document.querySelector('.lm-bubble-transit').getAttribute('aria-pressed') === 'true'"), "the Transit bubble switches the lines on")
+        js("document.querySelector('.lm-bubble-transit').click()")
+        # a city of its lines
+        js("(() => { const i = document.querySelector('.lm-input'); i.value = 'metro lines in Lausanne'; document.querySelector('.lm-form').requestSubmit(); })()")
+        check(wait("[...document.querySelectorAll('.lm-transit-ref')].some(e => /^m2$/i.test(e.textContent)) && ![...document.querySelectorAll('.lm-transit-ref')].some(e => /^(10|11)$/.test(e.textContent))", 60),
+              "metro lines in Lausanne: its lines (m2), none of Zurich")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+    js("document.querySelector('.lm-input').blur()")
 
     # German
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")

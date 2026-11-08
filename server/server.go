@@ -100,6 +100,9 @@ type Server struct {
 	saysPerIP   *window
 	sayCalls    chan struct{} // calls to the text-to-speech server at once
 
+	transitPerIP *window
+	transitCalls chan struct{} // queries to Overpass for transit at once
+
 	trafficCache trafficCache
 	searchClient *http.Client
 }
@@ -110,7 +113,8 @@ func New(cfg Config) *Server {
 		client: &http.Client{Timeout: 10 * time.Second}, cache: newMemo(cfg.CacheMB<<20, 24*time.Hour),
 		perIP: newWindow(cfg.PicturesPerIP, cfg.PictureWindow), calls: make(chan struct{}, 4),
 		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
-		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4)}
+		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4),
+		transitPerIP: newWindow(300, 10*time.Minute), transitCalls: make(chan struct{}, 2)}
 	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
 	s.cfg.TrafficURL = strings.TrimRight(cfg.TrafficURL, "/")
 	s.cfg.SearchUpstream = strings.TrimRight(cfg.SearchUpstream, "/")
@@ -155,6 +159,9 @@ func New(cfg Config) *Server {
 	}
 	if s.cfg.SearchUpstream != "" {
 		s.mux.HandleFunc("GET "+base+"/api/search/{rest...}", s.search)
+	}
+	if s.cfg.ElevationKey != "" { // the key of the APIs of overpass.ch: Overpass too
+		s.mux.HandleFunc("GET "+base+"/api/transit", s.transit)
 	}
 	if s.cfg.PublicURL != "" {
 		s.mux.HandleFunc("GET /robots.txt", s.robots)
@@ -201,7 +208,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Transit": s.cfg.ElevationKey != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
 	if err := s.page.Execute(&buf, data); err != nil {
 		s.log.Error("page", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

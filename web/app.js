@@ -37,6 +37,11 @@ const EN = {
   noName: "Unnamed",
   back: "Results",
   close: "Close",
+  save: "Save",
+  saved: "Saved",
+  starred: "Saved places",
+  recent: "Recent searches",
+  forgetRecent: "Forget recent searches",
   searchArea: "Search this area",
   myLocation: "Show my location",
   north: "Turn the map to north",
@@ -107,6 +112,13 @@ const EN = {
   until: (d) => `until ${d}`,
   trafficCredit: "Traffic: Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).",
   delay: (m) => `+${m} min traffic`,
+  transit: "Transit",
+  transitNote: "Metro, light rail and tram lines in their colours",
+  bubbles: [["restaurants", "Restaurants"], ["hotels", "Hotels"], ["transit", "Transit"], ["ATMs", "ATMs"],
+    ["cafés", "Cafés", 1], ["supermarkets", "Supermarkets", 1], ["pharmacies", "Pharmacies", 1], ["parking", "Parking", 1], ["petrol stations", "Fuel", 1]],
+  transitIn: (place) => `Public transport in ${place}`,
+  transitNone: "No metro, light rail or tram lines here. Zoom in closer, or try another city.",
+  transitKinds: { subway: "Metro", light_rail: "Light rail", tram: "Tram", monorail: "Monorail" },
   heights: "Height profile",
   up: (m) => `${num(m)} m up`,
   down: (m) => `${num(m)} m down`,
@@ -166,6 +178,8 @@ const ICON = {
   mail: "M4 6h16v12H4zM4 7l8 6 8-6",
   info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.5",
   route: "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM6 15V9a3 3 0 0 1 3-3h6",
+  star: "M12 3.2l2.6 5.5 6 .8-4.4 4.1 1.1 5.9L12 16.6l-5.3 2.9 1.1-5.9-4.4-4.1 6-.8z",
+  recent: "M12 21a9 9 0 1 0-9-9M3 12V7M3 12h5M12 7v5l3 2",
   map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
   wheel: "M12 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM11 8v6h5l2 5M8 11a5 5 0 1 0 6 7",
   food: "M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 0-3 2-3 5s1 4 3 4v9",
@@ -235,6 +249,7 @@ const look = {
   threeD: store.get("hm-3d") === "1",
   shading: store.get("hm-shading") === "1",
   traffic: store.get("hm-traffic") === "1", // off at first
+  transit: store.get("hm-transit") === "1",
 };
 // the height of the sun in degrees at a place and time (to a few tenths of a degree; NOAA)
 function sunHeight(lon, lat, when = new Date()) {
@@ -409,7 +424,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty };
+const sources = { transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty };
 const ACCENT = "#d0312d";
 map.on("style.load", () => {
   // 3D buildings see-through, so the map and the route behind them stay in view
@@ -448,6 +463,14 @@ map.on("style.load", () => {
   const line = ["==", ["geometry-type"], "LineString"];
   // traffic under the route: closures dark red, queues red, slow traffic and roadworks orange
   const tline = ["==", ["geometry-type"], "LineString"];
+  // transit: each line in its colour, metro wider than tram; its number along it when near
+  map.addLayer({ id: "lm-transit-line", type: "line", source: "lm-transit", layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": ["to-color", ["get", "colour"], "#7a7f87"], "line-opacity": 0.9,
+      "line-width": ["interpolate", ["linear"], ["zoom"], 10, ["match", ["get", "kind"], "subway", 2.5, 1.5], 15, ["match", ["get", "kind"], "subway", 6, 3.5]] } }, below);
+  const font = map.getStyle().layers.find((l) => l.layout?.["text-font"])?.layout["text-font"];
+  if (font) map.addLayer({ id: "lm-transit-ref", type: "symbol", source: "lm-transit", minzoom: 13, filter: ["has", "ref"],
+    layout: { "symbol-placement": "line", "text-field": ["get", "ref"], "text-font": font, "text-size": 12, "symbol-spacing": 300 },
+    paint: { "text-color": "#fff", "text-halo-color": ["to-color", ["get", "colour"], "#7a7f87"], "text-halo-width": 2.5 } });
   map.addLayer({ id: "lm-traffic-line", type: "line", source: "lm-traffic", filter: ["all", tline, ["!=", ["get", "t"], "works"]],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#9ca3af", "jam", "#dc2626", "#f08c00"],
@@ -460,6 +483,8 @@ map.on("style.load", () => {
     "circle-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#6b7280", "jam", "#dc2626", "accident", "#dc2626", "#f08c00"] } });
   map.addLayer({ id: "lm-traffic-works-pt", type: "circle", source: "lm-traffic", minzoom: 11, filter: ["all", tpt, ["==", ["get", "t"], "works"]], paint: {
     "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-color": "#f08c00" } });
+  map.addLayer({ id: "lm-stars", type: "circle", source: "lm-stars", paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 4, 15, 8], "circle-color": "#f5b301", "circle-stroke-width": 2, "circle-stroke-color": "#fff" } });
   map.addLayer({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
   map.addLayer({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
@@ -564,6 +589,129 @@ for (const l of ["lm-traffic-pt", "lm-traffic-works-pt", "lm-traffic-line", "lm-
   map.on("mouseleave", l, () => { map.getCanvas().style.cursor = ""; });
 }
 
+// ------------------------------------------------------------------ transit
+// The lines of metro, light rail, monorail and tram in their colours (data-transit: from Overpass,
+// through this server, by tiles of zoom 10), from zoom 10 on, while the switch is on (hm-transit).
+const TRANSIT = root.dataset.transit || "";
+const transitTiles = new Map(); // "x/y" -> a promise of the features of the tile
+let transitTimer = 0;
+const tileXY = (lon, lat, z) => {
+  const n = 2 ** z, r = (lat * Math.PI) / 180;
+  return [Math.floor(((lon + 180) / 360) * n), Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)];
+};
+async function loadTransit() {
+  if (!TRANSIT || !look.transit) return setSource("transit", empty), [];
+  if (map.getZoom() < 9.5) return [];
+  const b = map.getBounds();
+  const [x0, y0] = tileXY(b.getWest(), b.getNorth(), 10), [x1, y1] = tileXY(b.getEast(), b.getSouth(), 10);
+  const keys = [];
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) keys.push(`${x}/${y}`);
+  if (keys.length > 12) return [];
+  for (const k of keys) {
+    if (!transitTiles.has(k)) transitTiles.set(k, fetch(`${TRANSIT}?tile=10/${k}`).then((r) => (r.ok ? r.json() : null)).then((d) => d?.features || null).catch(() => null));
+  }
+  const all = [];
+  for (const [k, p] of transitTiles) {
+    const fs = await p;
+    if (fs === null) transitTiles.delete(k); // asked again next time
+    else all.push(...fs);
+  }
+  if (look.transit) setSource("transit", { type: "FeatureCollection", features: all });
+  return all;
+}
+map.on("moveend", () => {
+  clearTimeout(transitTimer);
+  transitTimer = setTimeout(loadTransit, 250);
+});
+function setTransit(on) {
+  look.transit = on;
+  store.set("hm-transit", on ? "1" : "0");
+  transitBox && (transitBox.checked = on);
+  document.querySelectorAll(".lm-bubble-transit").forEach((b) => b.setAttribute("aria-pressed", String(on)));
+  loadTransit();
+}
+let transitBox = null;
+// a tap on a line: its name
+function transitAt(e) {
+  if (!TRANSIT || !look.transit || !map.getLayer("lm-transit-line")) return false;
+  const f = map.queryRenderedFeatures([[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]], { layers: ["lm-transit-line"] })[0];
+  if (!f) return false;
+  const p = f.properties, box = el("div", "lm-traffic-pop");
+  box.append(el("strong", "", {}, [T.transitKinds[p.kind] || p.kind, p.ref].filter(Boolean).join(" ")));
+  if (p.name) box.append(el("p", "", {}, p.name));
+  if (p.network) box.append(el("p", "", {}, p.network));
+  new maplibregl.Popup({ maxWidth: "300px" }).setLngLat(e.lngLat).setDOMContent(box).addTo(map);
+  return true;
+}
+// "metro lines in Lausanne", "U-Bahn in Berlin", "tram in Zürich": the lines of that city, on the map and listed
+const TRANSIT_WORDS = /^(?:the\s+)?(metro|subway|underground|u-?bahn|m[ée]tro|metropolitana|tram|trams|tramway|strassenbahn|straßenbahn|tranvia|light rail|stadtbahn|public transport|transit|öv|öffentlicher verkehr|transports? publics?|trasporti? pubblici?)(?:\s+(?:lines?|network|map|linien|netz|lignes?|réseau|linee|rete))?\s+(?:in|à|a|im|in der|de|di)\s+(.+)$/i;
+function transitQuery(text) {
+  const m = TRANSIT_WORDS.exec(text.trim());
+  if (!m) return null;
+  const w = m[1].toLowerCase();
+  const kinds = /tram|strassen|straßen|tranvia/.test(w) ? ["tram"] : /light|stadt/.test(w) ? ["light_rail"]
+    : /metro|métro|subway|underground|u-?bahn/.test(w) ? ["subway", "light_rail", "monorail"] : ["subway", "light_rail", "monorail", "tram"];
+  return { kinds, place: m[2].trim() };
+}
+async function transitSearch(q, text) {
+  clear();
+  showView(listView);
+  title.textContent = text;
+  notes.textContent = "";
+  say(T.searching);
+  setTransit(true);
+  let place = null;
+  try {
+    const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q: q.place, limit: "1", lang: ["de", "fr"].includes(UI) ? UI : "en" })}`);
+    place = (await r.json()).features?.[0];
+  } catch {}
+  if (!place) return say(T.failed, true);
+  const name = place.properties.name || q.place, ext = place.properties.extent; // [west, north, east, south]
+  title.textContent = T.transitIn(name);
+  const done = new Promise((ok) => map.once("moveend", ok));
+  if (ext) fitBox([ext[0], ext[3], ext[2], ext[1]], 13);
+  else fit(() => map.flyTo({ center: place.geometry.coordinates, zoom: 12, duration: 900, padding: pad() }));
+  await done;
+  const fs = await loadTransit();
+  say("");
+  // the lines, once each: by kind, then by number
+  const seen = new Map();
+  // the lines that run in the city (tiles of other places may be loaded), with a number or a name
+  const box = ext ? [ext[0], ext[3], ext[2], ext[1]] : (() => { const b = map.getBounds(); return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; })();
+  const inside = (f) => f.geometry.coordinates.some((ln) => ln.some(([x, y]) => x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3]));
+  for (const f of fs) {
+    const p = f.properties;
+    if (!q.kinds.includes(p.kind) || !(p.ref || p.name) || !inside(f)) continue;
+    const k = `${p.kind}|${p.ref || p.name}`;
+    if (!seen.has(k)) seen.set(k, p);
+  }
+  const lines = [...seen.values()].sort((a, b) => q.kinds.indexOf(a.kind) - q.kinds.indexOf(b.kind) || String(a.ref || a.name).localeCompare(String(b.ref || b.name), undefined, { numeric: true }));
+  if (!lines.length) return (notes.textContent = T.transitNone);
+  count.textContent = T.results(lines.length);
+  for (const p of lines) {
+    const li = el("li", "lm-transit-item");
+    const sw = el("span", "lm-transit-ref", {}, p.ref || "–");
+    sw.style.background = p.colour || "#7a7f87";
+    li.append(sw, el("span", "lm-transit-name", {}, [T.transitKinds[p.kind], p.name && p.name !== p.ref ? p.name : ""].filter(Boolean).join(" · ")));
+    results.append(li);
+  }
+  setSheet("half");
+}
+
+// ------------------------------------------------------------------ the bubbles
+// Over the map: searches of the map view in a tap (fewer on a phone), and Transit, which switches its lines
+const bubbles = el("div", "lm-bubbles");
+for (const [q, label, wide] of T.bubbles) {
+  if (q === "transit" && !TRANSIT) continue;
+  const b = el("button", `lm-bubble${wide ? " lm-wide-only" : ""}${q === "transit" ? " lm-bubble-transit" : ""}`, { type: "button" }, label);
+  if (q === "transit") {
+    b.setAttribute("aria-pressed", String(look.transit));
+    b.addEventListener("click", () => setTransit(!look.transit));
+  } else b.addEventListener("click", () => run(q, {}));
+  bubbles.append(b);
+}
+mapEl.append(bubbles);
+
 // ------------------------------------------------------------------ the menu
 // Closed at first; the burger in the top bar (on a phone, over the map) opens it.
 const mapMenuBtn = burger();
@@ -617,7 +765,15 @@ function setThreeD(on) {
   showDim();
 }
 const threeDRow = toggle(T.threeD, T.threeDNote, look.threeD, setThreeD);
+const forgetBtn = el("button", "lm-chip lm-forget", { type: "button" }, T.forgetRecent);
+forgetBtn.addEventListener("click", () => {
+  saved.recent = [];
+  store.set("hm-recent", "[]");
+  forgetBtn.disabled = true;
+});
 const trafficRow = toggle(T.traffic, T.trafficNote, look.traffic, setTraffic);
+const transitRow = toggle(T.transit, T.transitNote, look.transit, setTransit);
+transitBox = transitRow.querySelector("input");
 trafficBox = trafficRow.querySelector("input");
 const threeDBox = threeDRow.querySelector("input");
 // the language; a change loads the page again in it
@@ -643,7 +799,9 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
     restyle();
   }),
   ...(TRAFFIC ? [trafficRow] : []),
+  ...(TRANSIT ? [transitRow] : []),
   langRow,
+  forgetBtn,
   poweredBy(), el("p", "lm-menu-foot", {}, TRAFFIC ? `${T.credit} ${T.trafficCredit}` : T.credit));
 root.append(backdrop, menu);
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
@@ -830,6 +988,52 @@ const state = {
   pushedSel: false, // the page of a place has its own entry in the history: Back goes to the list
 };
 
+// ------------------------------------------------------------------ saved in the browser
+// Starred places (hm-stars) and the last searches (hm-recent), kept in the browser like the settings
+// (map style, 3D, language, traffic, mode, sound): nothing of it goes to the server.
+const readList = (k) => { try { const v = JSON.parse(store.get(k) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } };
+const saved = { stars: readList("hm-stars"), recent: readList("hm-recent") };
+const starKey = (ll) => `${ll[0].toFixed(5)},${ll[1].toFixed(5)}`;
+const isStarred = (ll) => saved.stars.some((x) => starKey(x.ll) === starKey(ll));
+function toggleStar(place) {
+  const k = starKey(place.ll);
+  if (isStarred(place.ll)) saved.stars = saved.stars.filter((x) => starKey(x.ll) !== k);
+  else saved.stars = [{ name: place.name, detail: place.detail || "", ll: [+place.ll[0].toFixed(5), +place.ll[1].toFixed(5)] }, ...saved.stars].slice(0, 200);
+  store.set("hm-stars", JSON.stringify(saved.stars));
+  drawStars();
+}
+function drawStars() {
+  setSource("stars", { type: "FeatureCollection", features: saved.stars.map((x) => ({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { name: x.name } })) });
+}
+function addRecent(text, extra) {
+  const t = text.trim();
+  if (!t) return;
+  saved.recent = [{ text: t, extra }, ...saved.recent.filter((x) => x.text !== t)].slice(0, 10);
+  store.set("hm-recent", JSON.stringify(saved.recent));
+}
+// the star of a place: Save, or Saved (a tap again forgets it); place: {ll, name, detail}, or a
+// function giving it (the name of a tapped point comes later)
+function starButton(place) {
+  const get = typeof place === "function" ? place : () => place;
+  const b = el("button", "lm-action lm-star", { type: "button" });
+  const show = () => {
+    const on = isStarred(get().ll);
+    b.classList.toggle("lm-on", on);
+    b.setAttribute("aria-pressed", String(on));
+    b.innerHTML = svg(ICON.star, 18);
+    b.append(el("span", "", {}, on ? T.saved : T.save));
+    b.title = on ? T.saved : T.save;
+  };
+  show();
+  b.addEventListener("click", () => { toggleStar(get()); show(); });
+  return b;
+}
+// a starred place opened: the map there, and the card of the point with its name
+function openStar(x) {
+  fit(() => map.flyTo({ center: x.ll, zoom: Math.max(map.getZoom(), 16), duration: 900, padding: pad() }));
+  here({ lng: x.ll[0], lat: x.ll[1] }, x.name);
+}
+
 // ------------------------------------------------------------------ suggestions
 let options = [], active = -1, suggestTimer = 0, suggestCtl = null, suggestFor = "", chosen = null;
 const closeList = () => {
@@ -854,12 +1058,12 @@ const renderList = (items) => {
   items.forEach((s, i) => {
     const li = el("li", `lm-opt lm-opt-${s.kind}`, { role: "option", id: `lm-opt-${i}`, "aria-selected": "false" });
     const ic = el("span", "lm-opt-icon");
-    ic.innerHTML = svg(s.kind === "place" ? ICON.pin : ICON.search, 16);
+    ic.innerHTML = svg(s.kind === "place" ? ICON.pin : s.kind === "star" ? ICON.star : s.kind === "recent" ? ICON.recent : ICON.search, 16);
     const txt = el("span", "lm-opt-text");
     txt.append(el("span", "lm-opt-label", {}, s.label));
     if (s.detail) txt.append(el("span", "lm-opt-detail", {}, s.detail));
     li.append(ic, txt);
-    li.addEventListener("mousedown", (e) => { e.preventDefault(); pick(i); });
+    li.addEventListener("pointerdown", (e) => { e.preventDefault(); pick(i); }); // at once (a phone: before the box loses its focus)
     list.append(li);
   });
   list.hidden = false;
@@ -868,6 +1072,7 @@ const renderList = (items) => {
 };
 const suggest = () => {
   const q = input.value;
+  if (!q.trim() && document.activeElement === input) return Promise.resolve(renderList(savedItems()));
   if (q.trim().length < 2) return Promise.resolve(closeList());
   suggestCtl?.abort();
   suggestCtl = new AbortController();
@@ -880,9 +1085,25 @@ const suggest = () => {
     })
     .catch(() => {});
 };
+// on an empty search box: the starred places, then the last searches
+const savedItems = () => [
+  ...saved.stars.slice(0, 8).map((x) => ({ kind: "star", label: x.name, detail: x.detail, star: x })),
+  ...saved.recent.map((x) => ({ kind: "recent", label: x.text, text: x.text, extra: x.extra || {} })),
+];
 const pick = (i) => {
   const s = options[i];
   if (!s) return;
+  if (s.kind === "star") {
+    closeList();
+    if (phone()) input.blur();
+    return openStar(s.star);
+  }
+  if (s.kind === "recent") {
+    input.value = s.text;
+    closeList();
+    if (phone()) input.blur();
+    return run(s.text, s.extra);
+  }
   input.value = s.text;
   chosen = null;
   closeList();
@@ -917,7 +1138,10 @@ input.addEventListener("keydown", (e) => {
     if (!list.hidden) { e.preventDefault(); closeList(); }
   }
 });
-input.addEventListener("focus", () => setSheet("full"));
+input.addEventListener("focus", () => {
+  setSheet("full");
+  if (!input.value.trim()) renderList(savedItems());
+});
 input.addEventListener("blur", () => setTimeout(closeList, 120));
 // the X clears it all: the text, the results, the place shown, directions; back to the start
 clearBtn.addEventListener("click", () => {
@@ -937,6 +1161,8 @@ clearBtn.addEventListener("click", () => {
   showOnRoute(null);
   writeURL(null);
   input.focus();
+  setSheet("full"); // the box stays in focus (a tap on the X keeps it): the starred places and last searches
+  renderList(savedItems());
 });
 form.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -1019,6 +1245,14 @@ async function run(text, extra = {}, { push = true, bbox = null, sel = null } = 
   const ctl = runCtl = new AbortController();
   input.value = text;
   clearBtn.hidden = !text;
+  if (push) addRecent(text, extra);
+  const tq = TRANSIT && transitQuery(text);
+  if (tq) {
+    state.text = text;
+    state.extra = {};
+    if (push) writeURL(null);
+    return transitSearch(tq, text);
+  }
   const params = new URLSearchParams({ q: text, bbox: bbox || viewBox() });
   for (const k of extraKeys) if (extra[k]) params.set(k, extra[k]);
   state.text = text;
@@ -1109,7 +1343,7 @@ function intro() {
   clear();
   title.textContent = "";
   notes.textContent = "";
-  setSheet("peek"); // on a phone the map, and the search box at the bottom
+  if (document.activeElement !== input) setSheet("peek"); // on a phone the map, and the search box at the bottom
 }
 function clear() {
   placeActs.innerHTML = "";
@@ -1232,6 +1466,7 @@ function show(d, sel) {
     const c = center(place);
     if (c) state.placeTarget = { ll: c, label: place.properties.name || d.text };
     if (c && ROUTE) placeActs.append(routeButton(() => directions(state.placeTarget)));
+    if (c) placeActs.append(starButton({ ll: c, name: place.properties.name || d.text, detail: place.properties.detail || "" }));
     showDirBtn();
     const id = place.properties.id;
     if (PICTURES && /^relation\/\d+$/.test(id || "")) {
@@ -1523,6 +1758,7 @@ function renderDetail(f) {
     actions.append(a);
   };
   if (c && ROUTE) actions.append(routeButton(() => directions({ ll: c, label: p.name || kindOf(p).label || T.noName })));
+  if (c) actions.append(starButton({ ll: c, name: p.name || kindOf(p).label || T.noName, detail: kindOf(p).label }));
   else if (c) {
     const from = state.me ? `from=${state.me.at2[1].toFixed(6)}%2C${state.me.at2[0].toFixed(6)}&` : "";
     action(T.directions, `https://www.openstreetmap.org/directions?${from}to=${c[1].toFixed(6)}%2C${c[0].toFixed(6)}`, ICON.route);
@@ -1590,6 +1826,12 @@ map.on("click", (e) => {
 });
 function onTap(e) {
   if (trafficAt(e)) return;
+  if (!nav.on && routeView.hidden && transitAt(e)) return;
+  if (!nav.on && routeView.hidden && map.getLayer("lm-stars")) { // a starred place
+    const r = 12, f = map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers: ["lm-stars"] })[0];
+    const x = f && saved.stars.find((s) => starKey(s.ll) === starKey(f.geometry.coordinates));
+    if (x) return openStar(x);
+  }
   if (nav.on) return;
   if (document.activeElement === input || !list.hidden) {
     closeList();
@@ -1598,7 +1840,8 @@ function onTap(e) {
     return;
   }
   const hit = resultAt(e.point);
-  if (!routeView.hidden) {
+  // in directions a tap fills in a start or destination still missing; with both, it shows the place
+  if (!routeView.hidden && (!route.from || !route.to)) {
     // a tap sets the start, or the destination while only that is missing
     const c = hit && center(hit);
     const p = c ? { ll: c, label: hit.properties.name || T.mapPoint }
@@ -1610,8 +1853,9 @@ function onTap(e) {
     }
     return setFrom(p);
   }
+  const fromRoute = !routeView.hidden; // the place's card goes back to the route
   if (hit) return select(hit, { fly: false });
-  here(e.lngLat, symbolAt(e.point));
+  here(e.lngLat, symbolAt(e.point), fromRoute);
 }
 // resultAt is the result nearest to a point of the screen, within the size of a finger
 // on a phone (24 px) or of a pointer (12 px); null when none is that near
@@ -1643,7 +1887,8 @@ function hereDone() {
   setSource("pin", empty);
   setSource("area", empty);
 }
-async function here(ll, symbol) {
+// back: from directions, the card has Directions to go back to the route
+async function here(ll, symbol, backToRoute = false) {
   hereCtl?.abort();
   const ctl = hereCtl = new AbortController();
   const lat = +ll.lat.toFixed(5), lon = +ll.lng.toFixed(5);
@@ -1652,7 +1897,13 @@ async function here(ll, symbol) {
   setSource("selected", empty);
   state.selected = null;
   hereView.innerHTML = "";
-  if (state.answer) {
+  if (backToRoute) {
+    const back = el("button", "lm-back", { type: "button" });
+    back.innerHTML = svg(ICON.back, 18);
+    back.append(T.directions);
+    back.addEventListener("click", () => { hereDone(); showView(routeView); renderRoute(); findRoute(); });
+    hereView.append(back);
+  } else if (state.answer) {
     const back = el("button", "lm-back", { type: "button" });
     back.innerHTML = svg(ICON.back, 18);
     back.append(T.back);
@@ -1667,6 +1918,7 @@ async function here(ll, symbol) {
   if (ROUTE) {
     const acts = el("div", "lm-actions lm-here-actions");
     acts.append(routeButton(() => directions({ ll: [lon, lat], label: h.textContent })));
+    acts.append(starButton(() => ({ ll: [lon, lat], name: h.textContent, detail: `${lat.toFixed(5)}, ${lon.toFixed(5)}` })));
     hereView.append(acts);
   }
   hereView.append(note);
@@ -1883,19 +2135,20 @@ function placeField(which) {
     list.forEach((it, i) => {
       const li = el("li", "lm-opt", { role: "option", id: `${id}-${i}`, "aria-selected": "false" });
       const ic = el("span", "lm-opt-icon");
-      ic.innerHTML = svg(it.me ? ICON.locate : ICON.pin, 16);
+      ic.innerHTML = svg(it.me ? ICON.locate : it.star ? ICON.star : ICON.pin, 16);
       const txt = el("span", "lm-opt-text");
       txt.append(el("span", "lm-opt-label", {}, it.label));
       if (it.detail) txt.append(el("span", "lm-opt-detail", {}, it.detail));
       li.append(ic, txt);
-      li.addEventListener("mousedown", (e) => { e.preventDefault(); choose(i); });
+      li.addEventListener("pointerdown", (e) => { e.preventDefault(); choose(i); }); // at once: on a phone the field loses its focus before a mousedown comes
       opts.append(li);
     });
     opts.hidden = false;
     field.setAttribute("aria-expanded", "true");
     mark(-1);
   };
-  const meItem = navigator.geolocation && !route[which]?.me ? [{ me: true, label: T.myPlace }] : [];
+  const meItem = [...(navigator.geolocation && !route[which]?.me ? [{ me: true, label: T.myPlace }] : []),
+    ...saved.stars.slice(0, 6).map((x) => ({ star: true, label: x.name, detail: x.detail, ll: x.ll }))];
   const ask = async () => {
     const q = field.value.trim();
     ctl?.abort();
@@ -2745,6 +2998,8 @@ const startQ = new URLSearchParams(location.search).get("q");
 if (!startQ) intro();
 map.once("load", () => {
   loadTraffic();
+  drawStars();
+  loadTransit();
   const u = new URLSearchParams(location.search);
   if (startQ) {
     const extra = Object.fromEntries(extraKeys.map((k) => [k, u.get(k) || ""]));

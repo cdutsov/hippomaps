@@ -30,6 +30,14 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - Map styles include Day and night (the first, and the default): the light style while the sun is up where the map is, the
   dark one after; it changes at sunrise and sunset. Navigation by car is light by day and dark at night and in tunnels of 200 m
   or more (`tunnels` of the route).
+- Bubbles over the map: Restaurants, Hotels, Transit, ATMs, and on a wide screen Cafés, Supermarkets, Pharmacies, Parking,
+  Fuel; a tap searches the map view. Transit switches the lines of metro, light rail, monorail and tram in their colours
+  (`/api/transit?tile=10/x/y`: Overpass of overpass.ch with `ELEVATION_KEY`, each tile kept a day; a switch in the menu,
+  `hm-transit`). "metro lines in Lausanne", "U-Bahn in Berlin", "tram in Zürich" show and list the lines of that city.
+- Saved in the browser (local storage, never sent to the server): the settings (map style, 3D, language, traffic, mode,
+  sound), starred places (`hm-stars`: a star beside Directions on a place, a tapped point, a town found; yellow on the map;
+  in the empty search box and in start and destination) and the last 10 searches (`hm-recent`: in the empty search box;
+  the menu forgets them).
 - The X of the search clears everything: the text, the results, the place shown, directions.
 - The map opens where the visitor is: the browser asks for the location once (a link with `#map=` opens there instead; no
   message when the visitor says no).
