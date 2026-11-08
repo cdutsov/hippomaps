@@ -236,6 +236,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-swatch { display: block; height: 46px; border-radius: 7px; border: 1px solid var(--line); }
 .lm-swatch-light { background: linear-gradient(135deg, #f2efe9 55%, #aad3df 55% 70%, #f2efe9 70%), #f2efe9; }
 .lm-swatch-dark { background: linear-gradient(135deg, #2a2d33 55%, #1b2a3a 55% 70%, #2a2d33 70%); }
+.lm-swatch-auto { background: linear-gradient(135deg, #f2efe9 50%, #2a2d33 50%); }
 .lm-swatch-outdoor { background: linear-gradient(135deg, #dfe9c8 40%, #b9d39a 40% 62%, #e9e3d3 62%); }
 .lm-swatch-relief { background: linear-gradient(135deg, #8fbf7a, #d9c38f 45%, #b49a7a 70%, #fff); }
 .lm-swatch-driving { background: linear-gradient(135deg, #f4f1ea 45%, #f2a541 45% 55%, #f4f1ea 55%); }
@@ -287,18 +288,18 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm.lm-navigating { grid-template-columns: 1fr; }
 .lm.lm-navigating .lm-side { display: none; }
 .lm.lm-navigating .lm-map { grid-area: 1 / 1; }
-.lm-navigating .lm-area, .lm-navigating .lm-locate, .lm-navigating .lm-map-burger, .lm-navigating .maplibregl-ctrl-bottom-right { display: none !important; }
+.lm-navigating .lm-area, .lm-navigating .lm-locate, .lm-navigating .maplibregl-ctrl-bottom-right { display: none !important; }
 .lm-navigating .lm-compass { bottom: 96px; }
 .lm-nav { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
 .lm-nav > * { pointer-events: auto; }
 .lm-nav-banner { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; max-width: 460px; display: flex; gap: .8rem;
-  align-items: center; background: #0e5c3a; color: #fff; border-radius: 14px; padding: .7rem 1rem; box-shadow: 0 4px 18px rgba(0, 0, 0, .3); }
+  align-items: center; background: #0284c7; color: #fff; border-radius: 14px; padding: .7rem 1rem; box-shadow: 0 4px 18px rgba(0, 0, 0, .3); }
 .lm-nav-arrow { flex: none; display: grid; place-items: center; }
 .lm-nav-text { min-width: 0; }
 .lm-nav-dist { font-size: 1.9rem; font-weight: 700; line-height: 1.05; letter-spacing: -.01em; }
 .lm-nav-instr { font-size: 1.05rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .lm-nav-then { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 86px); left: 18px; display: inline-flex; align-items: center; gap: .3rem;
-  background: #0a4229; color: #fff; border-radius: 0 0 10px 10px; padding: .25rem .7rem; font-size: .85rem; }
+  background: #01699f; color: #fff; border-radius: 0 0 10px 10px; padding: .25rem .7rem; font-size: .85rem; }
 .lm-nav-then-arrow { display: grid; }
 /* the sign of the junction: green for motorways, blue for other roads (as in Switzerland) */
 .lm-nav-sign { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 90px); right: 10px; max-width: 230px; color: #fff; border: 2px solid #fff;
@@ -322,6 +323,12 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
   align-items: center; gap: .5rem; background: var(--bg); color: var(--fg); border-radius: 16px; padding: .5rem .6rem; box-shadow: 0 4px 18px rgba(0, 0, 0, .25); }
 .lm-nav-eta { flex: 1; display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
 .lm-nav-eta strong { font-size: 1.3rem; color: var(--green); }
+/* the arrival time and the delay by the traffic ahead */
+.lm-ontime { color: var(--green); }
+.lm-slow, .lm-nav-eta strong.lm-slow { color: #e37400; }
+.lm-late, .lm-nav-eta strong.lm-late { color: #d93025; }
+.lm-delay { margin-left: .5rem; font-size: .85rem; font-weight: 600; }
+.lm-delay.lm-ontime { color: var(--muted); }
 .lm-nav-eta span { color: var(--muted); font-size: .85rem; }
 .lm-nav-btn { border: 0; background: var(--bg2); color: var(--fg); width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; }
 .lm-nav-btn:hover { background: var(--hot); }
@@ -378,3 +385,31 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-traffic-pop { font: inherit; color: #1d2329; }
 .lm-traffic-pop strong { display: block; margin-bottom: .2rem; }
 .lm-traffic-pop p { margin: 0; font-size: .85rem; line-height: 1.35; }
+
+/* traffic on and off, above 2D/3D */
+.lm-traffic-btn { position: absolute; right: 10px; bottom: 260px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--bg);
+  color: var(--muted); box-shadow: var(--shadow); cursor: pointer; display: grid; place-items: center; }
+.lm-traffic-btn[hidden] { display: none; }
+.lm-traffic-btn circle { fill: currentColor; opacity: .5; }
+.lm-traffic-btn.lm-on { color: var(--fg); }
+.lm-traffic-btn.lm-on .lm-tl-r { fill: #d93025; opacity: 1; }
+.lm-traffic-btn.lm-on .lm-tl-y { fill: #f29900; opacity: 1; }
+.lm-traffic-btn.lm-on .lm-tl-g { fill: #1e8e3e; opacity: 1; }
+@media (max-width: 760px) {
+  .lm-traffic-btn { bottom: calc(var(--sheet, 40dvh) + 162px); }
+}
+.lm-navigating .lm-traffic-btn { bottom: 196px; }
+.lm-navigating.lm-nav-elev-on .lm-traffic-btn { bottom: 246px; }
+
+/* the menu while navigating: a round button above the traffic button */
+.lm-navigating .lm-map-burger { display: grid; place-items: center; position: absolute; top: auto; left: auto; right: 10px; bottom: 246px; z-index: 5; width: 40px;
+  height: 40px; border-radius: 50%; border: 0; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); cursor: pointer; }
+.lm-navigating.lm-nav-elev-on .lm-map-burger { bottom: 296px; }
+/* the lanes before a turn, under the banner: the lanes to take light, the others dim */
+.lm-nav-lanes { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 88px); left: 10px; display: flex; gap: 2px; padding: 4px;
+  border-radius: 10px; background: #01699f; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); max-width: calc(100% - 20px); overflow: hidden; }
+.lm-lane { display: flex; align-items: center; justify-content: center; min-width: 34px; height: 40px; padding: 0 3px; border-radius: 6px; color: rgba(255, 255, 255, .38); }
+.lm-lane + .lm-lane { border-left: 2px dashed rgba(255, 255, 255, .35); border-radius: 0; }
+.lm-lane-arrow { display: grid; margin: 0 -5px; }
+.lm-lane-arrow.lm-lane-on { color: #fff; }
+.lm-nav-lanes:not([hidden]) ~ .lm-nav-then, .lm-nav-lanes:not([hidden]) ~ .lm-nav-sign { top: calc(max(10px, env(safe-area-inset-top)) + 140px); }

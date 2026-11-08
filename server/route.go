@@ -23,7 +23,8 @@ import (
 // (at, i, end), the spoken texts for navigation (alert before, pre at the turn, post after),
 // the street, and what a sign shows (exit number and name, route numbers, toward). limits are
 // the speed limits along the line by car (indexes of line), from a second call to Valhalla
-// (trace_attributes); without them when that call fails. By bike and on foot, elev is the
+// (trace_attributes, leaving now), with the stretches slowed by traffic and the delay; without them
+// when that call fails. By bike and on foot, elev is the
 // height profile from the elevation API of overpass.ch (ElevationURL, ElevationKey); without it
 // when that call fails or there is no key.
 
@@ -58,15 +59,29 @@ type routeStep struct {
 	ExitName   string     `json:"exit_name,omitempty"`
 	Routes     []string   `json:"routes,omitempty"` // route numbers on the sign
 	Toward     []string   `json:"toward,omitempty"`
+	Lanes      []lane     `json:"lanes,omitempty"` // at the turn, from left to right (car)
+}
+
+// lane is one lane before a turn, from Valhalla (turn_lanes): its arrows as bits (1 none,
+// 2 through, 4 sharp left, 8 left, 16 slight left, 32 slight right, 64 right, 128 sharp right,
+// 256 reverse, 512 merge left, 1024 merge right), and the arrow to take in it: active, the best
+// lanes; valid, lanes that also lead there.
+type lane struct {
+	Dirs   int `json:"d"`
+	Active int `json:"a,omitempty"`
+	Valid  int `json:"v,omitempty"`
 }
 
 type routeAnswer struct {
-	Km     float64      `json:"km"`
-	S      float64      `json:"s"`
-	Line   [][2]float64 `json:"line"`
-	Steps  []routeStep  `json:"steps"`
-	Limits [][3]int     `json:"limits,omitempty"`
-	Elev   *routeElev   `json:"elev,omitempty"`
+	Km      float64      `json:"km"`
+	S       float64      `json:"s"`
+	Line    [][2]float64 `json:"line"`
+	Steps   []routeStep  `json:"steps"`
+	Limits  [][3]int     `json:"limits,omitempty"`
+	Traffic [][3]int     `json:"traffic,omitempty"` // by car: slow (1) and queued (2) stretches, in indexes of line
+	Delay   float64      `json:"delay,omitempty"`   // by car: seconds that traffic adds
+	Tunnels [][3]int     `json:"tunnels,omitempty"` // by car: [from, to, metres] in indexes of line
+	Elev    *routeElev   `json:"elev,omitempty"`
 }
 
 // routeElev is the height profile of a route by bike or on foot, from the elevation API of
@@ -106,7 +121,12 @@ type valhallaRoute struct {
 				Streets     []string `json:"street_names"`
 				Highway     bool     `json:"highway"`
 				Roundabout  int      `json:"roundabout_exit_count"`
-				Sign        struct {
+				Lanes       []struct {
+					Directions int `json:"directions"`
+					Active     int `json:"active"`
+					Valid      int `json:"valid"`
+				} `json:"lanes"`
+				Sign struct {
 					Number []signElement `json:"exit_number_elements"`
 					Branch []signElement `json:"exit_branch_elements"`
 					Toward []signElement `json:"exit_toward_elements"`
@@ -180,11 +200,12 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, _ := json.Marshal(map[string]any{
-		"locations": []map[string]float64{{"lat": lat1, "lon": lon1}, {"lat": lat2, "lon": lon2}},
-		"costing":   mode.costing,
-		"units":     "kilometers",
-		"language":  lang,
-		"date_time": map[string]int{"type": 0}, // leaving now: live traffic and closures count
+		"locations":  []map[string]float64{{"lat": lat1, "lon": lon1}, {"lat": lat2, "lon": lon2}},
+		"costing":    mode.costing,
+		"units":      "kilometers",
+		"language":   lang,
+		"date_time":  map[string]int{"type": 0}, // leaving now: live traffic and closures count
+		"turn_lanes": true,
 	})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RoutingURL+"/route", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -234,10 +255,19 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		if m.Begin >= 0 && m.Begin < len(a.Line) {
 			st.At = a.Line[m.Begin]
 		}
+		for _, l := range m.Lanes {
+			if l.Active != 0 || l.Valid != 0 { // lanes without a choice say nothing
+				st.Lanes = make([]lane, len(m.Lanes))
+				for i, l := range m.Lanes {
+					st.Lanes[i] = lane{l.Directions, l.Active, l.Valid}
+				}
+				break
+			}
+		}
 		a.Steps = append(a.Steps, st)
 	}
 	if mode.costing == "auto" {
-		a.Limits = s.speedLimits(ctx, leg.Shape)
+		a.Limits, a.Traffic, a.Tunnels, a.Delay = s.alongRoute(ctx, leg.Shape, a.Line)
 	} else if s.cfg.ElevationKey != "" {
 		a.Elev = s.heights(ctx, a.Line, a.Km)
 	}
@@ -350,45 +380,101 @@ func texts(es []signElement) []string {
 	return out
 }
 
-// speedLimits are the posted limits along a route line by car, as [from, to, km/h] in indexes
-// of the line, from Valhalla trace_attributes; nil when Valhalla does not answer.
-func (s *Server) speedLimits(ctx context.Context, shape string) [][3]int {
+// alongRoute reads the edges along a route line by car from Valhalla (trace_attributes, leaving
+// now): the posted limits as [from, to, km/h], the traffic as [from, to, level] (1 slow: under 75 %
+// of the usual speed; 2 queue: under 50 %, as it is now), in indexes of line, and the delay in
+// seconds that live traffic adds to the time of the route (which counts live speeds less the
+// further ahead they are), and the tunnels as [from, to, metres]. The matched shape may drop a point of the line; its indexes are mapped back.
+func (s *Server) alongRoute(ctx context.Context, shape string, line [][2]float64) (limits, traffic, tunnels [][3]int, delay float64) {
 	body, _ := json.Marshal(map[string]any{
-		"encoded_polyline": shape, "costing": "auto", "shape_match": "edge_walk",
-		"filters": map[string]any{"attributes": []string{"edge.speed_limit", "edge.begin_shape_index", "edge.end_shape_index"}, "action": "include"},
+		"encoded_polyline": shape, "costing": "auto", "shape_match": "walk_or_snap", "date_time": map[string]int{"type": 0},
+		"filters": map[string]any{"attributes": []string{"edge.speed_limit", "edge.speeds_non_faded", "edge.speed", "edge.length", "edge.tunnel",
+			"edge.begin_shape_index", "edge.end_shape_index", "shape"}, "action": "include"},
 	})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RoutingURL+"/trace_attributes", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", s.cfg.UserAgent)
 	resp, err := s.routeClient.Do(req)
 	if err != nil {
-		return nil
+		return nil, nil, nil, 0
 	}
 	defer resp.Body.Close()
 	var v struct {
+		Shape string `json:"shape"`
 		Edges []struct {
-			Limit json.RawMessage `json:"speed_limit"` // a number, or "unlimited"
-			Begin int             `json:"begin_shape_index"`
-			End   int             `json:"end_shape_index"`
+			Limit  json.RawMessage `json:"speed_limit"` // a number, or "unlimited"
+			Speeds struct {
+				Current float64 `json:"current_flow"`
+				Usual   float64 `json:"no_flow"`
+			} `json:"speeds_non_faded"`
+			Used   float64 `json:"speed"` // what the time of the route counts: live speeds fade out within an hour
+			Tunnel bool    `json:"tunnel"`
+			Km     float64 `json:"length"`
+			Begin  int     `json:"begin_shape_index"`
+			End    int     `json:"end_shape_index"`
 		} `json:"edges"`
 	}
 	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&v) != nil {
-		return nil
+		return nil, nil, nil, 0
 	}
-	var out [][3]int
+	at := shapeIndex(decodePolyline(v.Shape, 1e6), line)
+	merge := func(out [][3]int, a, b, val int) [][3]int {
+		if k := len(out) - 1; k >= 0 && out[k][2] == val && out[k][1] >= a {
+			out[k][1] = b
+			return out
+		}
+		return append(out, [3]int{a, b, val})
+	}
 	for _, e := range v.Edges {
-		kmh := 0
+		if e.Begin < 0 || e.End >= len(at) || e.Begin > e.End {
+			continue
+		}
+		a, b := at[e.Begin], at[e.End]
 		if n, err := strconv.Atoi(string(e.Limit)); err == nil && n > 0 && n < 200 {
-			kmh = n
+			limits = merge(limits, a, b, n)
 		}
-		if kmh == 0 {
+		if e.Tunnel { // one tunnel may be several edges
+			if k := len(tunnels) - 1; k >= 0 && tunnels[k][1] >= a {
+				tunnels[k][1] = b
+				tunnels[k][2] += int(math.Round(e.Km * 1000))
+			} else {
+				tunnels = append(tunnels, [3]int{a, b, int(math.Round(e.Km * 1000))})
+			}
+		}
+		cur, usual := e.Speeds.Current, e.Speeds.Usual
+		if cur <= 0 || usual <= 0 {
 			continue
 		}
-		if k := len(out) - 1; k >= 0 && out[k][2] == kmh && out[k][1] >= e.Begin {
-			out[k][1] = e.End
-			continue
+		if e.Used > 0 && e.Used < usual {
+			delay += e.Km * 3600 * (1/e.Used - 1/usual)
 		}
-		out = append(out, [3]int{e.Begin, e.End, kmh})
+		level := 0
+		switch r := cur / usual; {
+		case r < 0.5:
+			level = 2
+		case r < 0.75:
+			level = 1
+		}
+		if level > 0 {
+			traffic = merge(traffic, a, b, level)
+		}
 	}
-	return out
+	return limits, traffic, tunnels, math.Round(delay)
+}
+
+// shapeIndex maps each point of a matched shape to the index of the same point of line (both
+// in order; the nearest of the next few)
+func shapeIndex(matched, line [][2]float64) []int {
+	at := make([]int, len(matched))
+	j := 0
+	for i, p := range matched {
+		best, bestD := j, math.Inf(1)
+		for k := j; k < len(line) && k < j+6; k++ {
+			if d := math.Abs(line[k][0]-p[0]) + math.Abs(line[k][1]-p[1]); d < bestD {
+				best, bestD = k, d
+			}
+		}
+		at[i], j = best, best
+	}
+	return at
 }

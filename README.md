@@ -17,7 +17,9 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
   (`hm-lang`; the page loads again). It sets the texts, the names on the map, the steps of directions and the voice. The
   readings of the search come from overpass-search and stay English.
 - Traffic in Switzerland (with `TRAFFIC_URL`): closures, queues, slow traffic and roadworks on the map, their message in a popup,
-  refreshed every two minutes; a switch in the menu (`hm-traffic`). Routes leave now (`date_time`), so Valhalla counts live
+  refreshed every two minutes; a button on the map and a switch in the menu (`hm-traffic`, off at first). By car the route is
+  orange or red where traffic is slow or queued, the time shows the delay, and the arrival time is green, orange or red by the
+  traffic ahead. Routes leave now (`date_time`), so Valhalla counts live
   speeds and closures. Credit: "Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP)."
 - A Directions button beside the search box at all times opens the fields for start and destination; with a place opened or
   found, it starts navigation to it from the location of the visitor (the location of the
@@ -25,6 +27,10 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
   Directions beside its name.
 - A 2D/3D button above the compass: on the map the 3D of the menu (terrain, buildings, the map tilted); in navigation the
   map that follows, flat or tilted.
+- Map styles include Day and night (the first, and the default): the light style while the sun is up where the map is, the
+  dark one after; it changes at sunrise and sunset. Navigation by car is light by day and dark at night and in tunnels of 200 m
+  or more (`tunnels` of the route).
+- The X of the search clears everything: the text, the results, the place shown, directions.
 - The map opens where the visitor is: the browser asks for the location once (a link with `#map=` opens there instead; no
   message when the visitor says no).
 - Suggestions while typing: words of the list, chains and places (`/complete`).
@@ -45,7 +51,8 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - Navigation, turn by turn, from the directions: Start follows the location of the browser, Preview drives the route at three
   times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a car, a cyclist or a
   walker in 3D (`web/avatar.js`, three.js, loaded with the first route; wheels, pedals and legs move with the speed; the flat
-  sprite when WebGL fails; larger on a flat map); the 2D/3D button turns the map flat or tilted, kept as `hm-nav-2d`; the next turn with its arrow, its distance and the street; by car the sign of the junction in its
+  sprite when WebGL fails; larger on a flat map); the 2D/3D button turns the map flat or tilted, kept as `hm-nav-2d`; the menu stays at hand; near a turn by car, the lanes
+  with the ones to take (Valhalla `turn_lanes`); the next turn with its arrow, its distance and the street; by car the sign of the junction in its
   last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; the speed now by car and by bike (red above the limit); arrival
   time, time and distance left. The instructions of Valhalla are spoken in the language of the browser: with `TTS_URL` by
   the Piper voices of the server in German, English, French and Italian (`/api/say`, fetched up to three turns ahead), else, or
@@ -101,6 +108,10 @@ second call to Valhalla (`trace_attributes`); missing when that call fails. Erro
 `GET {base}/api/say?lang=de|en|fr|it&text=…` (at most 400 characters) asks `TTS_URL` + `/say` and answers audio/mpeg, kept a
 week by the browser and in memory here; 400, 429, 503 or 502 otherwise. Four calls at a time.
 
+By car the answer also has `lanes` per step (`d` the arrows as bits, `a` and `v` the ones to take), `traffic` ([from, to,
+level] of line, 1 slow, 2 queued, as it is now), `delay` (seconds that live traffic adds to `s`) and `tunnels` ([from, to,
+metres]), all from one call to `trace_attributes` leaving now.
+
 By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,m],…]}`, from the elevation API of overpass.ch
 (`ELEVATION_URL` + `/v1/elevation/profile`, 300 samples at most, one every 10 m at least) with `ELEVATION_KEY`, a key of type
 "All APIs" (a maps key is refused); missing when that call fails.
@@ -144,3 +155,11 @@ web/             index.html, app.js, app.css, icon.svg, and vendor/
 browsers keep their files for a year.
 
 Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons, each under the licence its credit names.
+
+## Tests
+
+`go test ./...` (also in the Docker build): the server against fakes of Valhalla, Wikimedia, the elevation API, Piper and the
+traffic service. A test of the running site:
+directions with speed limits, lanes, traffic and heights, the voice, traffic, the files. With `BROWSER=1` (the nightly run) it
+adds `tests/hippomaps-browser.py`: the page in headless Chromium on a phone screen, from the start at the location through a
+typed destination, Preview with speed, speed limit, the 3D traveller and the voice, the traffic button, the X, to German.

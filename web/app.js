@@ -105,6 +105,7 @@ const EN = {
   byDay: "by day",
   until: (d) => `until ${d}`,
   trafficCredit: "Traffic: Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).",
+  delay: (m) => `+${m} min traffic`,
   heights: "Height profile",
   up: (m) => `${num(m)} m up`,
   down: (m) => `${num(m)} m down`,
@@ -129,7 +130,7 @@ const EN = {
   threeDNote: "Terrain and buildings; tilt with two fingers or the right mouse button",
   shading: "Relief shading",
   shadingNote: "Light and shadow of the mountains",
-  styles: [["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"],
+  styles: [["auto", "Day and night"], ["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"],
     ["marine", "Marine"], ["white", "White"], ["grayscale", "Grayscale"], ["black", "Black"]],
   credit: "Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons. Chains from the name-suggestion-index.",
   voiceCredit: "Voices by Piper; the French voice from the SIWIS database (CC BY 4.0).",
@@ -230,19 +231,39 @@ const fmtKm = (d) => (d < 1 ? `${Math.round(d * 100) * 10} m` : `${d.toFixed(d <
 // page is dark with the dark and black styles; the first style follows the theme of the site.
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const look = {
-  style: T.styles.some(([k]) => k === store.get("hm-style")) ? store.get("hm-style") : store.get("theme") === "dark" ? "dark" : "light",
+  style: T.styles.some(([k]) => k === store.get("hm-style")) ? store.get("hm-style") : "auto",
   threeD: store.get("hm-3d") === "1",
   shading: store.get("hm-shading") === "1",
-  traffic: store.get("hm-traffic") !== "0",
+  traffic: store.get("hm-traffic") === "1", // off at first
 };
-const theme = () => (look.style === "dark" || look.style === "black" ? "dark" : "light");
+// the height of the sun in degrees at a place and time (to a few tenths of a degree; NOAA)
+function sunHeight(lon, lat, when = new Date()) {
+  const rad = Math.PI / 180, d = when / 864e5 - 10957.5; // days since 2000-01-01 12:00 UTC
+  const g = (357.529 + 0.98560028 * d) * rad, q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * rad, e = (23.439 - 0.00000036 * d) * rad;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
+  const ha = ((gmst * 15 + lon) * rad - ra);
+  return Math.asin(Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(ha)) / rad;
+}
+// the style shown: Automatic is the light style while the sun is up where the map is, the dark one after
+let autoDark = false;
+// by car, navigation shows the light style by day and the dark one at night and in tunnels (navLook)
+let navLook = null;
+const shownStyle = () => navLook || (look.style === "auto" ? (autoDark ? "dark" : "light") : look.style);
+const isNight = (lon, lat) => sunHeight(lon, lat) < -0.833; // the sun below the horizon
+{
+  const m = /map=[\d.]+\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash);
+  autoDark = isNight(m ? +m[2] : 8.54, m ? +m[1] : 47.37);
+}
+const theme = () => (shownStyle() === "dark" || shownStyle() === "black" ? "dark" : "light");
 document.documentElement.dataset.theme = theme();
 const styleURL = () => {
   const p = new URLSearchParams({ lang: ["de", "fr", "it"].includes(LANG) ? LANG : "en" });
   if (look.shading) p.set("hillshade", "1");
   if (look.threeD) p.set("terrain", "1");
-  if (look.threeD && look.style !== "relief") p.set("buildings", "1");
-  return `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${look.style}.json?${p}`;
+  if (look.threeD && shownStyle() !== "relief") p.set("buildings", "1");
+  return `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${shownStyle()}.json?${p}`;
 };
 
 // ------------------------------------------------------------------ the side bar
@@ -376,7 +397,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty };
+const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty };
 const ACCENT = "#d0312d";
 map.on("style.load", () => {
   for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
@@ -429,6 +450,8 @@ map.on("style.load", () => {
     paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
   map.addLayer({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#1a73e8", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
+  map.addLayer({ id: "lm-route-traffic", type: "line", source: "lm-routetraffic", layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": ["match", ["get", "level"], 2, "#d93025", "#f29900"], "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
   map.addLayer({ id: "lm-route-ends", type: "circle", source: "lm-route", filter: ["!", line], paint: {
     "circle-radius": 7, "circle-color": ["match", ["get", "end"], "from", "#fff", ACCENT],
     "circle-stroke-color": ["match", ["get", "end"], "from", "#111827", "#fff"], "circle-stroke-width": 3 } });
@@ -483,6 +506,23 @@ async function loadTraffic() {
   } catch {}
   trafficTimer = setTimeout(loadTraffic, 120e3);
 }
+// on and off: the button on the map and the switch of the menu
+function setTraffic(on) {
+  look.traffic = on;
+  store.set("hm-traffic", on ? "1" : "0");
+  trafficBtn.classList.toggle("lm-on", on);
+  trafficBtn.setAttribute("aria-pressed", String(on));
+  if (trafficBox) trafficBox.checked = on;
+  loadTraffic();
+}
+const trafficBtn = el("button", "lm-traffic-btn", { type: "button", title: T.traffic, "aria-label": T.traffic, "aria-pressed": String(look.traffic) });
+trafficBtn.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="7.5" y="2.5" width="9" height="19" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+  '<circle cx="12" cy="7" r="1.8" class="lm-tl-r"/><circle cx="12" cy="12" r="1.8" class="lm-tl-y"/><circle cx="12" cy="17" r="1.8" class="lm-tl-g"/></svg>';
+trafficBtn.classList.toggle("lm-on", look.traffic);
+trafficBtn.hidden = !TRAFFIC;
+trafficBtn.addEventListener("click", () => setTraffic(!look.traffic));
+mapEl.append(trafficBtn);
+let trafficBox = null;
 // a tap on traffic shows its message; true when it did
 function trafficAt(e) {
   if (!TRAFFIC || !look.traffic) return false;
@@ -530,6 +570,7 @@ for (const [key, label] of T.styles) {
   b.addEventListener("click", () => {
     look.style = key;
     store.set("hm-style", key);
+    if (key === "auto") autoDark = isNight(map.getCenter().lng, map.getCenter().lat);
     document.documentElement.dataset.theme = theme();
     styleGrid.querySelectorAll("[data-style]").forEach((x) => x.setAttribute("aria-checked", String(x.dataset.style === key)));
     restyle();
@@ -562,6 +603,8 @@ function setThreeD(on) {
   showDim();
 }
 const threeDRow = toggle(T.threeD, T.threeDNote, look.threeD, setThreeD);
+const trafficRow = toggle(T.traffic, T.trafficNote, look.traffic, setTraffic);
+trafficBox = trafficRow.querySelector("input");
 const threeDBox = threeDRow.querySelector("input");
 // the language; a change loads the page again in it
 const langSel = el("select", "lm-lang-select", { "aria-label": T.language });
@@ -585,11 +628,7 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
     store.set("hm-shading", on ? "1" : "0");
     restyle();
   }),
-  ...(TRAFFIC ? [toggle(T.traffic, T.trafficNote, look.traffic, (on) => {
-    look.traffic = on;
-    store.set("hm-traffic", on ? "1" : "0");
-    loadTraffic();
-  })] : []),
+  ...(TRAFFIC ? [trafficRow] : []),
   langRow,
   poweredBy(), el("p", "lm-menu-foot", {}, TRAFFIC ? `${T.credit} ${T.trafficCredit}` : T.credit));
 root.append(backdrop, menu);
@@ -601,6 +640,17 @@ function poweredBy() {
   a.append(el("span", "", {}, T.poweredBy), light, dark);
   return a;
 }
+// Automatic follows sunrise and sunset where the map is
+function checkDayNight() {
+  if (look.style !== "auto") return;
+  const c = map.getCenter(), dark = isNight(c.lng, c.lat);
+  if (dark === autoDark) return;
+  autoDark = dark;
+  document.documentElement.dataset.theme = theme();
+  restyle();
+}
+setInterval(checkDayNight, 300e3);
+map.on("moveend", checkDayNight);
 function restyle() {
   map.setStyle(styleURL(), { diff: false }); // our layers come back on style.load
 }
@@ -814,11 +864,24 @@ input.addEventListener("keydown", (e) => {
 });
 input.addEventListener("focus", () => setSheet("full"));
 input.addEventListener("blur", () => setTimeout(closeList, 120));
+// the X clears it all: the text, the results, the place shown, directions; back to the start
 clearBtn.addEventListener("click", () => {
   input.value = "";
   clearBtn.hidden = true;
-  input.focus();
   closeList();
+  runCtl?.abort();
+  state.text = "";
+  state.extra = {};
+  say("");
+  hereDone();
+  showView(listView);
+  clear();
+  intro();
+  setSource("route", empty);
+  setSource("routetraffic", empty);
+  showOnRoute(null);
+  writeURL(null);
+  input.focus();
 });
 form.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -1565,7 +1628,25 @@ function routeDone() {
   route.ctl?.abort();
   setSource("route", empty);
 }
+// the stretches of a route slowed by traffic (d.traffic: [from, to, level] in indexes of the line),
+// from point index `from` on
+function drawRouteTraffic(d, from = 0, at = null) {
+  const fs = [];
+  for (const [a, b, level] of d?.traffic || []) {
+    if (b <= from) continue;
+    const pts = d.line.slice(Math.max(a, from), b + 1);
+    if (a < from && at) pts.unshift(at);
+    if (pts.length > 1) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: pts }, properties: { level } });
+  }
+  setSource("routetraffic", { type: "FeatureCollection", features: fs });
+}
+// the colour of an arrival time: green, orange with slow traffic ahead, red with a queue ahead
+function trafficClass(d, from = 0) {
+  const ahead = (d?.traffic || []).filter(([, b]) => b > from).map(([, , level]) => level);
+  return ahead.includes(2) ? "lm-late" : ahead.includes(1) ? "lm-slow" : "lm-ontime";
+}
 function drawEnds(line) {
+  if (!line) setSource("routetraffic", empty);
   const fs = [];
   if (line) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: line }, properties: {} });
   if (route.from) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.from.ll }, properties: { end: "from" } });
@@ -1585,6 +1666,7 @@ async function directions(to, go = false) {
   if (!route.from) { // ask the browser once; the visitor can tap the map instead
     const me = await locate();
     if (me && !route.from && !routeView.hidden) setFrom({ ll: state.me.at2, label: T.myPlace, me: true });
+    if (!route.to && !routeView.hidden) routeView.querySelector(".lm-end-to input")?.focus(); // the fields were drawn again
   } else findRoute();
 }
 function setFrom(from) {
@@ -1727,10 +1809,24 @@ function placeField(which) {
         .filter((it) => it.label && !seen.has(`${it.label}\n${it.detail}`) && seen.add(`${it.label}\n${it.detail}`)));
     } catch {}
   };
-  field.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(ask, 250); });
-  field.addEventListener("focus", () => { field.select(); if (!field.value.trim() || route[which]) show(meItem); });
+  field.addEventListener("input", () => {
+    clearTimeout(timer);
+    if (field.value.trim().length >= 2) close(); // not "Your location" under the text being typed
+    timer = setTimeout(ask, 250);
+  });
+  // a tap empties the field to type (the place stays as the hint): selecting its text would open the
+  // copy and paste menu of mobile browsers
+  const hint = field.placeholder;
+  field.addEventListener("focus", () => {
+    if (route[which] && field.value === route[which].label) {
+      field.placeholder = route[which].label;
+      field.value = "";
+    }
+    show(meItem);
+  });
   field.addEventListener("blur", () => setTimeout(() => {
     close();
+    field.placeholder = hint;
     if (route[which] && field.value !== route[which].label) field.value = route[which].label; // back to the place chosen
   }, 150));
   field.addEventListener("keydown", (e) => {
@@ -1769,7 +1865,8 @@ async function findRoute() {
   }
   routeMsg.textContent = "";
   route.answer = d;
-  routeSum.textContent = `${T.duration(d.s)} · ${fmtKm(d.km)}`;
+  routeSum.replaceChildren(el("span", trafficClass(d), {}, T.duration(d.s)), ` · ${fmtKm(d.km)}`);
+  if (d.delay >= 60) routeSum.append(el("span", `lm-delay ${trafficClass(d)}`, {}, T.delay(Math.round(d.delay / 60))));
   const go = el("div", "lm-nav-go");
   const startBtn = el("button", "lm-nav-start", { type: "button" });
   startBtn.innerHTML = svg(ICON.navigate, 18);
@@ -1792,6 +1889,7 @@ async function findRoute() {
     routeSteps.append(li);
   }
   drawEnds(d.line);
+  drawRouteTraffic(d);
   if (route.go && route.from?.me) {
     route.go = false;
     return navStart(false);
@@ -1987,6 +2085,31 @@ navBox.hidden = true;
 const navBanner = el("div", "lm-nav-banner");
 const navSign = el("div", "lm-nav-sign");
 const navThen = el("div", "lm-nav-then");
+const navLanes = el("div", "lm-nav-lanes", { "aria-hidden": "true" }); // the lanes before a turn, by car
+navLanes.hidden = true;
+// the arrows of a lane (bits of Valhalla) as arrows of ARROW, from left to right
+const LANE_ARROWS = [[256, "uturnLeft"], [4, "sharpLeft"], [8, "left"], [16, "slightLeft"], [512, "slightLeft"], [2, "straight"],
+  [1024, "slightRight"], [32, "slightRight"], [64, "right"], [128, "sharpRight"]];
+function renderLanes(st, toNext) {
+  const lanes = route.mode === "car" && toNext < 1200 ? st.lanes : null;
+  navLanes.hidden = !lanes?.length;
+  if (navLanes.hidden) return;
+  navLanes.innerHTML = "";
+  for (const l of lanes) {
+    const take = l.a || l.v || 0;
+    const box = el("div", `lm-lane${take ? " lm-lane-take" : ""}`);
+    let any = false;
+    for (const [bit, arrow] of LANE_ARROWS) {
+      if (!(l.d & bit)) continue;
+      any = true;
+      const a = el("span", `lm-lane-arrow${take & bit ? " lm-lane-on" : ""}`);
+      a.innerHTML = `<svg viewBox="0 0 24 24" width="26" height="26"><path d="${ARROW[arrow]}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      box.append(a);
+    }
+    if (!any) box.append(el("span", "lm-lane-arrow", {}, "·"));
+    navLanes.append(box);
+  }
+}
 const navLimit = el("div", "lm-nav-limit");
 const navSpeed = el("div", "lm-nav-speed"); // the speed now, by car and by bike
 navSpeed.hidden = true;
@@ -2008,7 +2131,7 @@ navCenter.append(T.recenter);
 navCenter.hidden = true;
 navBottom.append(navMute, navEta, navOverview, navEnd);
 
-navBox.append(navBanner, navSign, navThen, navLimit, navSpeed, navElev, navCenter, navBottom);
+navBox.append(navBanner, navLanes, navSign, navThen, navLimit, navSpeed, navElev, navCenter, navBottom);
 mapEl.append(navBox);
 
 // distances on the earth, in metres, near a point: x east, y north
@@ -2165,6 +2288,15 @@ function renderSign(st, toNext) {
   if (st.exit_name) navSign.append(el("div", "lm-sign-name", {}, st.exit_name));
   for (const t of (st.toward || []).slice(0, 3)) navSign.append(el("div", "lm-sign-to", {}, t));
 }
+// by car: dark at night where the car is, and in a tunnel of 200 m or more; light otherwise
+function navDayNight(p, at) {
+  const want = route.mode !== "car" ? null
+    : isNight(at[0], at[1]) || (nav.d.tunnels || []).some(([a, b, m]) => m >= 200 && p.i >= a && p.i < b) ? "dark" : "light";
+  if (want === navLook) return;
+  navLook = want;
+  document.documentElement.dataset.theme = theme();
+  restyle();
+}
 // the state of the trip at a point on the line
 function navUpdate(p, rawPos, off = false) {
   const d = nav.d, steps = d.steps, cfg = NAV[route.mode];
@@ -2191,6 +2323,7 @@ function navUpdate(p, rawPos, off = false) {
   if (next.roundabout) txt.lastChild.textContent = next.text;
   navBanner.append(arrow, txt);
   renderSign(next, toNext);
+  renderLanes(next, toNext);
   // the turn after, when it comes soon after this one
   const after = steps[k + 2];
   navThen.innerHTML = "";
@@ -2218,7 +2351,7 @@ function navUpdate(p, rawPos, off = false) {
     navSpeed.title = navSpeed.ariaLabel = T.speedNow(kmh);
   }
   navEta.innerHTML = "";
-  navEta.append(el("strong", "", {}, clock(s)), el("span", "", {}, `${T.duration(s)} · ${fmtKm(left / 1000)}`));
+  navEta.append(el("strong", trafficClass(d, p.i), {}, clock(s)), el("span", "", {}, `${T.duration(s)} · ${fmtKm(left / 1000)}`));
   // the spoken instructions: early, then at the turn; after the turn what comes
   const n = steps.indexOf(next);
   preSay([next, steps[k + 2], steps[k + 3]]);
@@ -2236,6 +2369,7 @@ function navUpdate(p, rawPos, off = false) {
   // off the route: the real position, and the heading of the device when it has one
   const at = off ? rawPos : p.ll, heading = off && rawPos.heading != null ? rawPos.heading : p.heading;
   nav.avatar?.set(at, heading, nav.sim ? 480 : 900, nav.speed || 0);
+  navDayNight(p, at);
   if (nav.elev) nav.elev.mark((p.along / (total || 1)) * nav.elev.km);
   if (nav.follow) {
     map.easeTo({ center: at, bearing: heading, pitch: nav.flat ? 0 : 60, zoom: cfg.zoom, padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
@@ -2248,6 +2382,7 @@ const navPad = () => {
   return { top: Math.round(h * 0.42), bottom: nav.elev ? 140 : 90, left: 20, right: 20 };
 };
 function drawNavLine(p) {
+  drawRouteTraffic(nav.d, p.i, p.ll);
   const rest = [p.ll, ...nav.d.line.slice(p.i + 1)];
   setSource("route", { type: "FeatureCollection", features: [
     { type: "Feature", geometry: { type: "LineString", coordinates: rest }, properties: {} },
@@ -2262,7 +2397,7 @@ function navArrive() {
   const arrow = el("div", "lm-nav-arrow");
   arrow.innerHTML = arrowSVG(4, 44);
   navBanner.append(arrow, el("div", "lm-nav-text lm-nav-instr", {}, T.arrived));
-  navSign.hidden = navThen.hidden = navLimit.hidden = navSpeed.hidden = true;
+  navSign.hidden = navThen.hidden = navLimit.hidden = navSpeed.hidden = navLanes.hidden = true;
   const last = nav.d.steps[nav.d.steps.length - 1];
   if (!nav.spoken.has("end")) {
     nav.spoken.add("end");
@@ -2370,7 +2505,7 @@ async function navStart(sim) {
   } else {
     navBanner.innerHTML = "";
     navBanner.append(el("div", "lm-nav-text lm-nav-instr", {}, T.waitGPS));
-    navSign.hidden = navThen.hidden = navLimit.hidden = true;
+    navSign.hidden = navThen.hidden = navLimit.hidden = navLanes.hidden = true;
     nav.watch = navigator.geolocation.watchPosition(onFix, (err) => {
       if (err.code === 1) {
         navBanner.innerHTML = "";
@@ -2381,6 +2516,11 @@ async function navStart(sim) {
 }
 function navStop() {
   nav.on = false;
+  if (navLook) { // back to the style of the menu
+    navLook = null;
+    document.documentElement.dataset.theme = theme();
+    restyle();
+  }
   stopTracking();
   hush();
   nav.lock?.release?.().catch(() => {});
@@ -2394,6 +2534,7 @@ function navStop() {
   setTimeout(() => {
     map.resize();
     drawEnds(route.answer?.line || null);
+    drawRouteTraffic(route.answer);
     const b = route.answer && extent({ type: "LineString", coordinates: route.answer.line });
     if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, pitch: 0, bearing: 0, duration: 700 }));
   }, 0);

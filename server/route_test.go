@@ -63,12 +63,13 @@ func fakeValhalla(t *testing.T, calls *atomic.Int32, last *map[string]any) *http
 		if r.Method == http.MethodPost && r.URL.Path == "/trace_attributes" {
 			var req map[string]any
 			json.NewDecoder(r.Body).Decode(&req)
-			if req["encoded_polyline"] != encodePolyline(routeLine, 1e6) || req["shape_match"] != "edge_walk" {
+			if req["encoded_polyline"] != encodePolyline(routeLine, 1e6) || req["shape_match"] != "walk_or_snap" || req["date_time"] == nil {
 				w.WriteHeader(400)
 				return
 			}
-			io.WriteString(w, `{"edges":[{"speed_limit":50,"begin_shape_index":0,"end_shape_index":1},{"speed_limit":"unlimited","begin_shape_index":1,"end_shape_index":1},`+
-				`{"speed_limit":120,"begin_shape_index":1,"end_shape_index":2}]}`)
+			io.WriteString(w, `{"shape":"`+encodePolyline(routeLine, 1e6)+`","edges":[{"speed_limit":50,"length":10,"speeds_non_faded":{"current_flow":20,"no_flow":50},"speed":20,"begin_shape_index":0,"end_shape_index":1},`+
+				`{"speed_limit":"unlimited","begin_shape_index":1,"end_shape_index":1},`+
+				`{"speed_limit":120,"length":60,"speeds_non_faded":{"current_flow":110,"no_flow":120},"speed":110,"tunnel":true,"begin_shape_index":1,"end_shape_index":2}]}`)
 			return
 		}
 		if r.Method != http.MethodPost || r.URL.Path != "/route" {
@@ -87,6 +88,7 @@ func fakeValhalla(t *testing.T, calls *atomic.Int32, last *map[string]any) *http
 		io.WriteString(w, `{"trip":{"summary":{"length":124.321,"time":5400.4},"legs":[{"shape":"`+encodePolyline(routeLine, 1e6)+
 			`","maneuvers":[{"instruction":"Drive west.","length":60.1,"time":2500,"type":1,"begin_shape_index":0,"end_shape_index":1,`+
 			`"verbal_pre_transition_instruction":"Drive west on A1.","street_names":["A1"],"highway":true,`+
+			`"lanes":[{"directions":2},{"directions":34,"active":32},{"directions":32,"valid":32}],`+
 			`"sign":{"exit_number_elements":[{"text":"52"}],"exit_branch_elements":[{"text":"A1"},{"text":"E 25"}],"exit_toward_elements":[{"text":"Bern"},{"text":"Basel"}]}},`+
 			`{"instruction":"You have arrived.","length":0,"time":0,"type":4,"begin_shape_index":2}]}]}}`)
 	}))
@@ -126,8 +128,21 @@ func TestRoute(t *testing.T) {
 		strings.Join(st.Routes, ",") != "A1,E 25" || strings.Join(st.Toward, ",") != "Bern,Basel" {
 		t.Errorf("step for navigation: %+v", st)
 	}
+	if len(st.Lanes) != 3 || st.Lanes[1] != (lane{34, 32, 0}) || st.Lanes[2] != (lane{32, 0, 32}) || a.Steps[1].Lanes != nil {
+		t.Errorf("lanes: %+v / %+v", st.Lanes, a.Steps[1].Lanes)
+	}
+	if last["turn_lanes"] != true {
+		t.Errorf("no turn_lanes asked")
+	}
 	if len(a.Limits) != 2 || a.Limits[0] != [3]int{0, 1, 50} || a.Limits[1] != [3]int{1, 2, 120} {
 		t.Errorf("limits: %v", a.Limits)
+	}
+	// 10 km at 20 instead of 50 km/h: a queue, 1080 s; 60 km at 110 instead of 120: 164 s more, no colour
+	if len(a.Traffic) != 1 || a.Traffic[0] != [3]int{0, 1, 2} || a.Delay != 1080+164 {
+		t.Errorf("traffic: %v, delay %v", a.Traffic, a.Delay)
+	}
+	if len(a.Tunnels) != 1 || a.Tunnels[0] != [3]int{1, 2, 60000} {
+		t.Errorf("tunnels: %v", a.Tunnels)
 	}
 	if a.Elev != nil {
 		t.Errorf("heights by car: %+v", a.Elev)

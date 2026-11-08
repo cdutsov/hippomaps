@@ -292,9 +292,9 @@ export function avatar(map, maplibregl, mode) {
       else last = 0;
     },
   };
-  map.addLayer(layer);
   const again = () => { if (!map.getLayer(layer.id)) try { map.addLayer(layer); } catch {} };
-  map.on("styledata", again); // a new map style drops the layer
+  map.on("styledata", again); // a new map style drops the layer, and one loading refuses it: added once it is there
+  again();
   return {
     // to ll (lon, lat) facing heading (degrees from north), in ms, at speed m/s
     set(ll, h, ms = 0, sp = 0) {
