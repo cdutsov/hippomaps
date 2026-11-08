@@ -29,6 +29,10 @@ const T = {
   back: "Results",
   searchArea: "Search this area",
   myLocation: "Show my location",
+  here: "Here",
+  around: "Around here",
+  hereLooking: "Looking at this point…",
+  hereNothing: "Nothing with a name right here. Zoom in closer, or tap a symbol of the map.",
   locBlocked: "Location is blocked for this page. Allow it in the settings of the browser, then try again.",
   locFailed: "Your location could not be found.",
   locMissing: "This browser does not share a location.",
@@ -165,10 +169,20 @@ form.append(combo);
 const status = el("div", "lm-status", { role: "status", "aria-live": "polite" });
 status.hidden = true;
 const body = el("div", "lm-body");
+const head = el("div", "lm-head"); // the title of the list, where the sheet is dragged on a phone
 const listView = el("section", "lm-listview");
 const detailView = el("section", "lm-detail");
 detailView.hidden = true;
-body.append(listView, detailView);
+const hereView = el("section", "lm-here");
+hereView.hidden = true;
+body.append(listView, hereView, detailView);
+// show one of the views of the side bar: the list, what is here, the page of a place
+const showView = (v) => {
+  listView.hidden = v !== listView;
+  hereView.hidden = v !== hereView;
+  detailView.hidden = v !== detailView;
+  body.scrollTop = 0;
+};
 const foot = el("div", "lm-foot", {}, T.credit);
 side.append(sheetBtn, top, form, status, body, foot);
 
@@ -193,7 +207,7 @@ locBtn.innerHTML = svg(ICON.locate, 22);
 mapEl.append(areaBtn, locBtn);
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty };
+const sources = { me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty };
 const ACCENT = "#d0312d";
 map.on("style.load", () => {
   for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
@@ -221,6 +235,8 @@ map.on("style.load", () => {
   map.addLayer({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
   map.addLayer({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
     paint: { "circle-radius": 7, "circle-color": "#1a73e8", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+  map.addLayer({ id: "lm-pin", type: "circle", source: "lm-pin",
+    paint: { "circle-radius": 8, "circle-color": "#111827", "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
   map.addLayer({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
       "text-max-width": 10, "text-optional": true },
@@ -256,8 +272,67 @@ themeBtn.addEventListener("click", () => {
   themeBtn.title = themeBtn.ariaLabel = theme() === "dark" ? T.light : T.dark;
   map.setStyle(styleURL(), { diff: false });
 });
-sheetBtn.addEventListener("click", () => root.classList.toggle("lm-collapsed"));
-// on a phone the sheet covers the lower part of the map: its height lifts the controls
+// only the map zooms: Safari ignores user-scalable=no and zooms the page on a pinch
+for (const ev of ["gesturestart", "gesturechange"]) {
+  document.addEventListener(ev, (e) => { if (!mapEl.contains(e.target)) e.preventDefault(); }, { passive: false });
+}
+document.addEventListener("dblclick", (e) => { if (!mapEl.contains(e.target)) e.preventDefault(); });
+
+// ------------------------------------------------------------------ the sheet on a phone
+// The side bar is a sheet over the lower part of the map, at one of three heights: peek
+// (the search box and the title), half, full. It is dragged by its handle and its title.
+const phone = () => matchMedia("(max-width: 760px)").matches;
+const sheet = { state: "half" };
+const sheetHeights = () => ({
+  peek: Math.min(form.offsetTop + form.offsetHeight + 64, innerHeight * 0.4),
+  half: Math.round(innerHeight * 0.48),
+  full: innerHeight - 56,
+});
+function setSheet(state) {
+  if (!phone()) return;
+  sheet.state = state;
+  root.dataset.sheet = state;
+  side.style.height = `${sheetHeights()[state]}px`;
+}
+const toggleSheet = () => setSheet(sheet.state === "peek" ? "half" : "peek");
+let pointerAt = 0; // the last release on a drag zone: the click after it is that release again
+sheetBtn.addEventListener("click", () => { if (Date.now() - pointerAt > 500) toggleSheet(); }); // the keyboard
+for (const zone of [sheetBtn, head]) {
+  let startY = 0, startH = 0, moved = false, id = null;
+  zone.addEventListener("pointerdown", (e) => {
+    if (!phone()) return;
+    id = e.pointerId;
+    startY = e.clientY;
+    startH = side.offsetHeight;
+    moved = false;
+    zone.setPointerCapture(id);
+    side.classList.add("lm-dragging");
+  });
+  zone.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== id) return;
+    const dy = startY - e.clientY;
+    if (Math.abs(dy) > 4) moved = true;
+    const h = sheetHeights();
+    side.style.height = `${Math.max(h.peek * 0.8, Math.min(h.full, startH + dy))}px`;
+  });
+  const end = (e) => {
+    if (e.pointerId !== id) return;
+    id = null;
+    pointerAt = Date.now();
+    side.classList.remove("lm-dragging");
+    if (!moved) return zone === sheetBtn ? toggleSheet() : setSheet(sheet.state);
+    const h = sheetHeights(), now = side.offsetHeight, dy = now - startH;
+    const order = ["peek", "half", "full"];
+    let i = order.indexOf(sheet.state);
+    if (dy > 50) i = Math.min(2, i + (now > h.half + 80 ? 2 : 1));
+    else if (dy < -50) i = Math.max(0, i - (now < h.half - 80 ? 2 : 1));
+    setSheet(order[Math.min(2, Math.max(0, i))]);
+  };
+  zone.addEventListener("pointerup", end);
+  zone.addEventListener("pointercancel", end);
+}
+addEventListener("resize", () => setSheet(sheet.state));
+// the sheet covers the lower part of the map: its height lifts the controls
 new ResizeObserver(() => root.style.setProperty("--sheet", `${side.offsetHeight}px`)).observe(side);
 
 // ------------------------------------------------------------------ state
@@ -323,6 +398,7 @@ const pick = (i) => {
   input.value = s.text;
   chosen = null;
   closeList();
+  if (phone()) input.blur();
   run(s.text, placeOf(s));
 };
 const accept = (s) => {
@@ -353,7 +429,7 @@ input.addEventListener("keydown", (e) => {
     if (!list.hidden) { e.preventDefault(); closeList(); }
   }
 });
-input.addEventListener("focus", () => root.classList.remove("lm-collapsed"));
+input.addEventListener("focus", () => setSheet("full"));
 input.addEventListener("blur", () => setTimeout(closeList, 120));
 clearBtn.addEventListener("click", () => {
   input.value = "";
@@ -367,6 +443,7 @@ form.addEventListener("submit", (e) => {
   suggestCtl?.abort();
   closeList();
   const text = input.value.trim();
+  if (phone()) input.blur(); // the keyboard goes, and the map is in view again
   if (text) run(text, chosen && chosen.text.trim() === text ? chosen.extra : {});
 });
 
@@ -436,7 +513,7 @@ async function run(text, extra = {}, { push = true, bbox = null, sel = null } = 
   if (push) writeURL(sel);
   areaBtn.hidden = true;
   say(T.searching);
-  root.classList.remove("lm-collapsed");
+  hereDone();
   const limit = setTimeout(() => ctl.abort("timeout"), 75e3);
   try {
     const qr = await fetch(`${API}/query?${params}`, { signal: ctl.signal });
@@ -491,7 +568,6 @@ window.addEventListener("popstate", () => {
 });
 
 // ------------------------------------------------------------------ the list
-const head = el("div", "lm-head");
 const title = el("h1", "lm-title");
 const notes = el("p", "lm-notes");
 const chips = el("div", "lm-chips");
@@ -533,8 +609,7 @@ function clear() {
   count.textContent = "";
   moreBtn.hidden = true;
   query.hidden = true;
-  detailView.hidden = true;
-  listView.hidden = false;
+  showView(listView);
 }
 const chip = (label, onClick, cls = "") => {
   const b = el("button", `lm-chip ${cls}`.trim(), { type: "button" }, label);
@@ -598,6 +673,7 @@ function show(d, sel) {
   }));
   qPre.textContent = d.query || "";
   query.hidden = !d.query;
+  setSheet(place ? "peek" : "half");
   const box = d.results?.bbox;
   const pick = sel && state.byId.get(sel);
   if (box?.length === 4 && !pick) {
@@ -616,8 +692,9 @@ function show(d, sel) {
   else if (found.some((f) => f.properties.opening_hours)) loadHours().then(() => markHours());
   if (pick) select(pick, { push: false });
 }
-const pad = () => (matchMedia("(max-width: 760px)").matches
-  ? { top: 40, left: 30, right: 30, bottom: Math.min(innerHeight * 0.5, side.offsetHeight) + 20 }
+// pad keeps what the map fits to out from under the sheet on a phone
+const pad = () => (phone()
+  ? { top: 40, left: 30, right: 30, bottom: Math.min(innerHeight - 140, sheetHeights()[sheet.state] + 20) }
   : { top: 50, left: 50, right: 50, bottom: 50 });
 
 const PAGE = 40;
@@ -629,7 +706,7 @@ function renderMore() {
 }
 moreBtn.addEventListener("click", renderMore);
 
-function card(f) {
+function card(f, { fromHere = false } = {}) {
   const p = f.properties, t = tagsOf(p), k = kindOf(p);
   const li = el("li");
   const b = el("button", "lm-card", { type: "button", "data-id": p.id });
@@ -646,7 +723,7 @@ function card(f) {
   if (addr || dist) text.append(el("span", "lm-card-addr", {}, [dist, addr].filter(Boolean).join(" · ")));
   if (p.opening_hours) text.append(el("span", "lm-card-hours", { "data-hours": "" }));
   b.append(text, thumb);
-  b.addEventListener("click", () => select(f));
+  b.addEventListener("click", () => select(f, { push: !fromHere }));
   b.addEventListener("mouseenter", () => hover(f));
   b.addEventListener("mouseleave", () => hover(null));
   li.append(b);
@@ -807,8 +884,7 @@ async function openNow(o) {
 function showList() {
   state.selected = null;
   setSource("selected", empty);
-  detailView.hidden = true;
-  listView.hidden = false;
+  showView(state.from === "here" ? hereView : listView);
 }
 function select(f, { push = true, fly = true } = {}) {
   state.selected = f;
@@ -823,22 +899,21 @@ function select(f, { push = true, fly = true } = {}) {
     if (f.geometry.type === "Point" || !b) fit(() => map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 16), duration: 600, padding: pad() }));
     else fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 17, duration: 600 }));
   }
+  state.from = hereView.hidden ? "list" : "here";
   renderDetail(f);
-  listView.hidden = true;
-  detailView.hidden = false;
-  body.scrollTop = 0;
-  root.classList.remove("lm-collapsed");
+  showView(detailView);
+  setSheet(sheet.state === "full" ? "full" : "half");
 }
 function renderDetail(f) {
   const p = f.properties, t = tagsOf(p), k = kindOf(p);
   detailView.innerHTML = "";
   const back = el("button", "lm-back", { type: "button" });
   back.innerHTML = svg(ICON.back, 18);
-  back.append(T.back);
+  back.append(state.from === "here" ? T.here : T.back);
   back.addEventListener("click", () => {
-    if (state.pushedSel) return history.back();
+    if (state.pushedSel && state.from !== "here") return history.back();
     showList();
-    writeURL(null, true);
+    if (state.from !== "here") writeURL(null, true);
   });
   detailView.append(back);
   const fig = el("figure", "lm-pic");
@@ -922,6 +997,83 @@ function renderDetail(f) {
     all.append(dl);
     detailView.append(all);
   }
+}
+
+// ------------------------------------------------------------------ what is here
+// A tap on the map, not on a result: a pin, the address and the named things around it.
+// The first tap only closes the search box when it is open. A tapped symbol of the map
+// opens that place when the answer has it.
+let hereCtl = null;
+map.on("click", (e) => {
+  if (e.defaultPrevented) return;
+  if (document.activeElement === input || !list.hidden) {
+    closeList();
+    input.blur();
+    setSheet(state.answer || !hereView.hidden ? "half" : "peek");
+    return;
+  }
+  here(e.lngLat, symbolAt(e.point));
+});
+// symbolAt is the name of a symbol of the map (a shop, a stop) under a point
+function symbolAt(pt) {
+  const layers = (map.getStyle()?.layers || []).filter((l) => l.type === "symbol" && /poi|pois/i.test(l.id)).map((l) => l.id);
+  const f = layers.length ? map.queryRenderedFeatures([[pt.x - 6, pt.y - 6], [pt.x + 6, pt.y + 6]], { layers })[0] : null;
+  return f?.properties?.name || "";
+}
+function hereDone() {
+  hereCtl?.abort();
+  setSource("pin", empty);
+}
+async function here(ll, symbol) {
+  hereCtl?.abort();
+  const ctl = hereCtl = new AbortController();
+  const lat = +ll.lat.toFixed(5), lon = +ll.lng.toFixed(5);
+  setSource("pin", one({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: {} }));
+  setSource("selected", empty);
+  state.selected = null;
+  hereView.innerHTML = "";
+  if (state.answer) {
+    const back = el("button", "lm-back", { type: "button" });
+    back.innerHTML = svg(ICON.back, 18);
+    back.append(T.back);
+    back.addEventListener("click", () => { hereDone(); showView(listView); });
+    hereView.append(back);
+  }
+  const h = el("h2", "lm-dname", {}, symbol || T.here);
+  const sub = el("p", "lm-dsub", {}, `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+  const note = el("p", "lm-notes lm-here-note", {}, T.hereLooking);
+  hereView.append(h, sub, note);
+  showView(hereView);
+  setSheet("half");
+  let d;
+  try {
+    const r = await fetch(`${API}/here?${new URLSearchParams({ lat, lon, zoom: String(Math.round(map.getZoom())) })}`, { signal: ctl.signal });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      note.textContent = problem(d);
+      return;
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") note.textContent = T.failed;
+    return;
+  }
+  if (ctl.signal.aborted) return;
+  const fs = d.results?.features || [];
+  for (const f of fs) state.byId.set(f.properties.id, f);
+  h.textContent = d.place?.label || symbol || T.here;
+  sub.textContent = [d.place?.detail, `${lat.toFixed(5)}, ${lon.toFixed(5)}`].filter(Boolean).join(" · ");
+  note.textContent = fs.length ? "" : T.hereNothing;
+  note.hidden = fs.length > 0;
+  if (fs.length) {
+    hereView.append(el("p", "lm-count", {}, T.around));
+    const ol = el("ol", "lm-results");
+    for (const f of fs) ol.append(card(f, { fromHere: true }));
+    hereView.append(ol);
+    if (fs.some((f) => f.properties.opening_hours)) loadHours().then(() => markHours(ol));
+  }
+  // the symbol tapped: its page at once
+  const hit = symbol && fs.find((f) => fold(f.properties.name || "") === fold(symbol));
+  if (hit) select(hit, { push: false, fly: false });
 }
 
 // ------------------------------------------------------------------ start

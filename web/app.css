@@ -29,7 +29,8 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { height: 100%; margin: 0; }
+/* no pull to refresh over the map, and no zoom of the page: only the map zooms (it handles its own touches) */
+html, body { height: 100%; margin: 0; overscroll-behavior: none; touch-action: pan-x pan-y; }
 body { background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 a { color: var(--accent); }
 button { font: inherit; color: inherit; }
@@ -137,12 +138,15 @@ button { font: inherit; color: inherit; }
 @media (max-width: 760px) {
   .lm { grid-template-columns: 1fr; }
   .lm-map { grid-area: 1 / 1; }
-  .lm-side { grid-area: 1 / 1; align-self: end; max-height: 62dvh; border-right: 0; border-radius: 16px 16px 0 0; padding-top: 10px; }
-  .lm-sheet-btn { display: block; position: absolute; top: 0; left: 0; right: 0; height: 22px; border: 0; background: none; cursor: pointer; }
-  .lm-sheet-btn::before { content: ""; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 7px auto 0; }
+  .lm-side { grid-area: 1 / 1; align-self: end; height: 48dvh; border-right: 0; border-radius: 16px 16px 0 0; padding-top: 14px;
+    transition: height .22s ease; overflow: hidden; }
+  .lm-side.lm-dragging { transition: none; }
+  .lm-sheet-btn { display: block; position: absolute; top: 0; left: 0; right: 0; height: 26px; border: 0; background: none; cursor: grab; touch-action: none; z-index: 1; }
+  .lm-sheet-btn::before { content: ""; display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--muted); opacity: .45; margin: 8px auto 0; }
+  .lm-head { touch-action: none; }
   .lm-top { display: none; }
   .lm-foot { display: none; }
-  .lm.lm-collapsed .lm-body, .lm.lm-collapsed .lm-status { display: none; }
+  .lm[data-sheet=peek] .lm-chips, .lm[data-sheet=peek] .lm-status { display: none; }
   .lm-thumb { width: 60px; height: 60px; }
   .lm-area { top: 10px; }
 }
@@ -164,3 +168,5 @@ button { font: inherit; color: inherit; }
 .lm-chip { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lm-chip-place { max-width: 16rem; }
 .lm-tag a { color: inherit; }
+.lm-here-note { padding: 0 1rem; }
+.lm-here .lm-count { margin-top: .8rem; }
