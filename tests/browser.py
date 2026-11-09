@@ -184,9 +184,9 @@ try:
     call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
     wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 10)
     js("document.querySelector('.lm-dir-btn').click()")
-    check(wait("document.getElementById('app').classList.contains('lm-navigating')", 40), "a tapped point and the Directions button: navigation to it")
-    js("document.querySelector('.lm-nav-x')?.click()")
-    wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+    check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && document.querySelector('.lm-nav-go .lm-chip')", 40)
+          and not js("document.getElementById('app').classList.contains('lm-navigating')"),
+          "a tapped point and the Directions button: the route to it, with Preview and Start")
 
     # the X clears everything
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
@@ -210,8 +210,30 @@ try:
     check(wait("document.querySelector('.lm-place-acts .lm-action')", 40) and wait("document.querySelector('.lm-dir-btn').hidden", 3),
           "a place found: Directions under its name only")
     check(wait("!document.querySelector('.lm-place-pic').hidden && document.querySelector('.lm-place-pic img')?.naturalWidth > 0", 30), "a place found: its photo")
+    check(js("(() => { const t = document.querySelector('.lm-title').getBoundingClientRect(), a = document.querySelector('.lm-place-acts').getBoundingClientRect();"
+             " return a.top >= t.bottom - 1; })()"), "a place found: its buttons under its name")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
     check(wait("!document.querySelector('.lm-dir-btn').hidden", 3), "the Directions button back after the X")
+
+    # a suggestion picked by a finger: the finger lifting lands on the map (the keyboard went) and opens nothing there
+    js("document.querySelector('.lm-input').focus()")
+    call("Input.insertText", text="Bern")
+    wait("[...document.querySelectorAll('.lm-suggest .lm-opt-place')].some(o => /^Bern/.test(o.textContent))", 20)
+    spot = js("(() => { for (let y = 5; y < 400; y += 5) for (const x of [40, 120, 195, 270, 350]) { const e = document.elementFromPoint(x, y);"
+              " if (e?.classList.contains('maplibregl-canvas')) return [x, y]; } return null; })()")
+    js("[...document.querySelectorAll('.lm-suggest .lm-opt-place')].find(o => /^Bern/.test(o.textContent))"
+       ".dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }))")
+    for t in ("mousePressed", "mouseReleased") if spot else ():
+        call("Input.dispatchMouseEvent", type=t, x=spot[0], y=spot[1], button="left", clickCount=1)
+    check(wait("/Bern/.test(document.querySelector('.lm-title')?.textContent || '')", 40) and not wait("!document.querySelector('.lm-here').hidden", 2),
+          "a suggestion tapped opens it, not the map under the finger")
+    # Back to no search: the panel down to the search box
+    for _ in range(6):
+        js("history.back()")
+        if wait("!location.search", 4):
+            break
+    check(wait("document.querySelector('.lm-input').value === '' && document.getElementById('app').dataset.sheet === 'peek'", 10),
+          "Back to no search: the panel down to the search box")
 
     # a place starred: in the empty search box, and on the map; the last search there too
     js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Thun'; document.querySelector('.lm-form').requestSubmit(); })()")

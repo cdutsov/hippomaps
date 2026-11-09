@@ -56,12 +56,11 @@ button { font: inherit; color: inherit; }
 .lm-dir-btn:hover { filter: brightness(1.1); }
 .lm-dir-btn[hidden] { display: none; }
 .lm-head { position: relative; }
-.lm-place-acts { position: absolute; top: .45rem; right: 1rem; border-bottom: 0; padding: 0; overflow: visible; }
+.lm-place-acts { border-bottom: 0; padding: .35rem 0 .2rem; overflow: visible; flex-wrap: wrap; } /* under the title: a long name and three buttons do not fit side by side */
 .lm-place-acts:empty { display: none; }
 .lm-place-acts .lm-action { flex-direction: row; gap: .3rem; min-width: 0; padding: .35rem .8rem .35rem .45rem; border: 1px solid var(--line);
   border-radius: 20px; background: var(--bg); font-size: .85rem; font-weight: 600; }
 .lm-place-acts .lm-action svg { width: 22px; height: 22px; padding: 0; border: 0; background: none; }
-.lm-head:has(.lm-place-acts:not(:empty)) .lm-title, .lm-head:has(.lm-place-acts:not(:empty)) .lm-notes { padding-right: 9rem; }
 .lm-combo { position: relative; display: flex; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); }
 .lm-combo:focus-within { border-color: var(--accent); }
 .lm-input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--fg); font: inherit; font-size: 16px; padding: .7rem 0 .7rem 1.1rem; }

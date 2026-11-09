@@ -330,7 +330,7 @@ dirBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden=
 dirBtn.hidden = !ROUTE;
 dirBtn.addEventListener("click", () => {
   const to = placeNow();
-  if (to) return directions(to, true);
+  if (to) return directions(to); // the route with Preview and Start, not navigation at once
   if (routeView.hidden) directions(null);
   routeView.querySelector(route.to ? ".lm-end-from input" : ".lm-end-to input")?.focus();
 });
@@ -1010,8 +1010,8 @@ document.addEventListener("dblclick", (e) => { if (!mapEl.contains(e.target)) e.
 const phone = () => matchMedia("(max-width: 760px)").matches;
 const sheet = { state: "half" };
 const sheetHeights = () => ({
-  // peek: the search box and the title under it; the search box alone while nothing is under it
-  peek: Math.min(form.offsetTop + form.offsetHeight + (title.textContent || notes.textContent ? 64 : 14), innerHeight * 0.4),
+  // peek: the search box and the title under it, with the buttons of a place found; the search box alone while nothing is under it
+  peek: Math.min(form.offsetTop + form.offsetHeight + (title.textContent || notes.textContent ? 64 : 14) + (root.querySelector(".lm-place-acts:not(:empty)") ? 44 : 0), innerHeight * 0.4),
   half: Math.round(innerHeight * 0.48),
   full: innerHeight - 56,
 });
@@ -1212,6 +1212,18 @@ const markActive = (i) => {
     list.querySelector(`#lm-opt-${i}`)?.scrollIntoView({ block: "nearest" });
   }
 };
+// swallowTap: a list picked at the finger going down closes at once, and the finger lifting would
+// tap what was under it, the map (the place there replaced the one picked) or a card
+let ghostUntil = 0;
+const swallowTap = () => {
+  ghostUntil = Date.now() + 700;
+  const eat = (e) => {
+    if (Date.now() < ghostUntil) { e.preventDefault(); e.stopPropagation(); }
+    removeEventListener("click", eat, true);
+  };
+  addEventListener("click", eat, true);
+  setTimeout(() => removeEventListener("click", eat, true), 800);
+};
 const placeOf = (s) => Object.fromEntries(placeKeys.filter((k) => s[k]).map((k) => [k, s[k]]));
 const renderList = (items) => {
   options = items;
@@ -1225,7 +1237,7 @@ const renderList = (items) => {
     txt.append(el("span", "lm-opt-label", {}, s.label));
     if (s.detail) txt.append(el("span", "lm-opt-detail", {}, s.detail));
     li.append(ic, txt);
-    li.addEventListener("pointerdown", (e) => { e.preventDefault(); pick(i); }); // at once (a phone: before the box loses its focus)
+    li.addEventListener("pointerdown", (e) => { e.preventDefault(); swallowTap(); pick(i); }); // at once (a phone: before the box loses its focus)
     list.append(li);
   });
   list.hidden = false;
@@ -1475,7 +1487,21 @@ window.addEventListener("popstate", () => {
     const f = sel && state.byId.get(sel);
     if (f) select(f, { push: false }); else showList();
   } else if (q) run(q, extra, { push: false, sel });
-  else { state.text = ""; input.value = ""; clear(); intro(); }
+  else { // back to no search: the panel folds down to the search box, unless directions are open
+    state.text = "";
+    state.extra = {};
+    input.value = "";
+    clearBtn.hidden = true;
+    closeList();
+    clear();
+    intro();
+    if (routeView.hidden) {
+      hereDone();
+      showView(listView);
+      if (document.activeElement === input) input.blur();
+      setSheet("peek");
+    }
+  }
 });
 
 // ------------------------------------------------------------------ the list
@@ -1633,6 +1659,7 @@ function show(d, sel) {
     if (c) placeActs.append(starButton({ ll: c, name: place.properties.name || d.text, detail: place.properties.detail || "" }));
     placeActs.append(shareButton(() => ({ title: place.properties.name || d.text, url: location.href }), true));
     showDirBtn();
+    setSheet("peek"); // again: with the buttons
     const id = place.properties.id;
     if (PICTURES && /^relation\/\d+$/.test(id || "")) {
       picture({}, 500, id).then((pic) => {
@@ -1986,7 +2013,7 @@ let tapTimer = 0;
 map.on("dblclick", () => clearTimeout(tapTimer));
 map.on("zoomstart", (e) => { if (e.originalEvent) clearTimeout(tapTimer); });
 map.on("click", (e) => {
-  if (e.defaultPrevented) return;
+  if (e.defaultPrevented || Date.now() < ghostUntil) return;
   clearTimeout(tapTimer);
   tapTimer = setTimeout(() => onTap(e), 280);
 });
@@ -2020,8 +2047,17 @@ function onTap(e) {
     return setFrom(p);
   }
   const fromRoute = !routeView.hidden || route.keep; // the place's card goes back to the route
-  if (hit) return select(hit, { fly: false });
-  here(e.lngLat, symbolAt(e.point), fromRoute);
+  if (hit) select(hit, { fly: false });
+  else here(e.lngLat, symbolAt(e.point), fromRoute);
+  keepInView(e.lngLat);
+}
+// keepInView moves the map on a phone when the sheet, risen with the place tapped, covers it:
+// the place comes to the middle of the map still in view
+function keepInView(ll) {
+  if (!phone() || sheet.state === "full") return;
+  const p = map.project(ll), seen = mapEl.clientHeight - sheetHeights()[sheet.state];
+  if (p.y > 60 && p.y < seen - 60) return;
+  map.panBy([0, p.y - Math.max(seen / 2, 60)], { duration: 400 });
 }
 // resultAt is the result nearest to a point of the screen, within the size of a finger
 // on a phone (24 px) or of a pointer (12 px); null when none is that near
@@ -2352,7 +2388,7 @@ function placeField(which) {
       txt.append(el("span", "lm-opt-label", {}, it.label));
       if (it.detail) txt.append(el("span", "lm-opt-detail", {}, it.detail));
       li.append(ic, txt);
-      li.addEventListener("pointerdown", (e) => { e.preventDefault(); choose(i); }); // at once: on a phone the field loses its focus before a mousedown comes
+      li.addEventListener("pointerdown", (e) => { e.preventDefault(); swallowTap(); choose(i); }); // at once: on a phone the field loses its focus before a mousedown comes
       opts.append(li);
     });
     opts.hidden = false;
