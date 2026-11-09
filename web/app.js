@@ -1874,7 +1874,10 @@ const dayHm = (d) => {
 function stateText(oh) {
   const now = new Date();
   const open = oh.getState(now);
-  const next = oh.getNextChange(now);
+  // within a week: without an end, opening_hours.js looks for the next change year after year, with
+  // the holidays of each year, for hours that never change (24/7 with holidays): the fuel stations
+  // around Zurich froze the page for a minute
+  const next = oh.getNextChange(now, new Date(now.getTime() + 8 * 86400e3));
   const when = next ? (open ? T.closes(dayHm(next)) : T.opens(dayHm(next))) : "";
   return { open, text: [open ? T.open : T.closed, when].filter(Boolean).join(" · ") };
 }

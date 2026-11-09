@@ -141,7 +141,8 @@ button { font: inherit; color: inherit; }
 
 .lm-foot { padding: .5rem 1rem .6rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .7rem; line-height: 1.35; }
 
-.lm-area { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 3; border: 0; border-radius: 18px; padding: .5rem 1rem;
+/* under the row of bubbles */
+.lm-area { position: absolute; top: calc(max(12px, env(safe-area-inset-top)) + 48px); left: 50%; transform: translateX(-50%); z-index: 3; border: 0; border-radius: 18px; padding: .5rem 1rem;
   background: var(--bg); color: var(--accent); font-weight: 600; box-shadow: var(--shadow); cursor: pointer; }
 .lm-area:hover { background: var(--hot); }
 .maplibregl-ctrl-group { background: var(--bg); }
@@ -161,7 +162,6 @@ button { font: inherit; color: inherit; }
   .lm-foot { display: none; }
   .lm[data-sheet=peek] .lm-chips, .lm[data-sheet=peek] .lm-status { display: none; }
   .lm-thumb { width: 60px; height: 60px; }
-  .lm-area { top: 10px; }
 }
 
 /* the location button and the toast */
@@ -258,7 +258,6 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 @media (max-width: 760px) {
   .lm-map-burger { display: grid; position: absolute; top: 10px; left: 10px; z-index: 3; width: 44px; height: 44px; border-radius: 50%;
     background: var(--bg); color: var(--fg); box-shadow: var(--shadow); }
-  .lm-area { left: calc(50% + 20px); }
 }
 
 /* the name: "maps" in the blue of ".ch" in the logo of overpass.ch */
