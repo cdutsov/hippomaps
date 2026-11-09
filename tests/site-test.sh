@@ -92,6 +92,21 @@ if grep -q "data-route=" "$TMP/page"; then
 	n=$(jq "[.steps[] | select(.lanes)] | length" "$TMP/b" 2>/dev/null)
 	[[ ${n:-0} -ge 1 ]] && ok "Zurich - Bern: $n turns with lanes" || ko "Zurich - Bern: no lanes at the turns"
 	jq -e "(.delay // 0) >= 0 and ((.traffic // []) | all(length == 3))" "$TMP/b" >/dev/null 2>&1 && ok "the traffic of the route: $(jq "(.traffic // []) | length" "$TMP/b") slowed stretches, $(jq ".delay // 0" "$TMP/b") s" || ko "the traffic of the route: $(jq -c "{traffic, delay}" "$TMP/b")"
+	# fuel along the route (Overpass of overpass.ch), when the page offers the search along
+	if grep -q "data-along=" "$TMP/page"; then
+		jq -c '{line: .line, cat: "fuel", mode: "car"}' "$TMP/b" >"$TMP/line"
+		code=$(get -X POST -H 'Content-Type: application/json' --data-binary "@$TMP/line" "$PAGE/api/along")
+		n=$(jq "(.features // []) | length" "$TMP/b" 2>/dev/null)
+		[[ $code == 200 && ${n:-0} -ge 10 ]] && jq -e '[.features[].properties.at] | . == sort' "$TMP/b" >/dev/null &&
+			ok "Zurich - Bern: $n fuel stations along, in the order of the route" || ko "fuel along Zurich - Bern: HTTP $code, ${n:-no} places"
+	fi
+	# by Lucerne: two legs joined, the stop at the joint
+	code=$(get "$PAGE/api/route?from=47.3779,8.5403&via=47.0502,8.3093&to=46.9490,7.4391&mode=car")
+	if [[ $code == 200 ]] && jq -e '(.stops | length) == 1 and ([.steps[] | select(.stop == 1)] | length) == 1 and .stops[0] > 0 and .stops[0] < (.line | length)' "$TMP/b" >/dev/null; then
+		ok "Zurich - Lucerne - Bern: $(jq -r .km "$TMP/b") km, the stop at point $(jq '.stops[0]' "$TMP/b") of $(jq '.line | length' "$TMP/b")"
+	else
+		ko "a route with a stop: HTTP $code $(head -c 200 "$TMP/b")"
+	fi
 	if grep -q "data-route=" "$TMP/page"; then
 		code=$(get "$PAGE/api/route?from=46.5936,7.9086&to=46.6058,7.9218&mode=walk") # Lauterbrunnen - Wengen, 500 m up
 		up=$(jq -r ".elev.up // empty" "$TMP/b" 2>/dev/null)

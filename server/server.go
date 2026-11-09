@@ -162,6 +162,9 @@ func New(cfg Config) *Server {
 	}
 	if s.cfg.ElevationKey != "" { // the key of the APIs of overpass.ch: Overpass too
 		s.mux.HandleFunc("GET "+base+"/api/transit", s.transit)
+		if s.cfg.RoutingURL != "" {
+			s.mux.HandleFunc("POST "+base+"/api/along", s.along)
+		}
 	}
 	if s.cfg.PublicURL != "" {
 		s.mux.HandleFunc("GET /robots.txt", s.robots)
@@ -218,7 +221,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Transit": s.cfg.ElevationKey != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Transit": s.cfg.ElevationKey != "", "Along": s.cfg.ElevationKey != "" && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
 	if err := s.page.Execute(&buf, data); err != nil {
 		s.log.Error("page", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

@@ -10,37 +10,6 @@ import (
 	"testing"
 )
 
-// encodePolyline is the inverse of decodePolyline, for the fake.
-func encodePolyline(pts [][2]float64, precision float64) string {
-	var b strings.Builder
-	var plat, plon int
-	enc := func(v int) {
-		u := v << 1
-		if v < 0 {
-			u = ^u
-		}
-		for u >= 0x20 {
-			b.WriteByte(byte((0x20 | (u & 0x1f)) + 63))
-			u >>= 5
-		}
-		b.WriteByte(byte(u + 63))
-	}
-	for _, p := range pts {
-		lat, lon := int(p[1]*precision+0.5*sign(p[1])), int(p[0]*precision+0.5*sign(p[0]))
-		enc(lat - plat)
-		enc(lon - plon)
-		plat, plon = lat, lon
-	}
-	return b.String()
-}
-
-func sign(v float64) float64 {
-	if v < 0 {
-		return -1
-	}
-	return 1
-}
-
 var routeLine = [][2]float64{{8.5403, 47.3779}, {8.2, 47.2}, {7.4391, 46.949}}
 
 func fakeValhalla(t *testing.T, calls *atomic.Int32, last *map[string]any) *httptest.Server {

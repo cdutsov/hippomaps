@@ -51,11 +51,21 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
 - Directions (with `ROUTING_URL`; without it the button opens OpenStreetMap): to a place, or to a tapped point, by car, bike or
   on foot. Start and destination are fields that suggest places and addresses from the geocoder of overpass.ch
   (Photon, `/v1/{key}/geocode/api` with the key of the map, near the map view; the location of the visitor first); the start
-  can also be a tap on the map; a button swaps start and destination. The line on
+  can also be a tap on the map; a button swaps start and destination. Stops on the way (up to 8): Add stop gives a field
+  of the same kind, with a button to remove it; a point tapped on the map with a route shown can be added as a stop; a
+  stop found elsewhere goes between the stops where it falls on the route. On the map the stops are orange and numbered;
+  the step of each says its name; the link to share has them (`via`, `vn`). The line on
   the map, time and length, and the steps in the language of the browser; a tap on a step moves the map there. The mode is
   kept in the browser (`hm-mode`). By bike and on foot, the height profile (with `ELEVATION_KEY`): up and down, coloured by
   how steep each part is; under the mouse or a finger the height and distance, and the point on the map. In navigation a strip
   of it shows the point reached and the climb still to come.
+- Search along the route (with `ELEVATION_KEY`): under the route, the kinds of places of the mode (by car fuel, charging, rest
+  areas, food, cafés, groceries, toilets, hotels; by bike and on foot drinking water, bike shops, pharmacies among them). A kind
+  shows the places near the line (500 m by car, 250 by bike, 150 on foot) in the order of the route, with how far along and how
+  far off the route each is and its opening hours, as orange points on the map; + adds one as a stop. The kind stays chosen for
+  the route with the stop. In navigation the magnifier opens the same, with the places ahead only; one added gives a new route
+  from where the traveller is, by the stops still ahead, and goes into the stops of directions: after navigation they show
+  the route with it.
 - Navigation, turn by turn, from the directions: Start follows the location of the browser, Preview drives the route at three
   times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a car, a cyclist or a
   walker in 3D (`web/avatar.js`, three.js, loaded with the first route; wheels, pedals and legs move with the speed; the flat
@@ -65,8 +75,8 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
   time, time and distance left. The instructions of Valhalla are spoken in the language of the browser: with `TTS_URL` by
   the Piper voices of the server in German, English, French and Italian (`/api/say`, fetched up to three turns ahead), else, or
   when a sentence is late (2.5 s), by the best voice of the browser (natural, enhanced and Google voices first; not eSpeak or
-  the novelty voices of Apple). A button turns the sound off, kept as `hm-mute`. Off the route for three fixes, a new route from where the visitor is (at most every
-  10 s). A move of the map stops the following until Re-centre; Whole route shows the rest of it. The screen stays on (Wake
+  the novelty voices of Apple). A button turns the sound off, kept as `hm-mute`. Off the route for three fixes, a new route from where the visitor is, by the stops not
+  yet passed (at most every 10 s). A move of the map stops the following until Re-centre; Whole route shows the rest of it. The screen stays on (Wake
   Lock) while the page is open.
 - The map: results as points and shapes, the lines of the answer (a border, a road, a river, the circles around the places of a
   chain), hover and selection in step with the list.
@@ -102,8 +112,11 @@ of Wikidata and Commons and the thumbnails are kept in memory for a day.
 
 ## Directions
 
-`GET {base}/api/route?from=lat,lon&to=lat,lon&mode=car|bike|walk&lang=de` asks Valhalla (`ROUTING_URL` + `/route`) and answers
-`{"km","s","line":[[lon,lat],…],"steps":[…],"limits":[[from,to,kmh],…]}`. A step has its text, length and time, where it
+`GET {base}/api/route?from=lat,lon&via=lat,lon&to=lat,lon&mode=car|bike|walk&lang=de` asks Valhalla (`ROUTING_URL` + `/route`) and answers
+`{"km","s","line":[[lon,lat],…],"steps":[…],"stops":[i,…],"limits":[[from,to,kmh],…]}`. `via`, repeated, are stops on the way
+(up to 8; each a location of type `break`, so a leg of Valhalla); the legs are joined into one line, `stops` holds the index of
+`line` at each stop, and the step that arrives at one has `stop` (its number, from 1). The distance in a line counts through
+the stops. A step has its text, length and time, where it
 starts and ends on the line (`at`, `i`, `end`), the spoken texts (`alert`, `pre`, `post`), the street, and what the sign of the
 junction shows (`exit`, `exit_name`, `routes`, `toward`). `limits` are the speed limits by car, in indexes of `line`, from a
 second call to Valhalla (`trace_attributes`); missing when that call fails. Errors are
@@ -119,6 +132,14 @@ week by the browser and in memory here; 400, 429, 503 or 502 otherwise. Four cal
 By car the answer also has `lanes` per step (`d` the arrows as bits, `a` and `v` the ones to take), `traffic` ([from, to,
 level] of line, 1 slow, 2 queued, as it is now), `delay` (seconds that live traffic adds to `s`) and `tunnels` ([from, to,
 metres]), all from one call to `trace_attributes` leaving now.
+
+`POST {base}/api/along` with `{"line":[[lon,lat],…],"cat":"fuel","mode":"car"}` (up to 60,000 points) finds the places of a kind
+near the line from the Overpass API of overpass.ch (`ELEVATION_URL` + `/v1/interpreter` with `ELEVATION_KEY`; the line
+simplified to 600 points at most, `around` 500 m by car, 250 by bike, 150 on foot). Kinds: `fuel`, `charging`, `rest`, `food`,
+`cafe`, `groceries`, `toilets`, `water`, `hotel`, `bike`, `pharmacy`. It answers GeoJSON points in the order of the route with
+`id`, `name`, `type`, `tags` (a few), `opening_hours`, `at` (km along the line) and `off` (metres from it), and `total`; with
+more than 200, the 200 kept are spread over 40 stretches of the route, the nearest to the line of each first. It counts with
+the directions of a visitor (`ROUTES_PER_IP`); two queries to Overpass at a time with those of transit.
 
 By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,m],…]}`, from the elevation API of overpass.ch
 (`ELEVATION_URL` + `/v1/elevation/profile`, 300 samples at most, one every 10 m at least) with `ELEVATION_KEY`, a key of type
@@ -139,7 +160,7 @@ By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,
 | `ROUTING_URL` | | Valhalla, for directions; empty: no directions |
 | `ROUTES_PER_IP` | `120` | directions a visitor gets in 10 minutes |
 | `ELEVATION_URL` | `https://api.overpass.ch` | the elevation API, for height profiles |
-| `ELEVATION_KEY` | | its key, server side only; empty: no height profiles |
+| `ELEVATION_KEY` | | its key, server side only (a key of all the APIs: Overpass too); empty: no height profiles, transit lines or search along the route |
 | `TTS_URL` | | a Piper server (`/say?lang=&text=`, audio/mpeg) for the spoken instructions; empty: the voices of the browser |
 | `PUBLIC_URL` | | the address of the page on a site of its own (`https://hippomaps.ch`): then for search engines (no noindex, a canonical link, `/robots.txt`, `/sitemap.xml`); empty: unlisted |
 | `SEARCH_UPSTREAM` | | overpass-search of another site (`https://overpass.ch/labs/search/api`), relayed under `{base}/api/search` with the address of the visitor; it sets the search API of the page. For a site of its own: the search API answers its own site only |

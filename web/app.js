@@ -15,6 +15,7 @@ const mapEl = root.querySelector(".lm-map");
 const API = root.dataset.api.replace(/\/$/, "");
 const PICTURES = root.dataset.pictures || "";
 const ROUTE = root.dataset.route || "";
+const ALONG = (ROUTE && root.dataset.along) || ""; // places along a route (Overpass, through this server)
 // the language: chosen in the menu (hm-lang), else that of the browser. It sets the texts of the page
 // (en, de, fr, it), the names on the map, the steps of directions and the voice.
 const chosenLang = (() => { try { return localStorage.getItem("hm-lang") || ""; } catch { return ""; } })();
@@ -84,6 +85,19 @@ const EN = {
   fromHint: "Start: a place, an address",
   toHint: "Destination: a place, an address",
   swap: "Swap start and destination",
+  stop: "Stop",
+  stopHint: "Stop: a place, an address",
+  addStop: "Add stop",
+  removeStop: "Remove this stop",
+  useAsStop: "Add as stop",
+  along: "Along the route",
+  alongCats: { fuel: "Fuel", charging: "Charging", rest: "Rest areas", food: "Food", cafe: "Cafés", groceries: "Groceries",
+    toilets: "Toilets", water: "Drinking water", hotel: "Hotels", bike: "Bike shops", pharmacy: "Pharmacies" },
+  alongSearching: "Searching along the route…",
+  alongNone: "Nothing of this kind near the route.",
+  alongAfter: (km) => `after ${km}`,
+  alongOff: (m) => `${m} off the route`,
+  alongMore: (n, all) => `${num(n)} of ${num(all)} shown, spread over the route.`,
   myPlace: "Your location",
   mapPoint: "Point on the map",
   tapStart: "Tap the map to set the start, or use your location.",
@@ -207,6 +221,7 @@ const ICON = {
   bike: "M5.5 18a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM18.5 18a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5.5 14.5 9 8h6l3.5 6.5M9 8l3 6.5 3-6.5M8 5h3",
   walk: "M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM10 21l2-6 3 3v3M12 15l-1-6 4 2 2 3M11 9l-3 2-1 3",
   swap: "M7 4v16M7 4 4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3",
+  plus: "M12 5v14M5 12h14",
 };
 const human = (v) => (v ? v.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
 const tagsOf = (p) => (typeof p.tags === "string" ? JSON.parse(p.tags) : p.tags) || {};
@@ -448,8 +463,9 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty };
+const sources = { transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty, along: empty };
 const ACCENT = "#d0312d";
+const STOP_COLOUR = "#e8590c"; // stops on a route, and the places along it
 // POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
 // tiles of zoom 14 leave the small ones out. Between zoom 14 and 15 the POIs come from a tile of zoom 14
 // put together here from the POIs of its four tiles of zoom 15 (hmpoi://); from 14 on they show two
@@ -629,9 +645,19 @@ map.on("style.load", () => {
     paint: { "line-color": "#1a73e8", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
   map.addLayer({ id: "lm-route-traffic", type: "line", source: "lm-routetraffic", layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "level"], 2, "#d93025", "#f29900"], "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
+  // places along the route (search along the route): orange, their name when near
+  map.addLayer({ id: "lm-along", type: "circle", source: "lm-along", paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 4, 15, 8], "circle-color": STOP_COLOUR, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+  if (font) map.addLayer({ id: "lm-along-name", type: "symbol", source: "lm-along", minzoom: 13, filter: ["has", "name"],
+    layout: { "text-field": ["get", "name"], "text-font": font, "text-size": 12, "text-offset": [0, 1], "text-anchor": "top", "text-max-width": 10, "text-optional": true },
+    paint: { "text-color": theme() === "dark" ? "#ffd8a8" : "#7c2d12", "text-halo-color": theme() === "dark" ? "#111" : "#fff", "text-halo-width": 1.5 } });
+  // the start (white), the stops (orange, numbered) and the destination (red)
   map.addLayer({ id: "lm-route-ends", type: "circle", source: "lm-route", filter: ["!", line], paint: {
-    "circle-radius": 7, "circle-color": ["match", ["get", "end"], "from", "#fff", ACCENT],
-    "circle-stroke-color": ["match", ["get", "end"], "from", "#111827", "#fff"], "circle-stroke-width": 3 } });
+    "circle-radius": ["match", ["get", "end"], "stop", 9, 7], "circle-color": ["match", ["get", "end"], "from", "#fff", "stop", STOP_COLOUR, ACCENT],
+    "circle-stroke-color": ["match", ["get", "end"], "from", "#111827", "#fff"], "circle-stroke-width": ["match", ["get", "end"], "stop", 2, 3] } });
+  if (font) map.addLayer({ id: "lm-route-stop-n", type: "symbol", source: "lm-route", filter: ["==", ["get", "end"], "stop"],
+    layout: { "text-field": ["get", "n"], "text-font": font, "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true },
+    paint: { "text-color": "#fff" } });
   map.addLayer({ id: "lm-pin", type: "circle", source: "lm-pin",
     paint: { "circle-radius": 8, "circle-color": "#111827", "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
   map.addLayer({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
@@ -1184,8 +1210,8 @@ function starButton(place) {
 }
 // ------------------------------------------------------------------ sharing
 // Share: the share sheet of the phone, else the link copied. Links: a point or place
-// ?at=lat,lon&n=name, a route ?from=lat,lon&to=lat,lon&mode=car (without from: the location of the
-// visitor), a search with its place ?q=…&sel=… (the address the page writes itself)
+// ?at=lat,lon&n=name, a route ?from=lat,lon&via=lat,lon&to=lat,lon&mode=car (without from: the location
+// of the visitor; via and its name vn for each stop), a search with its place ?q=…&sel=… (the address the page writes itself)
 const pageURL = () => location.origin + location.pathname;
 const ll5 = (ll) => `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`;
 function pointLink(ll, name) {
@@ -1196,6 +1222,7 @@ function pointLink(ll, name) {
 function routeLink() {
   const q = new URLSearchParams();
   if (route.from && !route.from.me) q.set("from", ll5(route.from.ll)), q.set("fn", route.from.label || "");
+  for (const x of route.stops) if (x) q.append("via", ll5(x.ll)), q.append("vn", x.label || "");
   if (route.to) q.set("to", ll5(route.to.ll)), q.set("tn", route.to.label || "");
   q.set("mode", route.mode);
   return `${pageURL()}?${q}`;
@@ -2068,6 +2095,7 @@ function onTap(e) {
     const x = f && saved.stars.find((s) => starKey(s.ll) === starKey(f.geometry.coordinates));
     if (x) return openStar(x);
   }
+  if ((nav.on || !routeView.hidden) && alongAt(e.point)) return;
   if (nav.on) return;
   if (document.activeElement === input || !list.hidden) {
     closeList();
@@ -2167,10 +2195,12 @@ async function here(ll, symbol, backToRoute = false) {
     hereView.append(back);
     // the point instead of the destination, or of the start
     const swap = el("div", "lm-swap-acts");
-    for (const [label, end] of [[T.useAsTo, "to"], [T.useAsFrom, "from"]]) {
+    for (const [label, end] of [[T.useAsTo, "to"], [T.useAsStop, "stop"], [T.useAsFrom, "from"]]) {
+      if (end === "stop" && (!route.from || !route.to || route.stops.length >= MAX_STOPS)) continue;
       const b = el("button", "lm-chip", { type: "button" }, label);
       b.addEventListener("click", () => {
-        route[end] = { ll: [+ll.lng.toFixed(5), +ll.lat.toFixed(5)], label: hereView.querySelector(".lm-dname")?.textContent || T.mapPoint };
+        const p = { ll: [+ll.lng.toFixed(5), +ll.lat.toFixed(5)], label: hereView.querySelector(".lm-dname")?.textContent || T.mapPoint };
+        if (end === "stop") insertStop(p); else route[end] = p;
         toRoute();
       });
       swap.append(b);
@@ -2263,7 +2293,7 @@ async function here(ll, symbol, backToRoute = false) {
 // From the page of a place or from a point of the map: to there, from the location of the
 // visitor, or from a tap on the map. The line and the steps come from data-route.
 const MODE_ICON = { car: ICON.car, bike: ICON.bike, walk: ICON.walk };
-const route = { keep: false, from: null, to: null, mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
+const route = { keep: false, from: null, to: null, stops: [], mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
 function routeButton(go) {
   const b = el("button", "lm-action", { type: "button" });
   b.innerHTML = svg(ICON.directions, 18);
@@ -2274,6 +2304,7 @@ function routeButton(go) {
 function routeDone() {
   unfollowMe();
   route.ctl?.abort();
+  alongDone();
   setSource("route", empty);
 }
 // the stretches of a route slowed by traffic (d.traffic: [from, to, level] in indexes of the line),
@@ -2298,6 +2329,7 @@ function drawEnds(line) {
   const fs = [];
   if (line) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: line }, properties: {} });
   if (route.from) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.from.ll }, properties: { end: "from" } });
+  route.stops.forEach((x, i) => { if (x) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { end: "stop", n: String(i + 1) } }); });
   if (route.to) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } });
   setSource("route", { type: "FeatureCollection", features: fs });
 }
@@ -2305,6 +2337,8 @@ function drawEnds(line) {
 async function directions(to, go = false) {
   route.back = [listView, hereView, detailView].find((v) => !v.hidden) || listView;
   route.to = to;
+  route.stops = [];
+  route.alongCat = "";
   route.go = go;
   route.from = state.me ? { ll: state.me.at2, label: T.myPlace, me: true } : null;
   hereDone();
@@ -2377,25 +2411,40 @@ function renderRoute() {
     modes.append(b);
   }
   const ends = el("div", "lm-ends");
-  ends.append(placeField("from"), placeField("to"));
+  ends.append(placeField("from"), ...route.stops.map((_, i) => placeField(i)), placeField("to"));
   const swap = el("button", "lm-icon-btn lm-swap", { type: "button", title: T.swap, "aria-label": T.swap });
   swap.innerHTML = svg(ICON.swap, 18);
   swap.disabled = !route.from || !route.to;
   swap.addEventListener("click", () => {
     [route.from, route.to] = [route.to, route.from];
+    route.stops.reverse();
     renderRoute();
     findRoute();
   });
   ends.append(swap);
   routeHead.append(modes, ends);
+  const acts = el("div", "lm-route-acts");
+  if (route.stops.length < MAX_STOPS) {
+    const add = el("button", "lm-chip lm-add-stop", { type: "button" });
+    add.innerHTML = svg(ICON.plus, 16);
+    add.append(T.addStop);
+    add.addEventListener("click", () => {
+      route.stops.push(null);
+      renderRoute();
+      findRoute();
+      routeView.querySelectorAll(".lm-end-stop input")[route.stops.length - 1]?.focus();
+    });
+    acts.append(add);
+  }
+  routeHead.append(acts);
   if (!route.from?.me && navigator.geolocation) {
     const use = el("button", "lm-chip lm-use-me", { type: "button" }, T.useLocation);
+    acts.prepend(use);
     use.addEventListener("click", async () => {
       const me = await locate();
       if (me) setFrom({ ll: state.me.at2, label: T.myPlace, me: true });
       else routeMsg.textContent = T.locBlocked;
     });
-    routeHead.append(use);
   }
   routeMsg.textContent = !route.from ? T.tapStart : !route.to ? T.tapEnd : "";
   routeSum.textContent = "";
@@ -2418,18 +2467,32 @@ function placeLabel(p) {
   const kind = p.osm_value && p.osm_value !== "yes" && p.type !== "house" ? human(p.osm_value) : "";
   return { label, detail: [kind, where].filter(Boolean).join(" · ") };
 }
+const MAX_STOPS = 8;
+const endOf = (which) => (typeof which === "number" ? route.stops[which] : route[which]);
 function placeField(which) {
-  const v = route[which];
-  const row = el("div", `lm-end lm-end-${which}`);
+  const isStop = typeof which === "number";
+  const v = endOf(which);
+  const row = el("div", `lm-end lm-end-${isStop ? "stop" : which}`);
   const id = `lm-end-list-${++fieldN}`;
   const box = el("div", "lm-end-box");
-  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : "", placeholder: which === "from" ? T.fromHint : T.toHint,
-    "aria-label": which === "from" ? T.from : T.to, role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id,
+  const name = isStop ? T.stop : which === "from" ? T.from : T.to;
+  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : "", placeholder: isStop ? T.stopHint : which === "from" ? T.fromHint : T.toHint,
+    "aria-label": isStop ? `${T.stop} ${which + 1}` : name, role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id,
     autocomplete: "off", spellcheck: "false", enterkeyhint: "search", maxlength: "160" });
   const opts = el("ul", "lm-suggest lm-end-list", { id, role: "listbox" });
   opts.hidden = true;
   box.append(field, opts);
-  row.append(el("span", "lm-end-dot"), el("span", "lm-end-name", {}, which === "from" ? T.from : T.to), box);
+  row.append(el("span", "lm-end-dot", {}, isStop ? String(which + 1) : ""), el("span", "lm-end-name", {}, name), box);
+  if (isStop) {
+    const x = el("button", "lm-icon-btn lm-end-remove", { type: "button", title: T.removeStop, "aria-label": T.removeStop });
+    x.innerHTML = svg(ICON.close, 16);
+    x.addEventListener("click", () => {
+      route.stops.splice(which, 1);
+      renderRoute();
+      findRoute();
+    });
+    row.append(x);
+  }
   let items = [], active = -1, timer = 0, ctl = null;
   const close = () => { opts.hidden = true; field.setAttribute("aria-expanded", "false"); active = -1; };
   const mark = (i) => {
@@ -2447,7 +2510,8 @@ function placeField(which) {
       if (!me) { routeMsg.textContent = T.locBlocked; return; }
       place = { ll: state.me.at2, label: T.myPlace, me: true };
     }
-    route[which] = { ll: place.ll, label: place.label, me: place.me };
+    const end = { ll: place.ll, label: place.label, me: place.me };
+    if (isStop) route.stops[which] = end; else route[which] = end;
     renderRoute();
     findRoute();
   };
@@ -2470,7 +2534,7 @@ function placeField(which) {
     field.setAttribute("aria-expanded", "true");
     mark(-1);
   };
-  const meItem = [...(navigator.geolocation && !route[which]?.me ? [{ me: true, label: T.myPlace }] : []),
+  const meItem = [...(navigator.geolocation && !v?.me ? [{ me: true, label: T.myPlace }] : []),
     ...saved.stars.slice(0, 6).map((x) => ({ star: true, label: x.name, detail: x.detail, ll: x.ll }))];
   const ask = async () => {
     const q = field.value.trim();
@@ -2497,8 +2561,9 @@ function placeField(which) {
   // copy and paste menu of mobile browsers
   const hint = field.placeholder;
   field.addEventListener("focus", () => {
-    if (route[which] && field.value === route[which].label) {
-      field.placeholder = route[which].label;
+    const now = endOf(which);
+    if (now && field.value === now.label) {
+      field.placeholder = now.label;
       field.value = "";
     }
     show(meItem);
@@ -2506,7 +2571,8 @@ function placeField(which) {
   field.addEventListener("blur", () => setTimeout(() => {
     close();
     field.placeholder = hint;
-    if (route[which] && field.value !== route[which].label) field.value = route[which].label; // back to the place chosen
+    const now = endOf(which);
+    if (now && field.value !== now.label) field.value = now.label; // back to the place chosen
   }, 150));
   field.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" && !opts.hidden) { e.preventDefault(); mark(Math.min(items.length - 1, active + 1)); }
@@ -2528,6 +2594,8 @@ async function findRoute({ quiet = false } = {}) {
     routeSteps.innerHTML = "";
     routeView.querySelector(".lm-nav-go")?.remove();
     routeView.querySelector(".lm-elev")?.remove();
+    routeView.querySelector(".lm-along")?.remove();
+    alongDone();
     showOnRoute(null);
     route.answer = null;
     drawEnds(null);
@@ -2538,7 +2606,10 @@ async function findRoute({ quiet = false } = {}) {
   }
   let d;
   try {
-    const r = await fetch(`${ROUTE}?${new URLSearchParams({ from: ll(route.from), to: ll(route.to), mode: route.mode, lang: LANG })}`, { signal: ctl.signal });
+    const stops = route.stops.filter(Boolean);
+    const q = new URLSearchParams({ from: ll(route.from), to: ll(route.to), mode: route.mode, lang: LANG });
+    for (const x of stops) q.append("via", ll(x));
+    const r = await fetch(`${ROUTE}?${q}`, { signal: ctl.signal });
     d = await r.json().catch(() => ({}));
     if (ctl.signal.aborted) return;
     if (!r.ok) {
@@ -2554,6 +2625,7 @@ async function findRoute({ quiet = false } = {}) {
     clearRoute();
   }
   routeMsg.textContent = "";
+  d.via = route.stops.filter(Boolean); // the stops of this answer, in the order of d.stops
   route.answer = d;
   // the time (coloured by the traffic on the way), the distance, the arrival if leaving now
   routeSum.replaceChildren(el("span", `lm-sum-time ${trafficClass(d)}`, {}, T.duration(d.s)), el("span", "lm-sum-km", {}, fmtKm(d.km)));
@@ -2575,12 +2647,13 @@ async function findRoute({ quiet = false } = {}) {
     if (over > 0 && room > 0) body.scrollTop += Math.min(over, room);
   });
   if (d.elev?.pts?.length > 1) go.after(heightChart(d.elev, { onPoint: showOnRoute }).node);
+  if (ALONG) routeSteps.before(alongBox(d));
   loadAvatar();
   if (SAY) fetchSay(d.steps[0]?.pre || d.steps[0]?.text); // the first sentence, ready for Start
   for (const st of d.steps) {
-    const li = el("li", "lm-step");
+    const li = el("li", `lm-step${st.stop ? " lm-step-stop" : ""}`);
     const b = el("button", "", { type: "button" });
-    b.append(el("span", "lm-step-text", {}, st.text));
+    b.append(el("span", "lm-step-text", {}, st.stop ? `${T.stop} ${st.stop}: ${d.via[st.stop - 1]?.label || ""}` : st.text));
     if (st.km > 0) b.append(el("span", "lm-step-km", {}, fmtKm(st.km)));
     b.addEventListener("click", () => fit(() => map.easeTo({ center: st.at, zoom: Math.max(map.getZoom(), 16), duration: 600, padding: pad() })));
     li.append(b);
@@ -2595,6 +2668,165 @@ async function findRoute({ quiet = false } = {}) {
   route.go = false;
   const b = extent({ type: "LineString", coordinates: d.line });
   if (b && !quiet) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 700 }));
+}
+
+// ------------------------------------------------------------------ stops and places along the route
+// A stop found on the map, in a field or along the route goes between the stops where it falls on
+// the route shown; without a route, last.
+function insertStop(p) {
+  route.stops = route.stops.filter(Boolean);
+  if (route.stops.length >= MAX_STOPS) return;
+  const d = route.answer;
+  if (!d?.line?.length) return void route.stops.push(p);
+  const cum = cumOf(d.line), at = (ll) => projectOn(d.line, cum, ll);
+  const a = at(p.ll), i = route.stops.findIndex((x) => at(x.ll) > a);
+  route.stops.splice(i < 0 ? route.stops.length : i, 0, p);
+}
+// how far along a line (metres, cum of cumOf) the point nearest to p is
+function projectOn(line, cum, p) {
+  const P = flat(p, p[1]);
+  let best = Infinity, along = 0;
+  for (let i = 0; i + 1 < line.length; i++) {
+    const A = flat(line[i], p[1]), B = flat(line[i + 1], p[1]);
+    const dx = B[0] - A[0], dy = B[1] - A[1], len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / len2)) : 0;
+    const dist = Math.hypot(A[0] + t * dx - P[0], A[1] + t * dy - P[1]);
+    if (dist < best) { best = dist; along = cum[i] + (cum[i + 1] - cum[i]) * t; }
+  }
+  return along;
+}
+// Search along the route: the kinds of places of each mode, near the line (data-along). The answers
+// of a route are kept with it; the kind chosen stays for the next route (a stop added).
+const ALONG_CATS = {
+  car: ["fuel", "charging", "rest", "food", "cafe", "groceries", "toilets", "hotel"],
+  bike: ["water", "food", "cafe", "groceries", "toilets", "bike", "hotel"],
+  walk: ["water", "food", "cafe", "toilets", "groceries", "pharmacy"],
+};
+const along = { ctl: null };
+function alongDone() {
+  along.ctl?.abort();
+  setSource("along", empty);
+}
+async function alongFetch(d, cat) {
+  d.along ||= {};
+  if (d.along[cat]) return d.along[cat];
+  along.ctl?.abort();
+  const ctl = along.ctl = new AbortController();
+  // the line, a point every 15 m at most: a long route has tens of thousands
+  const line = [];
+  let last = null;
+  for (const p of d.line) {
+    if (last && km(last, p) < 0.015) continue;
+    line.push([+p[0].toFixed(5), +p[1].toFixed(5)]);
+    last = p;
+  }
+  const end = d.line[d.line.length - 1];
+  if (last !== end) line.push([+end[0].toFixed(5), +end[1].toFixed(5)]);
+  const r = await fetch(ALONG, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ line, cat, mode: route.mode }), signal: ctl.signal });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error?.message || T.failed);
+  const fs = j.features || [];
+  fs.total = j.total || fs.length;
+  for (const f of fs) state.byId.set(f.properties.id, f);
+  return (d.along[cat] = fs);
+}
+const alongName = (f) => f.properties.name || kindOf(f.properties).label || T.noName;
+// a place along the route: its name, kind, where on the route, hours; a button adds it as a stop
+function alongItem(f, { ahead = null, onAdd } = {}) {
+  const p = f.properties, t = tagsOf(p), k = kindOf(p);
+  const li = el("li", "lm-along-item");
+  const b = el("button", "lm-card", { type: "button", "data-id": p.id });
+  const text = el("span", "lm-card-text");
+  text.append(el("span", "lm-card-name", {}, alongName(f)));
+  const sub = [p.name ? k.label : "", t.brand && t.brand !== p.name ? t.brand : ""].filter(Boolean).join(" · ");
+  if (sub) text.append(el("span", "lm-card-sub", {}, sub));
+  const at = ahead == null ? p.at : Math.max(0, p.at - ahead);
+  const where = [at >= 0.1 ? T.alongAfter(fmtKm(at)) : "", p.off >= 50 ? T.alongOff(fmtKm(p.off / 1000)) : ""].filter(Boolean).join(" · ");
+  if (where) text.append(el("span", "lm-card-addr", {}, where));
+  if (p.opening_hours) text.append(el("span", "lm-card-hours", { "data-hours": "" }));
+  b.append(text);
+  b.addEventListener("click", () => {
+    setSource("selected", one(f));
+    if (nav.on) { nav.follow = false; navCenter.hidden = false; }
+    fit(() => map.easeTo({ center: f.geometry.coordinates, zoom: Math.max(map.getZoom(), 15), duration: 600, padding: nav.on ? navPad() : pad() }));
+  });
+  b.addEventListener("mouseenter", () => setSource("hover", one(f)));
+  b.addEventListener("mouseleave", () => setSource("hover", empty));
+  const add = el("button", "lm-icon-btn lm-along-add", { type: "button", title: T.useAsStop, "aria-label": `${T.useAsStop}: ${alongName(f)}` });
+  add.innerHTML = svg(ICON.plus, 20);
+  add.addEventListener("click", () => onAdd({ ll: f.geometry.coordinates, label: alongName(f) }));
+  li.append(b, add);
+  return li;
+}
+// the chips of the kinds, the state and the list, for a route answer
+function alongPanel(d, { ahead = () => null, onAdd, chosen = "", onChoose = () => {} }) {
+  const box = el("div", "lm-along-body");
+  const cats = el("div", "lm-chips lm-along-cats", { role: "group", "aria-label": T.along });
+  const msg = el("p", "lm-notes lm-along-msg", { role: "status", "aria-live": "polite" });
+  const ol = el("ol", "lm-results lm-along-list");
+  let cur = "";
+  const choose = async (cat) => {
+    cur = cur === cat ? "" : cat;
+    onChoose(cur);
+    for (const c of cats.children) c.setAttribute("aria-pressed", String(c.dataset.cat === cur));
+    ol.innerHTML = "";
+    msg.textContent = "";
+    setSource("along", empty);
+    if (!cur) return along.ctl?.abort();
+    msg.textContent = T.alongSearching;
+    let fs;
+    try { fs = await alongFetch(d, cur); } catch (err) {
+      if (err.name !== "AbortError" && cur === cat) msg.textContent = err.message || T.failed;
+      return;
+    }
+    if (cur !== cat || !box.isConnected) return;
+    const from = ahead();
+    const shown = from == null ? fs : fs.filter((f) => f.properties.at > from);
+    setSource("along", { type: "FeatureCollection", features: shown });
+    msg.textContent = !shown.length ? T.alongNone : fs.total > fs.length && from == null ? T.alongMore(fs.length, fs.total) : "";
+    for (const f of shown.slice(0, from == null ? 200 : 30)) ol.append(alongItem(f, { ahead: from, onAdd }));
+    if (shown.some((f) => f.properties.opening_hours)) loadHours().then(() => markHours(ol));
+  };
+  for (const cat of ALONG_CATS[route.mode] || ALONG_CATS.car) {
+    const c = el("button", "lm-chip", { type: "button", "aria-pressed": "false", "data-cat": cat }, T.alongCats[cat]);
+    c.addEventListener("click", () => choose(cat));
+    cats.append(c);
+  }
+  box.append(cats, msg, ol);
+  if (chosen) choose(chosen);
+  return box;
+}
+// in directions, under the summary
+function alongBox(d) {
+  const sec = el("section", "lm-along");
+  sec.append(el("h3", "lm-along-title", {}, T.along));
+  sec.append(alongPanel(d, {
+    chosen: route.alongCat,
+    onChoose: (cat) => { route.alongCat = cat; },
+    onAdd: (p) => {
+      insertStop(p);
+      renderRoute();
+      findRoute();
+    },
+  }));
+  return sec;
+}
+// a tap on a place along the route: its line in the list, in view
+function alongAt(pt) {
+  if (!map.getLayer("lm-along")) return false;
+  const r = 10, f = map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers: ["lm-along"] })[0];
+  if (!f) return false;
+  const scope = nav.on ? navAlong : routeView;
+  const b = scope.querySelector(`.lm-along-item [data-id="${CSS.escape(f.properties.id)}"]`);
+  if (b) {
+    scope.querySelectorAll(".lm-along-item .lm-hot").forEach((x) => x.classList.remove("lm-hot"));
+    b.classList.add("lm-hot");
+    b.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const full = state.byId.get(f.properties.id);
+    if (full) setSource("selected", one(full));
+  }
+  return true;
 }
 
 // ------------------------------------------------------------------ height profile
@@ -2828,9 +3060,14 @@ const navCenter = el("button", "lm-nav-center", { type: "button" });
 navCenter.innerHTML = svg(ICON.navigate, 16);
 navCenter.append(T.recenter);
 navCenter.hidden = true;
-navBottom.append(navMute, navEta, navOverview, navEnd);
+const navAlongBtn = navBtn(ICON.search, T.along);
+navAlongBtn.hidden = !ALONG;
+navBottom.append(navMute, navEta, navAlongBtn, navOverview, navEnd);
+// search along the route in navigation: the kinds, and the next places ahead
+const navAlong = el("div", "lm-nav-along");
+navAlong.hidden = true;
 
-navBox.append(navBanner, navLanes, navSign, navThen, navLimit, navSpeed, navElev, navCenter, navBottom);
+navBox.append(navBanner, navLanes, navSign, navThen, navLimit, navSpeed, navElev, navCenter, navAlong, navBottom);
 mapEl.append(navBox);
 
 // distances on the earth, in metres, near a point: x east, y north
@@ -2844,6 +3081,9 @@ const bearingOf = (a, b) => {
 function navLoad(d) {
   nav.d = d;
   nav.cum = cumOf(d.line);
+  nav.stops = (d.stops || []).map((i, j) => ({ i, ...(d.via?.[j] || {}) })); // the stops ahead, by index of the line
+  nav.simAlong = 0;
+  if (!navAlong.hidden) navAlongOpen(); // the places along the new line
   navElev.innerHTML = "";
   nav.elev = d.elev?.pts?.length > 1 ? heightChart(d.elev, { compact: true }) : null;
   navElev.hidden = !nav.elev;
@@ -3078,7 +3318,8 @@ function navUpdate(p, rawPos, off = false) {
   const txt = el("div", "lm-nav-text");
   txt.append(el("div", "lm-nav-dist", {}, fmtKm(toNext / 1000)));
   // the street to turn into; a bare route number ("1") says less than the instruction
-  txt.append(el("div", "lm-nav-instr", {}, next.street && !/^[\d\s/]+$/.test(next.street) && next.type !== 4 ? next.street : next.text));
+  txt.append(el("div", "lm-nav-instr", {}, next.stop ? `${T.stop}: ${d.via?.[next.stop - 1]?.label || next.text}`
+    : next.street && !/^[\d\s/]+$/.test(next.street) && next.type !== 4 ? next.street : next.text));
   if (next.roundabout) txt.lastChild.textContent = next.text;
   navBanner.append(arrow, txt);
   renderSign(next, toNext);
@@ -3133,6 +3374,9 @@ function navUpdate(p, rawPos, off = false) {
   // off the route: the real position, and the heading of the device when it has one
   const at = off ? rawPos : p.ll, heading = off && rawPos.heading != null ? rawPos.heading : p.heading;
   nav.avatar?.set(at, heading, nav.sim ? 480 : 900, nav.speed || 0);
+  nav.at = at;
+  nav.heading = heading;
+  nav.along = p.along;
   navDayNight(p, at);
   if (nav.elev) nav.elev.mark((p.along / (total || 1)) * nav.elev.km);
   if (nav.follow) {
@@ -3166,6 +3410,7 @@ function drawNavLine(p) {
   const rest = [p.ll, ...nav.d.line.slice(p.i + 1)];
   setSource("route", { type: "FeatureCollection", features: [
     { type: "Feature", geometry: { type: "LineString", coordinates: rest }, properties: {} },
+    ...nav.stops.map((x, j) => x.i > p.i && { type: "Feature", geometry: { type: "Point", coordinates: nav.d.line[x.i] }, properties: { end: "stop", n: String(j + 1) } }).filter(Boolean),
     { type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } },
   ] });
 }
@@ -3240,16 +3485,20 @@ function onFix(pos) {
   nav.lastT = t;
   navUpdate(p, ll);
 }
-async function reroute(ll) {
-  nav.rerouting = true;
+// stops: the stops still ahead ({ll, label}), else those of the route not yet passed
+async function reroute(ll, stops = null) {
+  nav.rerouting = nav.routing = true;
   navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
+  const via = stops || nav.stops.filter((x) => x.i > nav.idx && x.ll).map(({ ll, label }) => ({ ll, label }));
   try {
     const q = new URLSearchParams({ from: `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`, to: `${route.to.ll[1].toFixed(5)},${route.to.ll[0].toFixed(5)}`, mode: route.mode, lang: LANG });
+    for (const x of via) q.append("via", `${x.ll[1].toFixed(5)},${x.ll[0].toFixed(5)}`);
     // the way the traveller is going: no new route that starts with turning round (by car)
     if (ll.heading != null) q.set("heading", String(Math.round((ll.heading + 360) % 360)));
     const r = await fetch(`${ROUTE}?${q}`);
     const d = await r.json();
     if (r.ok && nav.on && !nav.arrived) {
+      d.via = via;
       navLoad(d);
       preSayAll(d.steps);
       nav.first = true;
@@ -3259,6 +3508,7 @@ async function reroute(ll) {
       if (nav.lastFix) onFix(nav.lastFix); // the banner at once, not at the next fix
     }
   } catch {}
+  nav.routing = false;
   setTimeout(() => { nav.rerouting = false; }, 10e3); // not more often than every 10 s
 }
 async function navStart(sim) {
@@ -3270,6 +3520,7 @@ async function navStart(sim) {
   fetchSay(T.rerouted, UI);
   nav.on = true;
   unfollowMe();
+  alongDone();
   nav.sim = sim;
   nav.follow = true;
   nav.arrived = false;
@@ -3300,21 +3551,23 @@ async function navStart(sim) {
   await keepAwake();
   if (sim) {
     // Preview: along the line at three times the speed of each step
-    let along = 0, last = performance.now();
+    // nav.simAlong: navLoad sets it to 0, so a new route (a stop added) drives on from its start
+    let last = performance.now();
     const speedAt = () => {
-      const st = [...nav.d.steps].reverse().find((x) => nav.cum[x.i] <= along) || nav.d.steps[0];
+      const st = [...nav.d.steps].reverse().find((x) => nav.cum[x.i] <= nav.simAlong) || nav.d.steps[0];
       return st.s > 0 ? (st.km * 1000) / st.s : 10;
     };
     nav.timer = setInterval(() => {
       const now = performance.now();
       nav.speed = speedAt() * 3;
-      along += nav.speed * ((now - last) / 1000);
+      nav.simAlong += nav.speed * ((now - last) / 1000);
       last = now;
+      if (nav.routing) return; // a new route on its way
       const total = nav.cum[nav.cum.length - 1];
-      const ll = pointAt(Math.min(along, total));
+      const ll = pointAt(Math.min(nav.simAlong, total));
       const p = snap(ll, false);
       navUpdate(p, null);
-      if (along >= total) navArrive();
+      if (nav.simAlong >= total) navArrive();
     }, 500);
     navUpdate(snap(nav.d.line[0], true), null);
   } else {
@@ -3342,6 +3595,7 @@ async function keepAwake() {
 document.addEventListener("visibilitychange", keepAwake);
 function navStop() {
   nav.on = false;
+  navAlongClose();
   if (navLook) { // back to the style of the menu
     navLook = null;
     document.documentElement.dataset.theme = theme();
@@ -3361,14 +3615,64 @@ function navStop() {
   followMe();
   setTimeout(() => {
     map.resize();
+    if (route.changed && !routeView.hidden) { // a stop added in navigation: the route of directions with it
+      route.changed = false;
+      renderRoute();
+      return findRoute();
+    }
+    route.changed = false;
     drawEnds(route.answer?.line || null);
     drawRouteTraffic(route.answer);
+    const fs = route.alongCat && route.answer?.along?.[route.alongCat]; // the places along chosen in directions
+    if (fs && !routeView.hidden) setSource("along", { type: "FeatureCollection", features: fs });
     const b = route.answer && extent({ type: "LineString", coordinates: route.answer.line });
     // back to the whole route, flat unless the menu has 3D on
     if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, pitch: look.threeD ? 50 : 0, bearing: 0, duration: 700 }));
   }, 0);
 }
 navEnd.addEventListener("click", navStop);
+// search along the route in navigation: places ahead; one added as a stop gives a new route from here
+let navAlongCat = "";
+function navAlongOpen() {
+  navAlong.innerHTML = "";
+  const head = el("div", "lm-nav-along-head");
+  head.append(el("strong", "", {}, T.along));
+  const x = el("button", "lm-icon-btn", { type: "button", title: T.close, "aria-label": T.close });
+  x.innerHTML = svg(ICON.close, 18);
+  x.addEventListener("click", navAlongClose);
+  head.append(x);
+  navAlong.append(head, alongPanel(nav.d, {
+    ahead: () => (nav.along || 0) / 1000,
+    chosen: navAlongCat,
+    onChoose: (cat) => { navAlongCat = cat; },
+    onAdd: (p) => {
+      if (!nav.at || nav.routing) return;
+      // the stops ahead with the new one where it falls on the route
+      const ahead = nav.stops.filter((x) => x.i > nav.idx && x.ll);
+      const a = projectOn(nav.d.line, nav.cum, p.ll);
+      const k = ahead.findIndex((x) => nav.cum[x.i] > a);
+      ahead.splice(k < 0 ? ahead.length : k, 0, p);
+      const via = ahead.slice(0, MAX_STOPS).map(({ ll, label }) => ({ ll, label }));
+      // the stop goes into directions too: after navigation they show the route with it
+      insertStop({ ll: p.ll, label: p.label });
+      route.changed = true;
+      navAlongClose();
+      const at = [...nav.at];
+      at.heading = nav.sim ? null : nav.heading;
+      reroute(at, via);
+    },
+  }));
+  navAlong.hidden = false;
+  root.classList.add("lm-nav-along-on");
+}
+function navAlongClose() {
+  navAlong.hidden = true;
+  navAlong.innerHTML = "";
+  root.classList.remove("lm-nav-along-on");
+  alongDone();
+  setSource("selected", empty);
+}
+navAlongBtn.addEventListener("click", () => (navAlong.hidden ? navAlongOpen() : navAlongClose()));
 showDim();
 navMute.addEventListener("click", () => {
   nav.muted = !nav.muted;
@@ -3413,6 +3717,12 @@ map.once("load", () => {
     if (["car", "bike", "walk"].includes(u.get("mode"))) route.mode = u.get("mode");
     const from = pt(u.get("from"));
     directions({ ll: to, label: u.get("tn") || T.mapPoint });
+    const names = u.getAll("vn");
+    route.stops = u.getAll("via").map((v, i) => { const p = pt(v); return p && { ll: p, label: names[i] || T.mapPoint }; }).filter(Boolean).slice(0, MAX_STOPS);
+    if (route.stops.length) {
+      renderRoute();
+      if (!from && route.from) findRoute(); // directions found the route from the location before the stops were there
+    }
     if (from) setFrom({ ll: from, label: u.get("fn") || T.mapPoint }); // before the location: it fills only a start still missing
   } else if (at) { // a shared place
     fit(() => map.jumpTo({ center: at, zoom: Math.max(map.getZoom(), 16) }));

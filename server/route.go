@@ -15,9 +15,12 @@ import (
 
 // Directions from Valhalla (RoutingURL). The browser asks this server only:
 //
-//	GET {base}/api/route?from=47.37,8.54&to=46.95,7.44&mode=car|bike|walk&lang=en
+//	GET {base}/api/route?from=47.37,8.54&via=47.05,8.31&to=46.95,7.44&mode=car|bike|walk&lang=en
 //
-// answers {"km","s","line":[[lon,lat],…],"steps":[…],"limits":[[from,to,kmh],…]}, or
+// via: stops on the way, in order, up to maxStops (each a leg of Valhalla; the legs are joined into
+// one line, and stops holds the index of the line where each stop is).
+//
+// answers {"km","s","line":[[lon,lat],…],"steps":[…],"stops":[i,…],"limits":[[from,to,kmh],…]}, or
 // {"error":{"code","message"}}: 400 bad_request and too_far, 404 no_route, 429 too_many,
 // 503 busy, 502 failed. A step has the text, its length and time, where it starts on the line
 // (at, i, end), the spoken texts for navigation (alert before, pre at the turn, post after),
@@ -37,6 +40,9 @@ var modes = map[string]struct {
 	"bike": {"bicycle", 300},
 	"walk": {"pedestrian", 100},
 }
+
+// maxStops is the most stops between start and destination.
+const maxStops = 8
 
 // languages of the steps, by the language of the browser
 var languages = map[string]string{"en": "en-US", "de": "de-DE", "fr": "fr-FR", "it": "it-IT", "es": "es-ES", "nl": "nl-NL", "pt": "pt-PT"}
@@ -60,6 +66,7 @@ type routeStep struct {
 	Routes     []string   `json:"routes,omitempty"` // route numbers on the sign
 	Toward     []string   `json:"toward,omitempty"`
 	Lanes      []lane     `json:"lanes,omitempty"` // at the turn, from left to right (car)
+	Stop       int        `json:"stop,omitempty"`  // the arrival at a stop on the way: its number, from 1
 }
 
 // lane is one lane before a turn, from Valhalla (turn_lanes): its arrows as bits (1 none,
@@ -77,6 +84,7 @@ type routeAnswer struct {
 	S       float64      `json:"s"`
 	Line    [][2]float64 `json:"line"`
 	Steps   []routeStep  `json:"steps"`
+	Stops   []int        `json:"stops,omitempty"` // the index of line at each stop on the way
 	Limits  [][3]int     `json:"limits,omitempty"`
 	Traffic [][3]int     `json:"traffic,omitempty"` // by car: slow (1) and queued (2) stretches, in indexes of line
 	Delay   float64      `json:"delay,omitempty"`   // by car: seconds that traffic adds
@@ -107,32 +115,8 @@ type valhallaRoute struct {
 			Time   float64 `json:"time"`
 		} `json:"summary"`
 		Legs []struct {
-			Shape     string `json:"shape"`
-			Maneuvers []struct {
-				Instruction string   `json:"instruction"`
-				Length      float64  `json:"length"`
-				Time        float64  `json:"time"`
-				Type        int      `json:"type"`
-				Begin       int      `json:"begin_shape_index"`
-				End         int      `json:"end_shape_index"`
-				Alert       string   `json:"verbal_transition_alert_instruction"`
-				Pre         string   `json:"verbal_pre_transition_instruction"`
-				Post        string   `json:"verbal_post_transition_instruction"`
-				Streets     []string `json:"street_names"`
-				Highway     bool     `json:"highway"`
-				Roundabout  int      `json:"roundabout_exit_count"`
-				Lanes       []struct {
-					Directions int `json:"directions"`
-					Active     int `json:"active"`
-					Valid      int `json:"valid"`
-				} `json:"lanes"`
-				Sign struct {
-					Number []signElement `json:"exit_number_elements"`
-					Branch []signElement `json:"exit_branch_elements"`
-					Toward []signElement `json:"exit_toward_elements"`
-					Name   []signElement `json:"exit_name_elements"`
-				} `json:"sign"`
-			} `json:"maneuvers"`
+			Shape     string     `json:"shape"`
+			Maneuvers []maneuver `json:"maneuvers"`
 		} `json:"legs"`
 	} `json:"trip"`
 	ErrorCode int    `json:"error_code"`
@@ -176,7 +160,22 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		routeError(w, http.StatusBadRequest, "bad_request", "from and to as lat,lon, and mode car, bike or walk")
 		return
 	}
-	if d := kmBetween(lat1, lon1, lat2, lon2); d > mode.maxKm {
+	var stops [][2]float64 // lat, lon
+	for _, v := range q["via"] {
+		lat, lon, ok := latLon(v)
+		if !ok || len(stops) == maxStops {
+			routeError(w, http.StatusBadRequest, "bad_request", "via as lat,lon, at most "+strconv.Itoa(maxStops)+" stops")
+			return
+		}
+		stops = append(stops, [2]float64{lat, lon})
+	}
+	// the way in a line through the stops
+	d, prev := 0.0, [2]float64{lat1, lon1}
+	for _, p := range append(stops, [2]float64{lat2, lon2}) {
+		d += kmBetween(prev[0], prev[1], p[0], p[1])
+		prev = p
+	}
+	if d > mode.maxKm {
 		routeError(w, http.StatusBadRequest, "too_far", "The points are too far apart for this mode.")
 		return
 	}
@@ -199,15 +198,20 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	case <-ctx.Done():
 		return
 	}
-	start := map[string]float64{"lat": lat1, "lon": lon1}
+	start := map[string]any{"lat": lat1, "lon": lon1}
 	// heading: the way the traveller goes (degrees from north), when navigation asks for a new route on
 	// the way; Valhalla then starts on a road in that direction, not with turning round
 	if h, err := strconv.ParseFloat(q.Get("heading"), 64); err == nil && h >= 0 && h < 360 {
 		start["heading"] = math.Round(h)
 		start["heading_tolerance"] = 45
 	}
+	locations := []map[string]any{start}
+	for _, p := range stops {
+		locations = append(locations, map[string]any{"lat": p[0], "lon": p[1], "type": "break"})
+	}
+	locations = append(locations, map[string]any{"lat": lat2, "lon": lon2})
 	body, _ := json.Marshal(map[string]any{
-		"locations":  []map[string]float64{start, {"lat": lat2, "lon": lon2}},
+		"locations":  locations,
 		"costing":    mode.costing,
 		"units":      "kilometers",
 		"language":   lang,
@@ -251,16 +255,78 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		routeError(w, status, code, msg)
 		return
 	}
-	a := routeAnswer{Km: round(v.Trip.Summary.Length, 3), S: math.Round(v.Trip.Summary.Time), Steps: []routeStep{}}
-	leg := v.Trip.Legs[0]
-	a.Line = decodePolyline(leg.Shape, 1e6)
-	for _, m := range leg.Maneuvers {
-		st := routeStep{Text: m.Instruction, Km: round(m.Length, 3), S: math.Round(m.Time), Type: m.Type, I: m.Begin, End: m.End,
+	a := routeAnswer{Km: round(v.Trip.Summary.Length, 3), S: math.Round(v.Trip.Summary.Time), Steps: []routeStep{}, Line: [][2]float64{}}
+	for n, leg := range v.Trip.Legs {
+		// the legs joined: each starts at the point where the one before ends
+		off := 0
+		pts := decodePolyline(leg.Shape, 1e6)
+		if n > 0 && len(a.Line) > 0 && len(pts) > 0 {
+			off = len(a.Line) - 1
+			pts = pts[1:]
+		}
+		a.Line = append(a.Line, pts...)
+		a.addSteps(leg.Maneuvers, off, n < len(v.Trip.Legs)-1, n+1)
+		if n < len(v.Trip.Legs)-1 {
+			a.Stops = append(a.Stops, len(a.Line)-1)
+		}
+	}
+	if len(a.Line) < 2 {
+		routeError(w, http.StatusNotFound, "no_route", "No route between these points.")
+		return
+	}
+	shape := v.Trip.Legs[0].Shape
+	if len(v.Trip.Legs) > 1 {
+		shape = encodePolyline(a.Line, 1e6)
+	}
+	if mode.costing == "auto" {
+		a.Limits, a.Traffic, a.Tunnels, a.Delay = s.alongRoute(ctx, shape, a.Line)
+	} else if s.cfg.ElevationKey != "" {
+		a.Elev = s.heights(ctx, a.Line, a.Km)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(a)
+}
+
+type maneuver = struct {
+	Instruction string   `json:"instruction"`
+	Length      float64  `json:"length"`
+	Time        float64  `json:"time"`
+	Type        int      `json:"type"`
+	Begin       int      `json:"begin_shape_index"`
+	End         int      `json:"end_shape_index"`
+	Alert       string   `json:"verbal_transition_alert_instruction"`
+	Pre         string   `json:"verbal_pre_transition_instruction"`
+	Post        string   `json:"verbal_post_transition_instruction"`
+	Streets     []string `json:"street_names"`
+	Highway     bool     `json:"highway"`
+	Roundabout  int      `json:"roundabout_exit_count"`
+	Lanes       []struct {
+		Directions int `json:"directions"`
+		Active     int `json:"active"`
+		Valid      int `json:"valid"`
+	} `json:"lanes"`
+	Sign struct {
+		Number []signElement `json:"exit_number_elements"`
+		Branch []signElement `json:"exit_branch_elements"`
+		Toward []signElement `json:"exit_toward_elements"`
+		Name   []signElement `json:"exit_name_elements"`
+	} `json:"sign"`
+}
+
+// addSteps adds the maneuvers of a leg whose line starts at index off of a.Line; toStop: the leg
+// ends at stop number stop, not at the destination.
+func (a *routeAnswer) addSteps(ms []maneuver, off int, toStop bool, stop int) {
+	for k, m := range ms {
+		st := routeStep{Text: m.Instruction, Km: round(m.Length, 3), S: math.Round(m.Time), Type: m.Type, I: m.Begin + off, End: m.End + off,
 			Alert: m.Alert, Pre: m.Pre, Post: m.Post, Street: strings.Join(m.Streets, " / "), Highway: m.Highway, Roundabout: m.Roundabout,
 			Exit: strings.Join(texts(m.Sign.Number), " "), ExitName: strings.Join(texts(m.Sign.Name), " / "),
 			Routes: texts(m.Sign.Branch), Toward: texts(m.Sign.Toward)}
-		if m.Begin >= 0 && m.Begin < len(a.Line) {
-			st.At = a.Line[m.Begin]
+		if st.I >= 0 && st.I < len(a.Line) {
+			st.At = a.Line[st.I]
+		}
+		if toStop && k == len(ms)-1 {
+			st.Stop = stop
 		}
 		for _, l := range m.Lanes {
 			if l.Active != 0 || l.Valid != 0 { // lanes without a choice say nothing
@@ -273,14 +339,6 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		}
 		a.Steps = append(a.Steps, st)
 	}
-	if mode.costing == "auto" {
-		a.Limits, a.Traffic, a.Tunnels, a.Delay = s.alongRoute(ctx, leg.Shape, a.Line)
-	} else if s.cfg.ElevationKey != "" {
-		a.Elev = s.heights(ctx, a.Line, a.Km)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(a)
 }
 
 // heights asks the elevation API for the profile of a line of km, in about 300 samples (one
@@ -375,6 +433,30 @@ func decodePolyline(s string, precision float64) [][2]float64 {
 		out = append(out, [2]float64{float64(lon) / precision, float64(lat) / precision})
 	}
 	return out
+}
+
+// encodePolyline is the inverse of decodePolyline.
+func encodePolyline(pts [][2]float64, precision float64) string {
+	var b strings.Builder
+	var plat, plon int
+	enc := func(v int) {
+		u := v << 1
+		if v < 0 {
+			u = ^u
+		}
+		for u >= 0x20 {
+			b.WriteByte(byte((0x20 | (u & 0x1f)) + 63))
+			u >>= 5
+		}
+		b.WriteByte(byte(u + 63))
+	}
+	for _, p := range pts {
+		lat, lon := int(math.Round(p[1]*precision)), int(math.Round(p[0]*precision))
+		enc(lat - plat)
+		enc(lon - plon)
+		plat, plon = lat, lon
+	}
+	return b.String()
 }
 
 func texts(es []signElement) []string {

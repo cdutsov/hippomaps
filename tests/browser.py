@@ -7,7 +7,7 @@ Prints "ok <what>" per check and "FAIL <what>" per failure; exits 1 on a failure
 in Zurich (a granted location) on a phone screen. Checks: the map starts at the location; the
 Directions button opens start and destination, a typed destination gives a route by car with its
 time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
-sentences of the server; the traffic button; the X clears everything; German texts after the
+sentences of the server; the traffic button; a stop and the places along a route; the X clears everything; German texts after the
 language of the menu; and no errors of the page on the way. Needs chromium and websocket-client.
 """
 import json
@@ -326,6 +326,17 @@ try:
     check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && /Zurich HB/.test(document.querySelector('.lm-end-from input')?.value || '') && document.querySelector('.lm-mode[aria-checked=true]')?.textContent.includes('Walk')", 40),
           "a shared route opens with its start, destination and mode")
     check(js("!!document.querySelector('.lm-nav-go .lm-share')"), "Share beside Start")
+    # a stop on the way, and the places along the route
+    call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&via=47.05020,8.30930&vn=Lucerne&to=46.94900,7.43910&tn=Bern&mode=car")
+    check(wait("document.querySelectorAll('.lm-end-stop').length === 1 && document.querySelectorAll('.lm-step-stop').length === 1", 40),
+          "a shared route with a stop: its field and its step")
+    if js("!!document.querySelector('.lm-along-cats')"):
+        js("document.querySelector('.lm-along-cats [data-cat=rest]').click()")
+        check(wait("document.querySelectorAll('.lm-along-item').length > 3", 30), "rest areas along the route")
+        js("document.querySelector('.lm-along-item .lm-along-add').click()")
+        check(wait("document.querySelectorAll('.lm-end-stop').length === 2 && document.querySelectorAll('.lm-step-stop').length === 2", 40),
+              "a rest area added as a stop: the route by both")
+    js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
 
     # German

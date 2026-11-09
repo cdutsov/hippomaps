@@ -208,7 +208,27 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-end-none { color: var(--muted); }
 .lm-swap { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
 .lm-swap:disabled { opacity: .4; cursor: default; }
-.lm-use-me { margin-top: .6rem; color: var(--accent); }
+.lm-route-acts { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
+.lm-route-acts:empty { display: none; }
+.lm-use-me { color: var(--accent); }
+.lm-add-stop { display: inline-flex; align-items: center; gap: .3rem; color: var(--fg); }
+/* stops between start and destination: a numbered orange dot, a button to remove */
+.lm-end-stop { grid-template-columns: auto 3rem 1fr auto; padding-right: .2rem; }
+.lm-end-stop .lm-end-dot { width: 18px; height: 18px; margin: 0 -3px; border: 2px solid #fff; background: #e8590c; box-shadow: 0 0 0 1px #e8590c;
+  color: #fff; font-size: .7rem; font-weight: 700; display: grid; place-items: center; line-height: 1; }
+.lm-end-remove { padding: .2rem; }
+/* search along the route */
+.lm-along { border-bottom: 1px solid var(--line); padding: .7rem 0 .4rem; }
+.lm-along-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 1rem .5rem; font-weight: 600; }
+.lm-along-cats .lm-chip[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.lm-along-msg { padding: .5rem 1rem 0; margin: 0; }
+.lm-along-msg:empty { display: none; }
+.lm-along-list { margin-top: .4rem; }
+.lm-along-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
+.lm-along-item .lm-card { border-bottom: 0; padding: .6rem .5rem .6rem 1rem; }
+.lm-along-add { flex: none; width: 48px; border-radius: 0; color: #e8590c; }
+.lm-along-add:hover { background: var(--hot); }
+.lm-step-stop .lm-step-text { font-weight: 600; }
 .lm-route-msg { padding: .6rem 1rem 0; margin: 0; }
 .lm-route-sum { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .7rem; margin: .7rem 1rem .5rem; }
 .lm-sum-time { font-size: 1.45rem; font-weight: 700; }
@@ -364,6 +384,14 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-elev-left { flex: none; font-size: .8rem; color: var(--muted); max-width: 40%; text-align: right; }
 .lm-elev-left:empty { display: none; }
 .lm-nav-elev:not([hidden]) ~ .lm-nav-center { bottom: 150px; }
+/* search along the route in navigation: a panel above the bottom bar */
+.lm-nav-along { position: absolute; left: 10px; right: 10px; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 70px); max-width: 560px; margin: 0 auto;
+  max-height: min(55vh, 460px); overflow-y: auto; overscroll-behavior: contain; background: var(--bg); color: var(--fg); border-radius: 12px;
+  padding: .4rem 0 .3rem; box-shadow: 0 4px 18px rgba(0, 0, 0, .25); z-index: 1; }
+.lm-nav-along-head { display: flex; align-items: center; justify-content: space-between; padding: 0 .4rem .4rem 1rem; }
+.lm-nav-along .lm-along-item:last-child { border-bottom: 0; }
+/* the buttons on the right of the map and the signs on the left would lie over it */
+.lm-navigating.lm-nav-along-on :is(.lm-nav-center, .lm-nav-limit, .lm-nav-speed, .lm-map-burger, .lm-traffic-btn, .lm-compass, .lm-dim, .lm-locate) { display: none; }
 /* 2D or 3D, above the compass; in navigation both above the height strip when it shows */
 .lm-dim { position: absolute; right: 10px; bottom: 210px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--bg);
   color: var(--fg); font: inherit; font-size: .85rem; font-weight: 700; box-shadow: var(--shadow); cursor: pointer; }
