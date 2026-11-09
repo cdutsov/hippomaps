@@ -81,6 +81,7 @@ const EN = {
     too_many: "Too many searches. Please wait a few minutes.",
   },
   directions: "Directions",
+  turnByTurn: "Turn by turn",
   from: "From",
   to: "To",
   fromHint: "Start: a place, an address",
@@ -352,7 +353,6 @@ const logo = () => {
   a.append(el("img", "lm-logo-img", { src: root.dataset.logo, alt: "", width: "28", height: "28" }), word);
   return a;
 };
-const tag = el("span", "lm-tag", {}, "Labs");
 const burger = () => {
   const b = el("button", "lm-icon-btn lm-burger", { type: "button", title: T.menu, "aria-label": T.menu, "aria-controls": "lm-menu", "aria-expanded": "false" });
   b.innerHTML = svg(ICON.burger, 22);
@@ -360,7 +360,7 @@ const burger = () => {
 };
 const menuBtn = burger();
 const sheetBtn = el("button", "lm-sheet-btn", { type: "button", "aria-label": T.sheet });
-top.append(menuBtn, logo(), tag);
+top.append(menuBtn, logo());
 
 const form = el("form", "lm-form", { role: "search" });
 const combo = el("div", "lm-combo");
@@ -2513,6 +2513,11 @@ const routeHead = el("div", "lm-route-head");
 const routeMsg = el("p", "lm-notes lm-route-msg", { role: "status", "aria-live": "polite" });
 const routeSum = el("p", "lm-route-sum");
 const routeSteps = el("ol", "lm-steps");
+// the steps of a route, folded at first (their number in the title)
+const stepsBox = el("details", "lm-steps-box");
+const stepsTitle = el("summary", "lm-steps-title");
+stepsBox.append(stepsTitle, routeSteps);
+stepsBox.hidden = true;
 function renderRoute() {
   routeView.innerHTML = "";
   routeHead.innerHTML = "";
@@ -2574,7 +2579,8 @@ function renderRoute() {
   routeSum.textContent = "";
   route.answer = null;
   routeSteps.innerHTML = "";
-  routeView.append(back, routeHead, routeMsg, routeSum, routeSteps);
+  stepsBox.hidden = true;
+  routeView.append(back, routeHead, routeMsg, routeSum, stepsBox);
   drawEnds(null);
   if (route.from?.me || route.to?.me) followMe(); else unfollowMe();
 }
@@ -2716,6 +2722,7 @@ async function findRoute({ quiet = false } = {}) {
   const clearRoute = () => {
     routeSum.textContent = "";
     routeSteps.innerHTML = "";
+    stepsBox.hidden = true;
     routeView.querySelector(".lm-nav-go")?.remove();
     routeView.querySelector(".lm-elev")?.remove();
     routeView.querySelector(".lm-along")?.remove();
@@ -2771,7 +2778,7 @@ async function findRoute({ quiet = false } = {}) {
     if (over > 0 && room > 0) body.scrollTop += Math.min(over, room);
   });
   if (d.elev?.pts?.length > 1) go.after(heightChart(d.elev, { onPoint: showOnRoute }).node);
-  if (ALONG) routeSteps.before(alongBox(d));
+  if (ALONG) stepsBox.before(alongBox(d));
   loadAvatar();
   if (SAY) fetchSay(d.steps[0]?.pre || d.steps[0]?.text); // the first sentence, ready for Start
   for (const st of d.steps) {
@@ -2783,6 +2790,8 @@ async function findRoute({ quiet = false } = {}) {
     li.append(b);
     routeSteps.append(li);
   }
+  stepsTitle.textContent = `${T.turnByTurn} (${d.steps.length})`;
+  stepsBox.hidden = !d.steps.length;
   drawEnds(d.line);
   drawRouteTraffic(d);
   if (route.go && route.from?.me) {

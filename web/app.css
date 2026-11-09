@@ -235,6 +235,11 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-sum-eta { flex-basis: 100%; font-size: .95rem; color: var(--muted); }
 .lm-route-sum:empty { display: none; }
 .lm-steps { list-style: none; margin: 0; padding: 0; }
+.lm-steps-box { border-bottom: 1px solid var(--line); }
+.lm-steps-title { padding: .75rem 1rem; cursor: pointer; font-weight: 600; color: var(--accent); }
+.lm-steps-title:hover { background: var(--hot); }
+.lm-steps-box[open] .lm-steps-title { border-bottom: 1px solid var(--line); }
+.lm-steps-box .lm-step:last-child button { border-bottom: 0; }
 .lm-step button { display: flex; width: 100%; gap: .8rem; justify-content: space-between; align-items: baseline; border: 0; border-bottom: 1px solid var(--line);
   background: none; color: var(--fg); font: inherit; text-align: left; padding: .55rem 1rem; cursor: pointer; }
 .lm-step button:hover { background: var(--hot); }
@@ -513,7 +518,8 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 /* the zoom buttons of MapLibre (wide screens only) in the size and shape of the others */
 .lm-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { border-radius: calc(var(--ctl) / 2); box-shadow: var(--shadow); overflow: hidden; margin: 0 10px 10px 0; }
 .lm-map .maplibregl-ctrl-group button { width: var(--ctl); height: var(--ctl); }
-@media (max-width: 760px) { .lm { --c0: calc(var(--sheet, 40dvh) + 12px); } }
+/* on a phone: above the sheet and the attribution (its (i) button, 24 px), with the gap of the column */
+@media (max-width: 760px) { .lm { --c0: calc(var(--sheet, 40dvh) + 44px); } }
 .lm-locate { bottom: var(--c0); }
 .lm-compass { bottom: calc(var(--c0) + var(--step)); }
 .lm-dim { bottom: calc(var(--c0) + 2 * var(--step)); }
