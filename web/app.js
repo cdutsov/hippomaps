@@ -78,6 +78,7 @@ const EN = {
   errors: {
     zoom_in: "Zoom in to search the map view, or add a place to the search.",
     need_location: "Share your location, or zoom the map to where you are, or add a place to the search.",
+    too_many: "Too many searches. Please wait a few minutes.",
   },
   directions: "Directions",
   from: "From",

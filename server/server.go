@@ -46,16 +46,17 @@ type Config struct {
 	ThumbHosts    []string      // hosts of thumbnails: upload.wikimedia.org, thumb.wikimedia.org
 	UserAgent     string        // for Wikimedia, with a way to reach the operator
 
-	RoutingURL   string        // Valhalla, for directions; empty: no directions
-	ElevationURL string        // the elevation API of overpass.ch, for height profiles of routes by bike and on foot
-	ElevationKey string        // a key for it (a maps key does not do); empty: no height profiles
-	OverpassURL  string        // an Overpass API of its own, asked without a key; empty: the one of overpass.ch with ElevationKey
-	RoutesPerIP  int           // directions a visitor gets in RouteWindow
-	TTSURL       string        // a text-to-speech server for navigation (Piper); empty: the voices of the browser
-	SaysPerIP    int           // spoken sentences a visitor gets in RouteWindow, beyond those in memory
-	TrafficURL   string        // the traffic service next to Valhalla (incidents.json); empty: no traffic
-	RouteWindow  time.Duration //
-	Log          *slog.Logger
+	RoutingURL    string        // Valhalla, for directions; empty: no directions
+	ElevationURL  string        // the elevation API of overpass.ch, for height profiles of routes by bike and on foot
+	ElevationKey  string        // a key for it (a maps key does not do); empty: no height profiles
+	OverpassURL   string        // an Overpass API of its own, asked without a key; empty: the one of overpass.ch with ElevationKey
+	RoutesPerIP   int           // directions a visitor gets in RouteWindow
+	TTSURL        string        // a text-to-speech server for navigation (Piper); empty: the voices of the browser
+	SaysPerIP     int           // spoken sentences a visitor gets in RouteWindow, beyond those in memory
+	SearchesPerIP int           // searches (search, query) a visitor gets in RouteWindow; taps on the map (here) three times as many
+	TrafficURL    string        // the traffic service next to Valhalla (incidents.json); empty: no traffic
+	RouteWindow   time.Duration //
+	Log           *slog.Logger
 }
 
 // DefaultConfig is the configuration without the environment.
@@ -65,7 +66,7 @@ func DefaultConfig() Config {
 		Pictures: true, PicturesPerIP: 600, PictureWindow: 10 * time.Minute, CacheMB: 64,
 		WikidataAPI: "https://www.wikidata.org/w/api.php", CommonsAPI: "https://commons.wikimedia.org/w/api.php",
 		ThumbHosts: []string{"upload.wikimedia.org", "thumb.wikimedia.org"}, UserAgent: "hippomaps (+https://gitlab.com/cdutsov/hippomaps)",
-		RoutesPerIP: 120, RouteWindow: 10 * time.Minute, ElevationURL: "https://api.overpass.ch", SaysPerIP: 600,
+		RoutesPerIP: 120, RouteWindow: 10 * time.Minute, ElevationURL: "https://api.overpass.ch", SaysPerIP: 600, SearchesPerIP: 100,
 		Log: slog.Default(),
 	}
 }
@@ -104,8 +105,10 @@ type Server struct {
 	transitPerIP *window
 	transitCalls chan struct{} // queries to Overpass for transit at once
 
-	trafficCache trafficCache
-	searchClient *http.Client
+	trafficCache  trafficCache
+	searchClient  *http.Client
+	searchesPerIP *window // search and query: they run on Overpass
+	herePerIP     *window // taps on the map
 }
 
 // New makes the server.
@@ -115,7 +118,8 @@ func New(cfg Config) *Server {
 		perIP: newWindow(cfg.PicturesPerIP, cfg.PictureWindow), calls: make(chan struct{}, 4),
 		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
 		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4),
-		transitPerIP: newWindow(300, 10*time.Minute), transitCalls: make(chan struct{}, 2)}
+		transitPerIP: newWindow(300, 10*time.Minute), transitCalls: make(chan struct{}, 2),
+		searchesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), herePerIP: newWindow(3*cfg.SearchesPerIP, cfg.RouteWindow)}
 	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
 	s.cfg.TrafficURL = strings.TrimRight(cfg.TrafficURL, "/")
 	s.cfg.SearchUpstream = strings.TrimRight(cfg.SearchUpstream, "/")

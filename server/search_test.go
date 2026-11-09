@@ -56,3 +56,45 @@ func TestOwnSite(t *testing.T) {
 		t.Errorf("the search host in the CSP: %s", csp)
 	}
 }
+
+// SearchesPerIP: searches of a visitor in RouteWindow, three times as many taps; completions free;
+// other paths not relayed
+func TestSearchLimit(t *testing.T) {
+	var calls int
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(up.Close)
+	s := testServer(t, nil, func(c *Config) { c.Base = "/"; c.SearchUpstream = up.URL + "/labs"; c.SearchesPerIP = 2 })
+	ip := func(w *httptest.ResponseRecorder) int { return w.Code }
+	for i, want := range []int{200, 200, 429} {
+		if c := ip(get(s, "/api/search/search?q=x", "X-Forwarded-For", "203.0.113.7")); c != want {
+			t.Errorf("search %d: %d, want %d", i, c, want)
+		}
+	}
+	if c := ip(get(s, "/api/search/query?q=x", "X-Forwarded-For", "203.0.113.7")); c != 429 {
+		t.Errorf("query after the searches: %d", c)
+	}
+	if w := get(s, "/api/search/search?q=x", "X-Forwarded-For", "203.0.113.7"); !strings.Contains(w.Body.String(), `"too_many"`) {
+		t.Errorf("answer over the limit: %s", w.Body)
+	}
+	if c := ip(get(s, "/api/search/search?q=x", "X-Forwarded-For", "203.0.113.8")); c != 200 {
+		t.Errorf("another visitor: %d", c)
+	}
+	for i := 0; i < 10; i++ {
+		if c := ip(get(s, "/api/search/complete?q=x", "X-Forwarded-For", "203.0.113.7")); c != 200 {
+			t.Fatalf("completion %d: %d", i, c)
+		}
+	}
+	for i := 0; i < 7; i++ {
+		c := ip(get(s, "/api/search/here?lat=1&lon=1", "X-Forwarded-For", "203.0.113.7"))
+		if want := map[bool]int{true: 200, false: 429}[i < 6]; c != want {
+			t.Errorf("tap %d: %d, want %d", i, c, want)
+		}
+	}
+	n := calls
+	if c := ip(get(s, "/api/search/status", "X-Forwarded-For", "203.0.113.9")); c != 404 || calls != n {
+		t.Errorf("another path: %d, relayed %v", c, calls != n)
+	}
+}

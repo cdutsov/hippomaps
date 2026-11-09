@@ -167,6 +167,7 @@ By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,
 | `SEARCH_UPSTREAM` | | overpass-search of another site (`https://overpass.ch/labs/search/api`), relayed under `{base}/api/search` with the address of the visitor; it sets the search API of the page. For a site of its own: the search API answers its own site only |
 | `TRAFFIC_URL` | | the traffic service next to Valhalla (`/incidents.json`); empty: no traffic on the map |
 | `SAYS_PER_IP` | `600` | new sentences a visitor gets spoken in 10 minutes (those in memory are free) |
+| `SEARCHES_PER_IP` | `100` | searches a visitor gets in 10 minutes through `SEARCH_UPSTREAM`; taps on the map three times as many; completions while typing are free |
 | `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia, which asks for a way to reach the operator |
 
 The page sends a Content-Security-Policy that allows this site and the tiles API, `noindex`, and `geolocation=(self)`. The

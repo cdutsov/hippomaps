@@ -11,7 +11,28 @@ import (
 // search relays GET {base}/api/search/{complete,query,search,...}?… to SearchUpstream with the
 // address of the visitor in X-Forwarded-For (its limits count per visitor, and the server in front
 // of it trusts this one). The answer goes back as it came, with its status.
+//
+// Each visitor gets SearchesPerIP searches (search, query) in RouteWindow and three times as many
+// taps on the map (here); completions while typing are not counted. Other paths are not relayed.
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	var lim *window
+	switch r.PathValue("rest") {
+	case "search", "query":
+		lim = s.searchesPerIP
+	case "here":
+		lim = s.herePerIP
+	case "complete":
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	if lim != nil && !lim.allow(clientIP(r), time.Now()) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After", "600")
+		w.WriteHeader(http.StatusTooManyRequests)
+		io.WriteString(w, `{"error":{"code":"too_many","message":"Too many searches. Please wait a few minutes."}}`)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 80*time.Second) // a search may take a minute
 	defer cancel()
 	u := s.cfg.SearchUpstream + "/" + r.PathValue("rest")

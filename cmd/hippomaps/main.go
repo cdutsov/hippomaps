@@ -86,6 +86,7 @@ func config() (server.Config, error) {
 	cfg.TTSURL = env("TTS_URL", "")
 	cfg.TrafficURL = env("TRAFFIC_URL", "")
 	cfg.SaysPerIP = num("SAYS_PER_IP", cfg.SaysPerIP)
+	cfg.SearchesPerIP = num("SEARCHES_PER_IP", cfg.SearchesPerIP)
 	if !strings.HasPrefix(cfg.Base, "/") {
 		err = errors.Join(err, fmt.Errorf("BASE_PATH: must start with /: %q", cfg.Base))
 	}

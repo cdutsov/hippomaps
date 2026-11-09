@@ -59,6 +59,7 @@ export function texts(num) {
       errors: {
         zoom_in: "Zoomen Sie hinein, um im Kartenausschnitt zu suchen, oder nennen Sie einen Ort.",
         need_location: "Geben Sie Ihren Standort frei, zoomen Sie die Karte dorthin, wo Sie sind, oder nennen Sie einen Ort.",
+        too_many: "Zu viele Suchen. Bitte warten Sie ein paar Minuten.",
       },
       directions: "Route",
       from: "Von",
@@ -207,6 +208,7 @@ export function texts(num) {
       errors: {
         zoom_in: "Zoomez pour chercher dans la vue de la carte, ou ajoutez un lieu à la recherche.",
         need_location: "Partagez votre position, ou zoomez la carte là où vous êtes, ou ajoutez un lieu à la recherche.",
+        too_many: "Trop de recherches. Veuillez patienter quelques minutes.",
       },
       directions: "Itinéraire",
       from: "De",
@@ -353,6 +355,7 @@ export function texts(num) {
       errors: {
         zoom_in: "Ingrandisci per cercare nella vista della mappa, oppure aggiungi un luogo alla ricerca.",
         need_location: "Condividi la tua posizione, sposta la mappa dove sei, oppure aggiungi un luogo alla ricerca.",
+        too_many: "Troppe ricerche. Attendi qualche minuto.",
       },
       directions: "Percorso",
       from: "Da",
