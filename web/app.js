@@ -27,7 +27,7 @@ const extraKeys = [...placeKeys, "what", "view"]; // view=1: the same search in 
 
 const EN = {
   placeholder: "Search places, or what and where",
-  // the search box shows these in turn while it is empty: each runs on the search as written
+  // the hint of the empty search box: one of these at random; each runs on the search as written
   hints: ["restaurants near Lake Zurich", "gas stations along the A3", "bridges over the Rhine in Basel", "castles in Ticino",
     "mountain huts over 2500 m in Valais", "campsites by Lake Geneva", "beer gardens in Munich", "lighthouses in Brittany",
     "vegan restaurants in Zurich", "viewpoints near Lucerne", "drinking water in Geneva", "ice cream along the Limmat"],
@@ -322,16 +322,15 @@ const input = el("input", "lm-input", { type: "search", role: "combobox", "aria-
 const clearBtn = el("button", "lm-clear", { type: "button", "aria-label": T.clear });
 clearBtn.innerHTML = svg(ICON.close, 16);
 clearBtn.hidden = true;
-// the hint of the empty box: examples of searches in turn, every 4 seconds, while nobody types there
+// the hint of the empty box: an example of a search picked at random each time the box is empty
+// again (the start, the X, the text deleted), not the one shown before
 const hints = (T.hints || []).slice();
-let hintAt = Math.floor(Math.random() * Math.max(1, hints.length));
-const showHint = () => { if (hints.length) input.placeholder = hints[hintAt % hints.length]; };
-showHint();
-setInterval(() => {
-  if (document.hidden || document.activeElement === input || input.value) return;
-  hintAt++;
-  showHint();
-}, 4000);
+const newHint = () => {
+  if (!hints.length) return;
+  const others = hints.length > 1 ? hints.filter((h) => h !== input.placeholder) : hints;
+  input.placeholder = others[Math.floor(Math.random() * others.length)];
+};
+newHint();
 const goBtn = el("button", "lm-go", { type: "submit", "aria-label": T.search });
 goBtn.innerHTML = svg(ICON.search, 20);
 const list = el("ul", "lm-suggest", { id: "lm-list", role: "listbox" });
@@ -593,11 +592,11 @@ map.on("style.load", () => {
   map.addLayer({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
   map.addLayer({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
     paint: { "circle-radius": 7, "circle-color": "#1a73e8", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
-  // the area of a tap: its outline in the blue of overpass.ch, with a glow
+  // the area of a tap: its outline dashed in the blue of overpass.ch, on a soft glow
   map.addLayer({ id: "lm-area-glow", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "round" },
     paint: { "line-color": "#0284c7", "line-width": 9, "line-opacity": 0.22, "line-blur": 2 } }, below);
-  map.addLayer({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "round" },
-    paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95 } }, below);
+  map.addLayer({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "butt" },
+    paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95, "line-dasharray": [3, 2] } }, below);
   // directions: the line with a casing, the start (white) and the destination (red)
   const line = ["==", ["geometry-type"], "LineString"];
   // traffic under the route: closures dark red, queues red, slow traffic and roadworks orange
@@ -1325,6 +1324,7 @@ const accept = (s) => {
 };
 input.addEventListener("input", () => {
   clearBtn.hidden = !input.value;
+  if (!input.value) newHint();
   clearTimeout(suggestTimer);
   suggestTimer = setTimeout(suggest, 150);
 });
@@ -1352,6 +1352,7 @@ input.addEventListener("blur", () => setTimeout(closeList, 120));
 // the X clears it all: the text, the results, the place shown, directions; back to the start
 clearBtn.addEventListener("click", () => {
   input.value = "";
+  newHint();
   clearBtn.hidden = true;
   closeList();
   runCtl?.abort();
@@ -1523,6 +1524,7 @@ window.addEventListener("popstate", () => {
     state.text = "";
     state.extra = {};
     input.value = "";
+    newHint();
     clearBtn.hidden = true;
     closeList();
     clear();

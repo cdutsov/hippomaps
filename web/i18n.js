@@ -142,7 +142,8 @@ export function texts(num) {
     },
     fr: {
       placeholder: "Chercher des lieux, ou quoi et où",
-      hints: ["cabanes au-dessus de 2500 m en Valais", "restaurants végans à Zurich", "points de vue près de Lucerne"],
+      hints: ["cabanes au-dessus de 2500 m en Valais", "restaurants végans à Zurich", "points de vue près de Lucerne", "châteaux en Valais",
+        "fontaines à Genève", "restaurants au bord du lac de Neuchâtel", "boulangeries à Lausanne"],
       examples: ["cafés", "Migros", "musées à Berne", "places de jeux près de moi", "restaurants ouverts maintenant", "hôtels au bord du lac à Genève"],
       intro: "Cherchez en mots simples : un lieu, une chaîne, ou quoi et où. Un mot seul cherche dans la vue de la carte.",
       searching: "Recherche…",
@@ -273,7 +274,7 @@ export function texts(num) {
     },
     it: {
       placeholder: "Cerca luoghi, oppure cosa e dove",
-      hints: ["distributori lungo la A3", "castelli in Ticino"],
+      hints: ["distributori lungo la A3", "castelli in Ticino", "gelaterie a Lugano", "castelli in Valle d'Aosta"],
       examples: ["caffè", "Migros", "musei a Lugano", "parchi giochi vicino a me", "ristoranti aperti ora", "alberghi sul lago a Locarno"],
       intro: "Cerca con parole semplici: un luogo, una catena, oppure cosa e dove. Una parola sola cerca nella vista della mappa.",
       searching: "Ricerca…",

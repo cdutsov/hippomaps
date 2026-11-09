@@ -251,10 +251,12 @@ try:
     check(wait("!document.querySelector('.lm-listview').hidden && document.getElementById('app').dataset.sheet === 'peek'", 10),
           f"< back to nothing under the empty search box: the panel folds ({js('document.getElementById(\'app\').dataset.sheet')})")
 
-    # the empty search box shows examples of searches in turn
-    js("document.querySelector('.lm-input').blur()")
+    # the empty search box: an example of a search, another one after the X
     first = js("document.querySelector('.lm-input').placeholder")
-    check(wait(f"document.querySelector('.lm-input').placeholder !== {json.dumps(first)}", 10), "the empty search box shows examples in turn")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+    check(js(f"document.querySelector('.lm-input').placeholder !== {json.dumps(first)} && document.querySelector('.lm-input').placeholder.length > 0"),
+          "the empty search box: another example after the X")
+    js("document.querySelector('.lm-input').blur()")
 
     # a place starred: in the empty search box, and on the map; the last search there too
     js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Thun'; document.querySelector('.lm-form').requestSubmit(); })()")
