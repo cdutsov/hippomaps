@@ -18,9 +18,11 @@ const ROUTE = root.dataset.route || "";
 const ALONG = (ROUTE && root.dataset.along) || ""; // places along a route (Overpass, through this server)
 // the language: chosen in the menu (hm-lang), else that of the browser. It sets the texts of the page
 // (en, de, fr, it), the names on the map, the steps of directions and the voice.
+// A change in the menu applies at once, without loading the page again (setLang).
 const chosenLang = (() => { try { return localStorage.getItem("hm-lang") || ""; } catch { return ""; } })();
-const LANG = chosenLang || (navigator.language || "en").slice(0, 2).toLowerCase();
-const UI = languages.some(([k]) => k === LANG) ? LANG : "en";
+const langOf = (chosen) => chosen || (navigator.language || "en").slice(0, 2).toLowerCase();
+let LANG = langOf(chosenLang);
+let UI = languages.some(([k]) => k === LANG) ? LANG : "en";
 document.documentElement.lang = UI;
 const num = (n) => n.toLocaleString(UI);
 const placeKeys = ["place", "place2", "region"];
@@ -174,14 +176,20 @@ const EN = {
   voiceCredit: "Voices by Piper; the French voice from the SIWIS database (CC BY 4.0).",
   language: "Language",
   languageNote: "Page, names on the map, directions and voice",
-  automatic: "As the browser",
+  automatic: "Automatic",
   poweredBy: "Powered by",
   clear: "Clear",
   search: "Search",
   sheet: "Show or hide the list",
 };
-const TR = texts(num)[UI] || {};
-const T = { ...EN, ...TR, errors: { ...EN.errors, ...(TR.errors || {}) } };
+// T: the texts in the language of the page; setLang fills the same object again
+const T = {};
+const loadTexts = () => {
+  const tr = texts(num)[UI] || {};
+  for (const k of Object.keys(T)) delete T[k];
+  Object.assign(T, EN, tr, { errors: { ...EN.errors, ...(tr.errors || {}) } });
+};
+loadTexts();
 
 // ------------------------------------------------------------------ helpers
 const el = (tag, cls, attrs = {}, text) => {
@@ -436,7 +444,8 @@ const showView = (v) => {
   body.scrollTop = 0;
   if (v === listView) setTimeout(foldIfEmpty); // after the caller has filled or cleared the list
 };
-const foot = el("div", "lm-foot", {}, [T.credit, root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" "));
+const footText = () => [T.credit, root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" ");
+const foot = el("div", "lm-foot", {}, footText());
 side.append(sheetBtn, top, form, status, body, foot);
 
 // ------------------------------------------------------------------ the map
@@ -1080,7 +1089,7 @@ const trafficRow = toggle(T.traffic, T.trafficNote, look.traffic, setTraffic);
 const transitRow = toggle(T.transit, T.transitNote, look.transit, setTransit);
 transitBox = transitRow.querySelector("input");
 trafficBox = trafficRow.querySelector("input");
-// the language; a change loads the page again in it
+// the language; a change applies at once (setLang)
 const langSel = el("select", "lm-lang-select", { "aria-label": T.language });
 for (const [k, name] of [["", T.automatic], ...languages]) {
   const o = el("option", "", { value: k }, name);
@@ -1089,8 +1098,10 @@ for (const [k, name] of [["", T.automatic], ...languages]) {
 }
 langSel.addEventListener("change", () => {
   store.set("hm-lang", langSel.value);
-  location.reload();
+  setLang(langSel.value);
 });
+const menuFootText = () => (TRAFFIC ? `${T.credit} ${T.trafficCredit}` : T.credit);
+const menuFoot = el("p", "lm-menu-foot", {}, menuFootText());
 const langRow = el("label", "lm-toggle lm-lang");
 const langText = el("span", "lm-toggle-text");
 langText.append(el("span", "", {}, T.language), el("span", "lm-toggle-note", {}, T.languageNote));
@@ -1106,7 +1117,7 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
   ...(TRANSIT ? [transitRow] : []),
   langRow,
   forgetBtn,
-  poweredBy(), el("p", "lm-menu-foot", {}, TRAFFIC ? `${T.credit} ${T.trafficCredit}` : T.credit));
+  poweredBy(), menuFoot);
 root.append(backdrop, menu);
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
 function poweredBy() {
@@ -2588,7 +2599,7 @@ function renderRoute() {
 // Each is a field that suggests places and addresses from the geocoder of overpass.ch (Photon,
 // with the key of the map, near the map view), with the location of the visitor first.
 let fieldN = 0;
-const geoLang = ["de", "fr"].includes(UI) ? UI : "en";
+const geoLang = () => (["de", "fr"].includes(UI) ? UI : "en");
 function placeLabel(p) {
   const street = [p.street, p.housenumber].filter(Boolean).join(" ");
   const town = p.city || p.town || p.village || p.district || "";
@@ -2673,7 +2684,7 @@ function placeField(which) {
     ctl = new AbortController();
     const c = map.getCenter();
     try {
-      const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q, limit: "6", lang: geoLang,
+      const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q, limit: "6", lang: geoLang(),
         lat: c.lat.toFixed(4), lon: c.lng.toFixed(4) })}`, { signal: ctl.signal });
       const d = await r.json();
       if (!field.isConnected || field.value.trim() !== q) return; // typed on meanwhile, or gone
@@ -3136,10 +3147,13 @@ const arrowSVG = (type, size) =>
 // the colours of route numbers on a sign: motorways (A) red, European routes green, others blue
 const shieldClass = (r) => (/^A\s?\d/.test(r) ? "lm-shield-a" : /^E\s?\d/.test(r) ? "lm-shield-e" : "lm-shield");
 // how near a turn is said first (alert) and again (pre), and how far off the line is off the route, in metres
+// off: metres from the line that count as off the route, plus the accuracy of the fix up to acc; fixes:
+// that many fixes off in a row bring a new route; away: off sooner (at half the distance) when the
+// traveller moves at more than 2 m/s at 60 degrees or more from the way of the route (a turn missed)
 const NAV = {
-  car: { alert: 700, pre: 160, off: 45, arrive: 40 },
-  bike: { alert: 250, pre: 50, off: 30, arrive: 20 },
-  walk: { alert: 120, pre: 25, off: 25, arrive: 15 },
+  car: { alert: 700, pre: 160, off: 45, acc: 60, fixes: 3, away: true, arrive: 40 },
+  bike: { alert: 250, pre: 50, off: 25, acc: 25, fixes: 2, away: true, arrive: 20 },
+  walk: { alert: 120, pre: 25, off: 25, acc: 20, fixes: 3, away: false, arrive: 15 },
 };
 // flat: false, navigation follows tilted (its 2D/3D button is gone)
 const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", flat: false, spoken: new Set(), off: 0, rerouting: false };
@@ -3251,7 +3265,7 @@ const pointAt = (along) => pointOn(nav.d.line, nav.cum, along, nav.idx);
 // the browser has for the language.
 const SAY = root.dataset.say || "";
 const LOCALES = { en: "en-US", de: "de-DE", fr: "fr-FR", it: "it-IT", es: "es-ES", nl: "nl-NL", pt: "pt-PT" };
-const STEP_LANG = LOCALES[LANG] ? LANG : "en"; // the language of the texts of Valhalla
+let STEP_LANG = LOCALES[LANG] ? LANG : "en"; // the language of the texts of Valhalla
 const OUR_VOICES = ["de", "en", "fr", "it"];
 const hasSpeech = "speechSynthesis" in window;
 let browserVoices = [];
@@ -3600,13 +3614,16 @@ function onFix(pos) {
   const first = nav.first; // the first fix on a new route counts as on it: the route starts at the road nearest to it
   const p = snap(ll, first);
   nav.first = false;
-  const cfg = NAV[route.mode], acc = Math.min(pos.coords.accuracy || 0, 60);
-  if (!first && p.dist > cfg.off + acc) {
+  const cfg = NAV[route.mode], acc = Math.min(pos.coords.accuracy || 0, cfg.acc);
+  const h = pos.coords.heading;
+  const moving = h != null && !Number.isNaN(h) && pos.coords.speed > 1 ? h : null;
+  const turn = moving == null ? 0 : Math.abs(((moving - p.heading + 540) % 360) - 180);
+  const away = cfg.away && moving != null && pos.coords.speed > 2 && turn >= 60 && p.dist > (cfg.off + acc) / 2;
+  if (!first && (p.dist > cfg.off + acc || away)) {
     nav.off++;
-    const h = pos.coords.heading;
-    ll.heading = h != null && !Number.isNaN(h) && pos.coords.speed > 1 ? h : null;
+    ll.heading = moving;
     navUpdate(p, ll, true);
-    if (nav.off >= 3 && !nav.rerouting) reroute(ll);
+    if (nav.off >= cfg.fixes && !nav.rerouting) reroute(ll);
     return;
   }
   nav.off = 0;
@@ -3618,10 +3635,11 @@ function onFix(pos) {
   nav.lastT = t;
   navUpdate(p, ll);
 }
-// stops: the stops still ahead ({ll, label}), else those of the route not yet passed
-async function reroute(ll, stops = null) {
+// stops: the stops still ahead ({ll, label}), else those of the route not yet passed; quiet: the same
+// way in another language (setLang), with no "Route recalculated"
+async function reroute(ll, stops = null, { quiet = false } = {}) {
   nav.rerouting = nav.routing = true;
-  navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
+  if (!quiet) navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
   const via = stops || nav.stops.filter((x) => x.i > nav.idx && x.ll).map(({ ll, label }) => ({ ll, label }));
   try {
     const q = new URLSearchParams({ from: `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`, to: `${route.to.ll[1].toFixed(5)},${route.to.ll[0].toFixed(5)}`, mode: route.mode, lang: LANG });
@@ -3637,7 +3655,7 @@ async function reroute(ll, stops = null) {
       nav.first = true;
       // "Route recalculated", then the first instruction of the new route
       nav.spoken.add("0");
-      speak([[T.rerouted, UI], d.steps[0]?.pre || d.steps[0]?.text]);
+      if (!quiet) speak([[T.rerouted, UI], d.steps[0]?.pre || d.steps[0]?.text]);
       if (nav.lastFix) onFix(nav.lastFix); // the banner at once, not at the next fix
     }
   } catch {}
@@ -3831,6 +3849,48 @@ for (const ev of ["pointerdown", "wheel", "touchstart"]) {
   }, { passive: true, capture: true });
 }
 
+// ------------------------------------------------------------------ the language
+// A new language at once, with what is open kept: the texts built once at the start are found in the
+// page by their old wording and given the new one; the map names, the place, the route and the steps
+// of navigation are asked again in the new language. Navigation goes on from where it is.
+function setLang(chosen) {
+  const old = JSON.parse(JSON.stringify(T)); // the strings; functions drop out
+  LANG = langOf(chosen);
+  UI = languages.some(([k]) => k === LANG) ? LANG : "en";
+  STEP_LANG = LOCALES[LANG] ? LANG : "en";
+  document.documentElement.lang = UI;
+  loadTexts();
+  const swap = new Map();
+  const pair = (a, b) => {
+    if (typeof a === "string" && typeof b === "string") { if (a !== b && !swap.has(a)) swap.set(a, b); }
+    else if (a && b && typeof a === "object" && typeof b === "object") for (const k of Object.keys(a)) pair(a[k], b[k]);
+  };
+  pair(old, JSON.parse(JSON.stringify(T)));
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    const t = n.data.trim(), to = t && swap.get(t);
+    if (to) n.data = n.data.replace(t, to);
+  }
+  for (const e of document.body.querySelectorAll("[title], [aria-label], [placeholder], [alt]")) {
+    for (const a of ["title", "aria-label", "placeholder", "alt"]) {
+      const to = e.hasAttribute(a) && swap.get(e.getAttribute(a));
+      if (to) e.setAttribute(a, to);
+    }
+  }
+  foot.textContent = footText();
+  menuFoot.textContent = menuFootText();
+  hints.splice(0, hints.length, ...(T.hints || []));
+  if (!input.value) newHint();
+  for (const end of [route.from, route.to]) if (end?.me) end.label = T.myPlace;
+  for (const f of routeView.querySelectorAll("input")) { const to = swap.get(f.value); if (to) f.value = to; }
+  restyle(); // the names on the map
+  if (nav.on && !nav.arrived && nav.at) {
+    const at = [...nav.at];
+    at.heading = nav.heading;
+    reroute(at, null, { quiet: true });
+  } else if (route.from && route.to && !routeView.hidden) findRoute({ quiet: true });
+  if (!detailView.hidden && state.selected) renderDetail(state.selected);
+}
 // ------------------------------------------------------------------ start
 // the intro at once (before the map loads, a visitor may already open directions); a search of the
 // address once the map is there, as it searches the map view

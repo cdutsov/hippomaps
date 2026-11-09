@@ -7,8 +7,8 @@ Prints "ok <what>" per check and "FAIL <what>" per failure; exits 1 on a failure
 in Zurich (a granted location) on a phone screen. Checks: the map starts at the location; the
 Directions button opens start and destination, a typed destination gives a route by car with its
 time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
-sentences of the server; the traffic button; a stop and the places along a route; the X clears everything; German texts after the
-language of the menu; and no errors of the page on the way. Needs chromium and websocket-client.
+sentences of the server; the language changed while navigating (no new page); the traffic button; a stop and the places along a
+route; the X clears everything; German texts after the language of the menu; and no errors of the page on the way. Needs chromium and websocket-client.
 """
 import json
 import os
@@ -161,6 +161,14 @@ try:
     js("document.querySelector('.lm-menu .lm-icon-btn')?.click()")
     time.sleep(0.5)
     check(js("document.querySelector('.lm-nav-center').hidden"), "the menu while navigating leaves the map following")
+    # another language while navigating: no new page, navigation goes on, the steps in that language
+    js("window.hmSamePage = 1; (() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
+    check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/route') && e.name.includes('lang=de'))", 20)
+          and js("window.hmSamePage === 1 && document.documentElement.lang === 'de' && document.getElementById('app').classList.contains('lm-navigating')")
+          and js("/suchen/i.test(document.querySelector('.lm-input').getAttribute('aria-label'))"),
+          "another language while navigating: the same page, navigation goes on, the route asked in German")
+    js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })(); localStorage.removeItem('hm-lang')")
+    check(wait("document.documentElement.lang === 'en' && /search/i.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 10), "Automatic: the language of the browser again")
     if js("!!document.getElementById('app').dataset.say"):
         check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/say'))", 20), "the voice of the server speaks")
     js("document.querySelector('.lm-nav-x').click()")

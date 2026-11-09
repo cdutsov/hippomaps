@@ -221,3 +221,23 @@ func TestRouteHeightsDown(t *testing.T) {
 		t.Errorf("heights down: %d %s", w.Code, w.Body)
 	}
 }
+
+// "Continue." says how far: the sentence after the turn is said at it; one with more ("Then…") stays
+func TestContinueDistance(t *testing.T) {
+	var a routeAnswer
+	a.Line = routeLine
+	a.addSteps([]maneuver{
+		{Instruction: "Weiter.", Type: 8, Alert: "Weiter.", Pre: "Weiter.", Post: "600 Meter weiter der Route folgen.", Begin: 0},
+		{Instruction: "Continue.", Type: 8, Pre: "Continue. Then, in 30 meters, Turn left.", Post: "Continue for 30 meters.", Begin: 1},
+		{Instruction: "Turn left.", Type: 15, Pre: "Turn left.", Post: "Continue for 1 kilometer.", Begin: 2},
+	}, 0, false, 0)
+	if s := a.Steps[0]; s.Pre != "600 Meter weiter der Route folgen." || s.Post != "" || s.Alert != "" || s.Text != "Weiter." {
+		t.Errorf("continue: %+v", s)
+	}
+	if s := a.Steps[1]; s.Pre != "Continue. Then, in 30 meters, Turn left." || s.Post != "Continue for 30 meters." {
+		t.Errorf("continue then: %+v", s)
+	}
+	if s := a.Steps[2]; s.Pre != "Turn left." || s.Post != "Continue for 1 kilometer." {
+		t.Errorf("turn: %+v", s)
+	}
+}

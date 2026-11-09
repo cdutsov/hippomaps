@@ -322,6 +322,11 @@ func (a *routeAnswer) addSteps(ms []maneuver, off int, toStop bool, stop int) {
 			Alert: m.Alert, Pre: m.Pre, Post: m.Post, Street: strings.Join(m.Streets, " / "), Highway: m.Highway, Roundabout: m.Roundabout,
 			Exit: strings.Join(texts(m.Sign.Number), " "), ExitName: strings.Join(texts(m.Sign.Name), " / "),
 			Routes: texts(m.Sign.Branch), Toward: texts(m.Sign.Toward)}
+		// a way straight on ("Continue.", "Weiter."; also "X becomes Y", "Keep straight") says how far
+		// it goes when it is said: Valhalla has the distance only in the sentence after the turn
+		if (m.Type == 7 || m.Type == 8 || m.Type == 22) && m.Post != "" && strings.TrimSpace(m.Pre) == strings.TrimSpace(m.Instruction) {
+			st.Pre, st.Post, st.Alert = m.Post, "", ""
+		}
 		if st.I >= 0 && st.I < len(a.Line) {
 			st.At = a.Line[st.I]
 		}
