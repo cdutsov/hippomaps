@@ -1,211 +1,122 @@
 # hippomaps
 
-A map app: a search box with suggestions, the results and the page of a place in a side bar, and the map beside it. Pictures of
-places and logos of chains come from Wikimedia Commons. On a phone the side bar is a sheet over the lower part of the map.
+A map app for the web and Android: search in plain words, place pages, directions and turn-by-turn navigation, on
+OpenStreetMap data. Live at https://hippomaps.ch.
 
-It is a client of [overpass-search](https://gitlab.com/cdutsov/overpass-search): the browser calls its API for the reading, the
-results and the completions. This server serves the page and its files, reads pictures from Wikidata and Commons, and asks
-Valhalla for directions, so that the browser of a visitor asks only the site it is on.
+## Features
+
+- **Search** in plain words ("cafés in Zurich old town", "peaks over 4000 m in Valais") with suggestions while typing,
+  results on the map and in a list, "search this area", and quick searches for restaurants, hotels, fuel and more
+- **Place pages**: photo or logo from Wikimedia Commons with its credit, opening hours with the next change, website, phone,
+  address, wheelchair access, Wikipedia, all tags
+- **What is here**: a tap on the map shows the address and the named places around it
+- **Directions** by car, bike and on foot, with up to 8 stops, places along the route (fuel, charging, rest areas, food,
+  drinking water…), lanes, junction signs and speed limits, and a height profile by bike and on foot
+- **Navigation** turn by turn, spoken in four languages, with re-routing, a 3D traveller and a preview mode
+- **Live traffic** in Switzerland: closures, queues and roadworks on the map and in the route time
+- **Transit lines** (metro, light rail, tram) in their colours
+- **Map styles**: nine styles, day and night by the sun, 3D terrain and buildings, relief shading
+- **Languages**: English, German, French, Italian
+- **Privacy**: settings, starred places and recent searches stay in the browser
+- **Shareable links** for places, searches and routes
+- **Android app** (`android/`): the site in a WebView with native location, background navigation, and links from other
+  map apps (`geo:`, Google Maps, OpenStreetMap, Apple Maps)
+
+## How it works
+
+A Go server serves the page (`web/`, plain JavaScript and MapLibre, no build step) and relays what the browser needs
+to other services:
+
+| Service | Used for | Setting |
+|---|---|---|
+| Map tiles API ([overpass.ch](https://overpass.ch) maps, or a gateway with the same paths) | vector and terrain tiles, styles, geocoding | `TILES_URL`, `MAPS_KEY` |
+| [overpass-search](https://gitlab.com/cdutsov/overpass-search) | the search | `SEARCH_UPSTREAM` |
+| [Valhalla](https://github.com/valhalla/valhalla) | directions, lanes, speed limits | `ROUTING_URL` |
+| Overpass API | transit lines, places along a route | `OVERPASS_URL`, or overpass.ch with `ELEVATION_KEY` |
+| overpass.ch elevation API | height profiles | `ELEVATION_URL`, `ELEVATION_KEY` |
+| [Piper](https://github.com/rhasspy/piper) behind `/say?lang=&text=` | spoken navigation (else the voices of the browser) | `TTS_URL` |
+| A traffic service with `/incidents.json` | live traffic | `TRAFFIC_URL` |
+| Wikidata and Wikimedia Commons | photos and logos | `PICTURES` |
+
+Except for the tiles, each service is optional: without its setting the feature is left out of the page.
+
+## Run
 
 ```
-go run ./cmd/hippomaps            # :8096, the page on /labs/maps
+go run ./cmd/hippomaps                        # :8096, the page on /labs/maps
+docker build -t hippomaps . && docker run -p 8096:8096 -e BASE_PATH=/ hippomaps
 ```
 
-## What it does
-
-- Languages English, German, French and Italian (`web/i18n.js`): the language of the browser, or the one chosen in the menu
-  (`hm-lang`; the page loads again). It sets the texts, the names on the map, the steps of directions and the voice. The
-  readings of the search come from overpass-search and stay English.
-- Traffic in Switzerland (with `TRAFFIC_URL`): closures, queues, slow traffic and roadworks on the map, their message in a popup,
-  refreshed every two minutes; a button on the map and a switch in the menu (`hm-traffic`, off at first). By car the route is
-  orange or red where traffic is slow or queued, the time shows the delay, and the arrival time is green, orange or red by the
-  traffic ahead. Routes leave now (`date_time`), so Valhalla counts live
-  speeds and closures. Credit: "Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP)."
-- A Directions button beside the search box at all times opens the fields for start and destination; with a place opened or
-  found, it starts navigation to it from the location of the visitor (the location of the
-  visitor as the start when known, the destination to type, or to tap on the map); a search that finds one place shows
-  Directions beside its name.
-- A 2D/3D button above the compass: on the map the 3D of the menu (terrain, buildings, the map tilted); in navigation the
-  map that follows, flat or tilted.
-- Map styles include Day and night (the first, and the default): the light style while the sun is up where the map is, the
-  dark one after; it changes at sunrise and sunset. Navigation by car is light by day and dark at night and in tunnels of 200 m
-  or more (`tunnels` of the route).
-- Bubbles over the map: Restaurants, Hotels, Transit, ATMs, and on a wide screen Cafés, Supermarkets, Pharmacies, Parking,
-  Fuel; a tap searches the map view. Transit switches the lines of metro, light rail, monorail and tram in their colours
-  (`/api/transit?tile=10/x/y`: `OVERPASS_URL`, or Overpass of overpass.ch with `ELEVATION_KEY`, each tile kept a day; a switch in the menu,
-  `hm-transit`). "metro lines in Lausanne", "U-Bahn in Berlin", "tram in Zürich" show and list the lines of that city.
-- Saved in the browser (local storage, never sent to the server): the settings (map style, 3D, language, traffic, mode,
-  sound), starred places (`hm-stars`: a star beside Directions on a place, a tapped point, a town found; yellow on the map;
-  in the empty search box and in start and destination) and the last 10 searches (`hm-recent`: in the empty search box;
-  the menu forgets them).
-- The X of the search clears everything: the text, the results, the place shown, directions.
-- The map opens where the visitor is: the browser asks for the location once (a link with `#map=` opens there instead; no
-  message when the visitor says no).
-- Suggestions while typing: words of the list, chains and places (`/complete`).
-- The reading of the search at once (`/query`), then the results (`/search`), named first, 40 at a time.
-- A card per result: name, kind, chain, address, distance from the visitor once known, open or closed with the next change
-  (opening_hours.js, loaded when a result has hours), and a thumbnail: the photo of the place, else the logo of the chain, else
-  a letter.
-- The page of a place: the picture with its credit, open or closed, directions, website, phone, e-mail, address, opening hours,
-  wheelchair access, Wikipedia, and all tags.
-- Directions (with `ROUTING_URL`; without it the button opens OpenStreetMap): to a place, or to a tapped point, by car, bike or
-  on foot. Start and destination are fields that suggest places and addresses from the geocoder of overpass.ch
-  (Photon, `/v1/{key}/geocode/api` with the key of the map, near the map view; the location of the visitor first); the start
-  can also be a tap on the map; a button swaps start and destination. Stops on the way (up to 8): Add stop gives a field
-  of the same kind, with a button to remove it; a point tapped on the map with a route shown can be added as a stop; a
-  stop found elsewhere goes between the stops where it falls on the route. On the map the stops are orange and numbered;
-  the step of each says its name; the link to share has them (`via`, `vn`). The line on
-  the map, time and length, and the steps in the language of the browser; a tap on a step moves the map there. The mode is
-  kept in the browser (`hm-mode`). By bike and on foot, the height profile (with `ELEVATION_KEY`): up and down, coloured by
-  how steep each part is; under the mouse or a finger the height and distance, and the point on the map. In navigation a strip
-  of it shows the point reached and the climb still to come.
-- Search along the route (with `OVERPASS_URL` or `ELEVATION_KEY`): under the route, the kinds of places of the mode (by car fuel, charging, rest
-  areas, food, cafés, groceries, toilets, hotels; by bike and on foot drinking water, bike shops, pharmacies among them). A kind
-  shows the places near the line (500 m by car, 250 by bike, 150 on foot) in the order of the route, with how far along and how
-  far off the route each is and its opening hours, as orange points on the map; + adds one as a stop. The kind stays chosen for
-  the route with the stop. In navigation the magnifier opens the same, with the places ahead only; one added gives a new route
-  from where the traveller is, by the stops still ahead, and goes into the stops of directions: after navigation they show
-  the route with it.
-- Navigation, turn by turn, from the directions: Start follows the location of the browser, Preview drives the route at three
-  times its speed (on a desktop, and for trying it). The map alone, tilted and turned with the way, follows a car, a cyclist or a
-  walker in 3D (`web/avatar.js`, three.js, loaded with the first route; wheels, pedals and legs move with the speed; the flat
-  sprite when WebGL fails; larger on a flat map); the 2D/3D button turns the map flat or tilted, kept as `hm-nav-2d`; the menu stays at hand; near a turn by car, the lanes
-  with the ones to take (Valhalla `turn_lanes`); the next turn with its arrow, its distance and the street; by car the sign of the junction in its
-  last 2 km (green on motorways, blue on other roads: exit number, route numbers, destinations) and the speed limit; the speed now by car and by bike (red above the limit); arrival
-  time, time and distance left. The instructions of Valhalla are spoken in the language of the browser: with `TTS_URL` by
-  the Piper voices of the server in German, English, French and Italian (`/api/say`, fetched up to three turns ahead), else, or
-  when a sentence is late (2.5 s), by the best voice of the browser (natural, enhanced and Google voices first; not eSpeak or
-  the novelty voices of Apple). A button turns the sound off, kept as `hm-mute`. Off the route for three fixes, a new route from where the visitor is, by the stops not
-  yet passed (at most every 10 s). A move of the map stops the following until Re-centre; Whole route shows the rest of it. The screen stays on (Wake
-  Lock) while the page is open.
-- The map: results as points and shapes, the lines of the answer (a border, a road, a river, the circles around the places of a
-  chain), hover and selection in step with the list.
-- "Search this area": after the visitor moves the map, the same search in the view (`view=1`; the place of the sentence goes).
-- The location of the visitor: a button that asks the browser once, shows a dot with its accuracy and moves the map there; the
-  searches with "near me" and "nearest" ask for it too.
-- What is here: the first tap on the map closes the search box; a tap then drops a pin and shows the address and the named
-  things around the point (`/here` of overpass-search), with pictures; a tapped symbol of the map opens that place. The area
-  of the tap (a country far out, a lake, a village or a park closer in) is outlined in the blue of overpass.ch.
-- A compass above the location button: its needle turns with the map, and a tap turns the map to north.
-- On a phone: the side bar is a sheet at three heights (the title, half, almost all), dragged by its handle and its title; a
-  search closes the keyboard and leaves the map in view; only the map zooms, and pull to refresh is off.
-- The address holds the search and the place shown: `?q=…&sel=node/1#map=15/47.37/8.54`; Back goes from a place to the list.
-- A menu (the burger; closed at first): the style of the map (light, dark, outdoor, relief, driving, marine, white, grayscale,
-  black), 3D (terrain and buildings) and relief shading, kept in the browser (`hm-style`, `hm-3d`, `hm-shading`). The page is
-  dark with the dark and black styles; the first style follows the theme of the site (`theme`).
-- The logo and the icons are the hippo of overpass.ch (`icon-32.png`, `icon-192.png`, `apple-touch-icon.png`).
-
-## Pictures
-
-`GET {base}/api/picture?wikidata=Q…&brand=Q…&commons=File:…&w=120|500` answers the thumbnail of the first that has one:
-
-1. `commons`: the file of `wikimedia_commons`, or of an `image` tag on Commons (the page passes it): a photo
-2. `wikidata`: the image (P18) of the item of the place: a photo
-3. `brand`: the logo (P154), else the small logo (P8972), of the item of the chain
-4. `wikidata`: the logo of the item of the place
-
-The answer is the bytes (PNG, JPEG, GIF or WebP; SVG files come as the PNG that Commons draws, never as SVG), with
-`X-Picture-Kind` (`photo` or `logo`), `X-Picture-Credit` (author and licence, URL-encoded) and `X-Picture-Page` (the page of
-the file on Commons). 204 when the place does not have one, 400 when the request does not name one, 429 over the limit of a
-visitor, 503 when the calls to Wikimedia stay taken, 502 when Wikimedia failed. Four calls to Wikimedia at a time; the answers
-of Wikidata and Commons and the thumbnails are kept in memory for a day.
-
-## Directions
-
-`GET {base}/api/route?from=lat,lon&via=lat,lon&to=lat,lon&mode=car|bike|walk&lang=de` asks Valhalla (`ROUTING_URL` + `/route`) and answers
-`{"km","s","line":[[lon,lat],…],"steps":[…],"stops":[i,…],"limits":[[from,to,kmh],…]}`. `via`, repeated, are stops on the way
-(up to 8; each a location of type `break`, so a leg of Valhalla); the legs are joined into one line, `stops` holds the index of
-`line` at each stop, and the step that arrives at one has `stop` (its number, from 1). The distance in a line counts through
-the stops. A step has its text, length and time, where it
-starts and ends on the line (`at`, `i`, `end`), the spoken texts (`alert`, `pre`, `post`), the street, and what the sign of the
-junction shows (`exit`, `exit_name`, `routes`, `toward`). `limits` are the speed limits by car, in indexes of `line`, from a
-second call to Valhalla (`trace_attributes`); missing when that call fails. Errors are
-`{"error":{"code","message"}}`: 400 `bad_request` or `too_far` (more than 1500 km in a line by car, 300 by bike, 100 on foot),
-404 `no_route`, 429 `too_many`, 503 `busy`, 502 `failed`. Four calls to Valhalla at a time.
-
-`GET {base}/api/traffic` relays `TRAFFIC_URL` + `/incidents.json`, asked at most once a minute; the last answer serves for up to
-15 minutes when the service fails, then 502.
-
-`GET {base}/api/say?lang=de|en|fr|it&text=…` (at most 400 characters) asks `TTS_URL` + `/say` and answers audio/mpeg, kept a
-week by the browser and in memory here; 400, 429, 503 or 502 otherwise. Four calls at a time.
-
-By car the answer also has `lanes` per step (`d` the arrows as bits, `a` and `v` the ones to take), `traffic` ([from, to,
-level] of line, 1 slow, 2 queued, as it is now), `delay` (seconds that live traffic adds to `s`) and `tunnels` ([from, to,
-metres]), all from one call to `trace_attributes` leaving now.
-
-`POST {base}/api/along` with `{"line":[[lon,lat],…],"cat":"fuel","mode":"car"}` (up to 60,000 points) finds the places of a kind
-near the line from `OVERPASS_URL`, or the Overpass API of overpass.ch (`ELEVATION_URL` + `/v1/interpreter` with `ELEVATION_KEY`; the line
-simplified to 600 points at most, `around` 500 m by car, 250 by bike, 150 on foot). Kinds: `fuel`, `charging`, `rest`, `food`,
-`cafe`, `groceries`, `toilets`, `water`, `hotel`, `bike`, `pharmacy`. It answers GeoJSON points in the order of the route with
-`id`, `name`, `type`, `tags` (a few), `opening_hours`, `at` (km along the line) and `off` (metres from it), and `total`; with
-more than 200, the 200 kept are spread over 40 stretches of the route, the nearest to the line of each first. It counts with
-the directions of a visitor (`ROUTES_PER_IP`); two queries to Overpass at a time with those of transit.
-
-By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,m],…]}`, from the elevation API of overpass.ch
-(`ELEVATION_URL` + `/v1/elevation/profile`, 300 samples at most, one every 10 m at least) with `ELEVATION_KEY`, a key of type
-"All APIs" (a maps key is refused); missing when that call fails.
+The Docker build runs `go vet` and the tests.
 
 ## Settings
 
-| Setting | Default | Meaning |
+| Setting | Default | |
 |---|---|---|
-| `LISTEN` | `:8096` | address of the server |
-| `BASE_PATH` | `/labs/maps` | the path of the page; its files are under `{base}/static/`, the pictures under `{base}/api/picture` |
-| `SEARCH_API` | `/labs/search/api` | the API of overpass-search, as the browser reaches it: `{api}/complete`, `{api}/query`, `{api}/search` |
-| `TILES_URL` | `https://api.overpass.ch` | the map tiles; the style is `{tiles}/v1/{key}/maps/styles/light.json` (or `dark`) |
-| `MAPS_KEY` | | a key of the tiles API for the page |
-| `PICTURES` | `true` | pictures from Wikimedia Commons |
-| `PICTURES_PER_IP` | `600` | pictures a visitor gets in 10 minutes |
-| `PICTURE_CACHE_MB` | `64` | memory for the answers of Wikimedia and the thumbnails |
-| `ROUTING_URL` | | Valhalla, for directions; empty: no directions |
-| `ROUTES_PER_IP` | `120` | directions a visitor gets in 10 minutes |
-| `ELEVATION_URL` | `https://api.overpass.ch` | the elevation API, for height profiles |
-| `ELEVATION_KEY` | | its key, server side only (a key of all the APIs: Overpass too); empty: no height profiles, and no transit lines or search along the route without `OVERPASS_URL` |
-| `OVERPASS_URL` | | an Overpass API of its own (`http://overpass/api/interpreter`), asked without a key for the transit lines and the search along the route; empty: the one of overpass.ch with `ELEVATION_KEY` |
-| `TTS_URL` | | a Piper server (`/say?lang=&text=`, audio/mpeg) for the spoken instructions; empty: the voices of the browser |
-| `PUBLIC_URL` | | the address of the page on a site of its own (`https://hippomaps.ch`): then for search engines (no noindex, a canonical link, `/robots.txt`, `/sitemap.xml`); empty: unlisted |
-| `SEARCH_UPSTREAM` | | overpass-search of another site (`https://overpass.ch/labs/search/api`), relayed under `{base}/api/search` with the address of the visitor; it sets the search API of the page. For a site of its own: the search API answers its own site only |
-| `TRAFFIC_URL` | | the traffic service next to Valhalla (`/incidents.json`); empty: no traffic on the map |
-| `SAYS_PER_IP` | `600` | new sentences a visitor gets spoken in 10 minutes (those in memory are free) |
-| `SEARCHES_PER_IP` | `100` | searches a visitor gets in 10 minutes through `SEARCH_UPSTREAM`; taps on the map three times as many; completions while typing are free |
-| `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia, which asks for a way to reach the operator |
+| `LISTEN` | `:8096` | address |
+| `BASE_PATH` | `/labs/maps` | path of the page; `/` for a site of its own |
+| `PUBLIC_URL` | | public address of the page: makes it indexable (canonical link, `robots.txt`, `sitemap.xml`) |
+| `TILES_URL` | `https://api.overpass.ch` | map tiles API |
+| `MAPS_KEY` | | key of the tiles API, sent to the browser |
+| `SEARCH_UPSTREAM` | | overpass-search, relayed under `{base}/api/search` |
+| `SEARCH_API` | `/labs/search/api` | search API as the browser reaches it, when not relayed |
+| `ROUTING_URL` | | Valhalla |
+| `OVERPASS_URL` | | Overpass API, asked without a key |
+| `ELEVATION_URL` | `https://api.overpass.ch` | elevation API |
+| `ELEVATION_KEY` | | overpass.ch key for elevation (and Overpass without `OVERPASS_URL`), server side only |
+| `TTS_URL` | | Piper server |
+| `TRAFFIC_URL` | | traffic service |
+| `PICTURES` | `true` | photos and logos from Wikimedia |
+| `PICTURE_CACHE_MB` | `64` | memory for Wikimedia answers and thumbnails |
+| `PICTURES_PER_IP`, `ROUTES_PER_IP`, `SAYS_PER_IP`, `SEARCHES_PER_IP` | `600`, `120`, `600`, `100` | per visitor in 10 minutes (map taps: three times the searches) |
+| `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia and the other services |
 
-The page sends a Content-Security-Policy that allows this site and the tiles API, `noindex`, and `geolocation=(self)`. The
-proxy in front sets `X-Forwarded-For`, which the limit of pictures counts by.
+Limits count by `X-Forwarded-For`, so the server belongs behind a proxy that sets it.
 
-`hippomaps healthcheck` asks the running server for `/healthz`.
+## Server API
+
+Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
+
+| | |
+|---|---|
+| `GET picture?wikidata=Q…&brand=Q…&commons=File:…&w=120` | thumbnail of the place photo, else the chain logo, with credit headers |
+| `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=` | line, steps, stops, speed limits, lanes, traffic, tunnels, height profile |
+| `POST along` `{"line","cat","mode"}` | places of a kind near a route, in route order |
+| `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |
+| `GET say?lang=&text=` | spoken sentence (audio/mpeg) |
+| `GET traffic` | traffic incidents |
+| `GET search/{search,query,complete,here}` | relayed overpass-search |
+
+`GET /healthz` answers `ok`; `hippomaps healthcheck` asks it (the Docker health check).
+
+## Android
+
+`android/` holds the app (Kotlin, one activity, AndroidX only, no Google Play services). `android/build.sh` builds the
+signed APK and AAB in Docker; the build is reproducible, and F-Droid publishes it with the same signature. Store texts and
+screenshots are in `fastlane/`. Details: [android/README.md](android/README.md).
+
+## Tests
+
+- `go test ./...`: the server against fakes of Valhalla, Wikimedia, Overpass, the elevation API, Piper, the traffic service
+  and overpass-search
+- `tests/site-test.sh` (`PAGE=https://…`): a running site end to end; `BROWSER=1` adds `tests/browser.py`, the page in
+  headless Chromium on a phone screen, from the first search to navigation
 
 ## Layout
 
 ```
-cmd/hippomaps/   settings from the environment, listen, healthcheck
-server/          the page, its files, the pictures, directions; tests with a fake Wikimedia and a fake Valhalla
-web/             index.html, app.js, app.css, the icons, and vendor/
-android/         the Android app (android/README.md)
-fastlane/        texts, icon and screenshots of the app for F-Droid
+cmd/hippomaps/   settings, server, healthcheck
+server/          page, pictures, directions, search relay, transit, traffic, voice
+web/             index.html, app.js, i18n.js, avatar.js (3D traveller), app.css, icons, vendor/
+android/         the Android app
+fastlane/        F-Droid texts and screenshots
+tests/           tests of a running site
 ```
-
-`web/vendor/` holds maplibre-gl 6.13.0 (BSD-3-Clause, `LICENSE.txt`), three.js 0.170.0 (MIT, `LICENSE`) and opening_hours 3.15.0 (LGPL-3.0-only) with suncalc
-2.0.1 (BSD-2-Clause), unchanged from npm except that opening_hours imports `./suncalc.mjs`. The directories carry the version:
-browsers keep their files for a year.
-
-Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons, each under the licence its credit names.
 
 ## Licence
 
-hippomaps (the server, the page and the Android app) is free software under the GNU General Public License, version 3 or
-any later version (GPL-3.0-or-later, `LICENSE`). The libraries in `web/vendor/` keep their own licences (above).
+GPL-3.0-or-later (`LICENSE`). `web/vendor/` holds maplibre-gl 6.13.0 (BSD-3-Clause), three.js 0.170.0 (MIT),
+opening_hours 3.15.0 (LGPL-3.0-only) and suncalc 2.0.1 (BSD-2-Clause), each with its licence.
 
-## A site of its own
-
-With `BASE_PATH=/` the page is at the root (hippomaps.ch). `SEARCH_UPSTREAM` relays the search; the key of the map must allow the site (`MAPS_KEY`).
-
-## Tests
-
-- `go test ./...` (also in the Docker build): the server against fakes of Valhalla, Wikimedia, the elevation API, Piper, the
-  traffic service and overpass-search.
-- `tests/site-test.sh` (`PAGE`, default https://hippomaps.ch): the running site: the service, the page (for search engines),
-  files, the key of the map tiles, pictures, directions in Switzerland by car with speed limits, lanes and traffic, heights
-  on foot, the voice, traffic. `BROWSER=1` adds `tests/browser.py`: the page in headless Chromium on a phone screen, from the
-  start at the location through a typed destination (time, arrival, a large Start), Preview with speed, speed limit, the 3D
-  traveller and the voice, the map flat after it, the traffic button, the X, an example far away that moves the map, to German.
+Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons under the licence each credit names. Traffic:
+Federal Roads Office (FEDRO) Traffic Data Platform (TDP).
