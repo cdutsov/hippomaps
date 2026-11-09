@@ -1,0 +1,1 @@
+First release on F-Droid. Stops on the way and places along the route; navigation in the background with spoken turns; links of other map apps open in HippoMaps.
