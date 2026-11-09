@@ -153,6 +153,17 @@ func TestRoute(t *testing.T) {
 	if last["costing"] != "auto" || last["language"] != "de-DE" || last["units"] != "kilometers" {
 		t.Errorf("request: %v", last)
 	}
+	if loc := last["locations"].([]any)[0].(map[string]any); loc["heading"] != nil {
+		t.Errorf("heading without one asked: %v", loc)
+	}
+	get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=car&heading=271.6")
+	if loc := last["locations"].([]any)[0].(map[string]any); loc["heading"] != 272.0 || loc["heading_tolerance"] != 45.0 {
+		t.Errorf("heading: %v", loc)
+	}
+	get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=car&heading=400")
+	if loc := last["locations"].([]any)[0].(map[string]any); loc["heading"] != nil {
+		t.Errorf("heading out of range: %v", loc)
+	}
 	get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk&lang=xx")
 	if last["costing"] != "pedestrian" || last["language"] != "en-US" {
 		t.Errorf("walk: %v", last)

@@ -105,6 +105,8 @@ const EN = {
   arrival: "Arrival",
   left: "left",
   rerouting: "New route…",
+  rerouted: "Route recalculated.",
+  gpsLost: "GPS signal lost.",
   arrived: "You have arrived.",
   noGPS: "Navigation needs your location. Allow it in the settings of the browser, then try again.",
   waitGPS: "Waiting for your location…",
@@ -2267,6 +2269,7 @@ function routeButton(go) {
   return b;
 }
 function routeDone() {
+  unfollowMe();
   route.ctl?.abort();
   setSource("route", empty);
 }
@@ -2310,6 +2313,35 @@ async function directions(to, go = false) {
     if (me && !route.from && !routeView.hidden) setFrom({ ll: state.me.at2, label: T.myPlace, me: true });
     if (!route.to && !routeView.hidden) routeView.querySelector(".lm-end-to input")?.focus(); // the fields were drawn again
   } else findRoute();
+}
+// Directions from (or to) the location of the visitor follow it while they are open: the first
+// location may be old or rough, and the phone may move before Start. A new route when the location
+// moved by more than 30 m (and more than its accuracy), at most every 15 s.
+const PLAN_MOVE_M = 30, PLAN_EVERY_MS = 15e3;
+function followMe() {
+  const wanted = () => !nav.on && !routeView.hidden && (route.from?.me || route.to?.me);
+  if (!wanted() || !navigator.geolocation || route.watch != null) return;
+  route.watch = navigator.geolocation.watchPosition((pos) => {
+    if (!wanted()) return unfollowMe();
+    meAt(pos);
+    const end = route.from?.me ? route.from : route.to;
+    const c = state.me.at2, [ax, ay] = flat(end.ll, c[1]), [bx, by] = flat(c, c[1]);
+    // the first fix of the watch counts at 30 m: the location taken before may be old or rough
+    const acc = pos.coords.accuracy || 0;
+    if (Math.hypot(ax - bx, ay - by) <= (end.acc == null ? PLAN_MOVE_M : Math.max(PLAN_MOVE_M, Math.min(acc, 200)))) return;
+    end.ll = c;
+    end.acc = acc;
+    clearTimeout(route.moveTimer);
+    route.moveTimer = setTimeout(() => {
+      route.moved = Date.now();
+      if (wanted() && route.from && route.to) findRoute({ quiet: !!route.answer });
+    }, Math.max(0, (route.moved || 0) + PLAN_EVERY_MS - Date.now()));
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 60000 });
+}
+function unfollowMe() {
+  if (route.watch != null) navigator.geolocation.clearWatch(route.watch);
+  route.watch = null;
+  clearTimeout(route.moveTimer);
 }
 function setFrom(from) {
   route.from = from;
@@ -2368,6 +2400,7 @@ function renderRoute() {
   routeSteps.innerHTML = "";
   routeView.append(back, routeHead, routeMsg, routeSum, routeSteps);
   drawEnds(null);
+  if (route.from?.me || route.to?.me) followMe(); else unfollowMe();
 }
 // ------------------------------------------------------------------ start and destination
 // Each is a field that suggests places and addresses from the geocoder of overpass.ch (Photon,
@@ -2480,31 +2513,42 @@ function placeField(which) {
   });
   return row;
 }
-async function findRoute() {
+// quiet: the location moved under a route shown; the route stays until the new one is there (and
+// stays if that fails), and the map keeps its view
+async function findRoute({ quiet = false } = {}) {
   if (!route.from || !route.to) return;
   route.ctl?.abort();
   const ctl = route.ctl = new AbortController();
   const ll = (v) => `${v.ll[1].toFixed(5)},${v.ll[0].toFixed(5)}`;
-  routeMsg.textContent = T.routing;
-  routeSum.textContent = "";
-  routeSteps.innerHTML = "";
-  routeView.querySelector(".lm-nav-go")?.remove();
-  routeView.querySelector(".lm-elev")?.remove();
-  showOnRoute(null);
-  route.answer = null;
-  drawEnds(null);
+  const clearRoute = () => {
+    routeSum.textContent = "";
+    routeSteps.innerHTML = "";
+    routeView.querySelector(".lm-nav-go")?.remove();
+    routeView.querySelector(".lm-elev")?.remove();
+    showOnRoute(null);
+    route.answer = null;
+    drawEnds(null);
+  };
+  if (!quiet) {
+    routeMsg.textContent = T.routing;
+    clearRoute();
+  }
   let d;
   try {
     const r = await fetch(`${ROUTE}?${new URLSearchParams({ from: ll(route.from), to: ll(route.to), mode: route.mode, lang: LANG })}`, { signal: ctl.signal });
     d = await r.json().catch(() => ({}));
     if (ctl.signal.aborted) return;
     if (!r.ok) {
-      routeMsg.textContent = d.error?.message || T.routeFailed;
+      if (!quiet) routeMsg.textContent = d.error?.message || T.routeFailed;
       return;
     }
   } catch (err) {
-    if (err.name !== "AbortError") routeMsg.textContent = T.routeFailed;
+    if (err.name !== "AbortError" && !quiet) routeMsg.textContent = T.routeFailed;
     return;
+  }
+  if (quiet) {
+    if (nav.on) return; // navigation started on the route before: it keeps that one
+    clearRoute();
   }
   routeMsg.textContent = "";
   route.answer = d;
@@ -2522,7 +2566,7 @@ async function findRoute() {
   go.append(startBtn, simBtn, shareButton(() => ({ title: `${route.from?.label || ""} → ${route.to?.label || ""}`, url: routeLink() }), true));
   routeSum.after(go);
   // the time and Start in view: on a phone the sheet shows only its top
-  requestAnimationFrame(() => {
+  if (!quiet) requestAnimationFrame(() => {
     const over = go.getBoundingClientRect().bottom + 12 - innerHeight;
     const room = routeSum.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
     if (over > 0 && room > 0) body.scrollTop += Math.min(over, room);
@@ -2547,7 +2591,7 @@ async function findRoute() {
   }
   route.go = false;
   const b = extent({ type: "LineString", coordinates: d.line });
-  if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 700 }));
+  if (b && !quiet) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 700 }));
 }
 
 // ------------------------------------------------------------------ height profile
@@ -2861,14 +2905,19 @@ function bestVoice(lang) {
   }
   return best;
 }
+// it resolves when the browser has said the text (or gave up)
 function browserSay(text, lang) {
-  if (!hasSpeech) return;
+  if (!hasSpeech) return Promise.resolve();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = LOCALES[lang] || "en-US";
   const v = bestVoice(lang);
   if (v) u.voice = v;
   speechSynthesis.cancel();
-  speechSynthesis.speak(u);
+  return new Promise((done) => {
+    u.onend = u.onerror = () => done();
+    setTimeout(done, 15e3); // some browsers never end an utterance
+    speechSynthesis.speak(u);
+  });
 }
 const player = new Audio();
 // MP3, or WAV where the browser plays no MP3 (Firefox on Linux without the codecs of the system)
@@ -2885,14 +2934,14 @@ function fetchSay(text, lang = STEP_LANG) {
 }
 // the sentences of the next turns, before they are needed
 function preSay(steps) {
-  for (const st of steps) if (st) for (const t of [st.alert, st.pre || st.text]) fetchSay(t);
+  for (const st of steps) if (st) for (const t of [st.alert, st.pre || st.text, st.post]) fetchSay(t);
 }
 // all the sentences of a route, in its order, two at a time: a new sentence may take the voice of
 // the server several seconds, so they are there before the turns come (the next turns go first,
 // through preSay)
 let sayQueue = [], sayQueueRunning = 0;
 function preSayAll(steps) {
-  sayQueue = steps.flatMap((st) => [st.alert, st.pre || st.text]).filter(Boolean);
+  sayQueue = steps.flatMap((st) => [st.alert, st.pre || st.text, st.post]).filter(Boolean);
   const next = () => {
     while (sayQueueRunning < 2 && sayQueue.length) {
       const p = fetchSay(sayQueue.shift());
@@ -2903,12 +2952,14 @@ function preSayAll(steps) {
   };
   next();
 }
-let sayN = 0;
-async function say1(text, lang = STEP_LANG) {
-  if (nav.muted || !text) return;
-  const n = ++sayN;
-  player.pause();
-  if (hasSpeech) speechSynthesis.cancel();
+// the sound of the player has ended: played to its end, paused (a new sentence, Sound off) or failed
+const played = () => new Promise((done) => {
+  const end = () => { for (const e of ["ended", "pause", "error"]) player.removeEventListener(e, end); done(); };
+  for (const e of ["ended", "pause", "error"]) player.addEventListener(e, end);
+});
+let sayN = 0, sayChain = Promise.resolve();
+// one sentence, to its end, unless a newer one (sayN) takes the voice
+async function sayOne(text, lang, n) {
   const p = fetchSay(text, lang);
   if (p) {
     // late: the voice of the browser after 2.5 s, if it has one for the language; else the server's up to 8 s
@@ -2919,7 +2970,7 @@ async function say1(text, lang = STEP_LANG) {
       player.src = url;
       try {
         await player.play();
-        return;
+        return played();
       } catch (err) {
         // it could not play this sound: WAV from now on, and this sentence again in it
         if (err?.name === "NotSupportedError" && sayFormat === "mp3") {
@@ -2930,15 +2981,34 @@ async function say1(text, lang = STEP_LANG) {
             player.src = wav;
             try {
               await player.play();
-              return;
+              return played();
             } catch {}
           }
         }
       }
     }
   }
-  browserSay(text, lang);
+  if (n === sayN && !nav.muted) return browserSay(text, lang);
 }
+// speak says sentences ([text, lang] or text in the language of the steps) one after the other. It
+// stops what is being said, unless after: then they come when it is done (Continue for 2 km after the
+// turn, not over it).
+function speak(sentences, { after = false } = {}) {
+  if (nav.muted) return;
+  const list = sentences.map((x) => (Array.isArray(x) ? x : [x, STEP_LANG])).filter(([t]) => t);
+  if (!list.length) return;
+  if (!after) hush();
+  const n = sayN;
+  const run = async () => {
+    for (const [t, l] of list) {
+      if (n !== sayN || nav.muted) return;
+      await sayOne(t, l, n);
+    }
+  };
+  sayChain = after ? sayChain.then(run) : run();
+  sayChain = sayChain.catch(() => {});
+}
+const say1 = (text, lang = STEP_LANG) => speak([[text, lang]]);
 // inside the tap on Start: a silent sound and an empty word, so that the browser lets the page speak later
 function unlockSound() {
   const n = 800, b = new DataView(new ArrayBuffer(44 + n * 2));
@@ -3040,7 +3110,7 @@ function navUpdate(p, rawPos, off = false) {
   navEta.append(el("strong", trafficClass(d, p.i), {}, clock(s)), el("span", "", {}, `${T.duration(s)} · ${fmtKm(left / 1000)}`));
   // the spoken instructions: early, then at the turn; after the turn what comes
   const n = steps.indexOf(next);
-  preSay([next, steps[k + 2], steps[k + 3]]);
+  preSay([cur, next, steps[k + 2], steps[k + 3]]);
   if (k === 0 && !nav.spoken.has("0")) {
     nav.spoken.add("0");
     say1(steps[0].pre || steps[0].text);
@@ -3050,6 +3120,11 @@ function navUpdate(p, rawPos, off = false) {
   } else if (toNext <= cfg.alert && toNext > cfg.pre * 1.8 && !nav.spoken.has(`${n}a`) && next.alert) {
     nav.spoken.add(`${n}a`);
     say1(next.alert);
+  } else if (cur.post && !nav.spoken.has(`${k}post`) && p.along - nav.cum[cur.i] >= cfg.arrive && toNext > cfg.alert * 1.3) {
+    // after a turn, with the next one far: how far the way goes on ("Continue for 2 kilometres"), when
+    // the instruction of the turn is said
+    nav.spoken.add(`${k}post`);
+    speak([cur.post], { after: true });
   }
   // the camera and the sprite
   // off the route: the real position, and the heading of the device when it has one
@@ -3104,7 +3179,7 @@ function navArrive() {
   if (!nav.spoken.has("end")) {
     nav.spoken.add("end");
     if (last?.pre) say1(last.pre);
-    else say1(T.arrived, "en");
+    else say1(T.arrived, UI);
   }
 }
 function stopTracking() {
@@ -3112,11 +3187,34 @@ function stopTracking() {
   nav.watch = null;
   clearInterval(nav.timer);
   nav.timer = 0;
+  clearInterval(nav.watchdog);
+  nav.watchdog = 0;
+  gpsLost(false);
 }
+// No fix for a while (a tunnel, a deep valley, a browser that stopped): the banner and the voice say
+// so, once. The next fix brings the banner back. Not while the page is hidden: the browser sends no
+// fixes then.
+const GPS_LOST_S = 12;
+function gpsLost(on) {
+  if (on === !!nav.lost) return;
+  nav.lost = on;
+  navBox.classList.toggle("lm-nav-lost", on);
+  if (!on) return;
+  navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.gpsLost);
+  navSign.hidden = navThen.hidden = navLanes.hidden = true;
+  say1(T.gpsLost, UI);
+}
+function checkFix() {
+  if (!nav.on || nav.sim || nav.arrived || nav.fixT == null || document.visibilityState !== "visible") return;
+  if (Date.now() - nav.fixT > GPS_LOST_S * 1000) gpsLost(true);
+}
+document.addEventListener("visibilitychange", () => { if (nav.fixT != null) nav.fixT = Date.now(); });
 // a fix of the location: on the line, or off it (then, a few times running, a new route)
 function onFix(pos) {
   if (!nav.on || nav.arrived) return;
   nav.lastFix = pos;
+  nav.fixT = Date.now();
+  gpsLost(false);
   const ll = [pos.coords.longitude, pos.coords.latitude];
   const first = nav.first; // the first fix on a new route counts as on it: the route starts at the road nearest to it
   const p = snap(ll, first);
@@ -3142,15 +3240,19 @@ function onFix(pos) {
 async function reroute(ll) {
   nav.rerouting = true;
   navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
-  say1(T.rerouting.replace("…", ""), "en");
   try {
     const q = new URLSearchParams({ from: `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`, to: `${route.to.ll[1].toFixed(5)},${route.to.ll[0].toFixed(5)}`, mode: route.mode, lang: LANG });
+    // the way the traveller is going: no new route that starts with turning round (by car)
+    if (ll.heading != null) q.set("heading", String(Math.round((ll.heading + 360) % 360)));
     const r = await fetch(`${ROUTE}?${q}`);
     const d = await r.json();
-    if (r.ok && nav.on) {
+    if (r.ok && nav.on && !nav.arrived) {
       navLoad(d);
       preSayAll(d.steps);
       nav.first = true;
+      // "Route recalculated", then the first instruction of the new route
+      nav.spoken.add("0");
+      speak([[T.rerouted, UI], d.steps[0]?.pre || d.steps[0]?.text]);
       if (nav.lastFix) onFix(nav.lastFix); // the banner at once, not at the next fix
     }
   } catch {}
@@ -3161,11 +3263,16 @@ async function navStart(sim) {
   if (!nav.muted) unlockSound();
   preSay(route.answer.steps.slice(0, 2));
   preSayAll(route.answer.steps);
+  fetchSay(T.gpsLost, UI);
+  fetchSay(T.rerouted, UI);
   nav.on = true;
+  unfollowMe();
   nav.sim = sim;
   nav.follow = true;
   nav.arrived = false;
   nav.first = true;
+  nav.fixT = null;
+  nav.lastFix = null;
   navLoad(route.answer);
   root.classList.add("lm-navigating");
   showDim();
@@ -3215,8 +3322,9 @@ async function navStart(sim) {
       if (err.code === 1) {
         navBanner.innerHTML = "";
         navBanner.append(el("div", "lm-nav-text lm-nav-instr", {}, T.noGPS));
-      }
+      } // 2 (no position) and 3 (none in time) come while fixes still come too: the watchdog decides
     }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
+    nav.watchdog = setInterval(checkFix, 2000);
   }
 }
 // the screen stays on while navigating; the browser drops the lock when the page is hidden, so it
@@ -3247,6 +3355,7 @@ function navStop() {
   navBox.hidden = true;
   root.classList.remove("lm-navigating", "lm-nav-elev-on");
   showDim();
+  followMe();
   setTimeout(() => {
     map.resize();
     drawEnds(route.answer?.line || null);

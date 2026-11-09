@@ -199,8 +199,15 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	case <-ctx.Done():
 		return
 	}
+	start := map[string]float64{"lat": lat1, "lon": lon1}
+	// heading: the way the traveller goes (degrees from north), when navigation asks for a new route on
+	// the way; Valhalla then starts on a road in that direction, not with turning round
+	if h, err := strconv.ParseFloat(q.Get("heading"), 64); err == nil && h >= 0 && h < 360 {
+		start["heading"] = math.Round(h)
+		start["heading_tolerance"] = 45
+	}
 	body, _ := json.Marshal(map[string]any{
-		"locations":  []map[string]float64{{"lat": lat1, "lon": lon1}, {"lat": lat2, "lon": lon2}},
+		"locations":  []map[string]float64{start, {"lat": lat2, "lon": lon2}},
 		"costing":    mode.costing,
 		"units":      "kilometers",
 		"language":   lang,
