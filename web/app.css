@@ -165,7 +165,7 @@ button { font: inherit; color: inherit; }
 }
 
 /* the location button and the toast */
-.lm-locate { position: absolute; right: 10px; bottom: 112px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--bg);
+.lm-locate { position: absolute; right: 10px; z-index: 3; border-radius: 50%; border: 0; background: var(--bg);
   color: var(--muted); box-shadow: var(--shadow); cursor: pointer; display: grid; place-items: center; }
 .lm-locate:hover { color: var(--fg); }
 .lm-locate.lm-on { color: #1a73e8; }
@@ -174,7 +174,6 @@ button { font: inherit; color: inherit; }
 .lm-area { display: inline-flex; align-items: center; gap: .4rem; animation: lm-in .18s ease-out; }
 @keyframes lm-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (max-width: 760px) {
-  .lm-locate { bottom: calc(var(--sheet, 40dvh) + 12px); }
   .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { bottom: var(--sheet, 40dvh); }
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { display: none; }
 }
@@ -256,7 +255,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-style:hover { background: var(--hot); }
 .lm-style[aria-checked=true] { border-color: var(--accent); }
 .lm-swatch { display: block; height: 46px; border-radius: 7px; border: 1px solid var(--line); }
-.lm-swatch-light { background: linear-gradient(135deg, #f2efe9 55%, #aad3df 55% 70%, #f2efe9 70%), #f2efe9; }
+.lm-swatch-light { background: linear-gradient(135deg, #fbfaf7 45%, #b1d7a9 45% 58%, #9ed3f2 58% 72%, #fbfaf7 72%); }
 .lm-swatch-dark { background: linear-gradient(135deg, #2a2d33 55%, #1b2a3a 55% 70%, #2a2d33 70%); }
 .lm-swatch-auto { background: linear-gradient(135deg, #f2efe9 50%, #2a2d33 50%); }
 .lm-swatch-outdoor { background: linear-gradient(135deg, #dfe9c8 40%, #b9d39a 40% 62%, #e9e3d3 62%); }
@@ -276,7 +275,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-toggle input:checked::after { left: 21px; }
 .lm-menu-foot { color: var(--muted); font-size: .72rem; margin-top: 1.2rem; }
 @media (max-width: 760px) {
-  .lm-map-burger { display: grid; position: absolute; top: 10px; left: 10px; z-index: 3; width: 44px; height: 44px; border-radius: 50%;
+  .lm-map-burger { display: grid; position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 3; border-radius: 50%;
     background: var(--bg); color: var(--fg); box-shadow: var(--shadow); }
 }
 
@@ -292,13 +291,12 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 :root[data-theme=dark] .lm-powered-dark { display: block !important; }
 
 /* the compass: above the location button; the needle turns with the map */
-.lm-compass { position: absolute; right: 10px; bottom: 160px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0;
+.lm-compass { position: absolute; right: 10px; z-index: 3; border-radius: 50%; border: 0;
   background: var(--bg); color: var(--fg); box-shadow: var(--shadow); cursor: pointer; display: grid; place-items: center; }
 .lm-compass:hover { background: var(--hot); }
 .lm-needle { transform-origin: 12px 12px; transition: transform .1s linear; }
 .lm-in-area { color: var(--accent); }
 @media (max-width: 760px) {
-  .lm-compass { bottom: calc(var(--sheet, 40dvh) + 62px); }
 }
 
 /* navigation: the map alone, the next turn on top, the trip below */
@@ -313,7 +311,6 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm.lm-navigating .lm-side { display: none; }
 .lm.lm-navigating .lm-map { grid-area: 1 / 1; }
 .lm-navigating .lm-area, .lm-navigating .lm-locate, .lm-navigating .maplibregl-ctrl-bottom-right { display: none !important; }
-.lm-navigating .lm-compass { bottom: 96px; }
 .lm-nav { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
 .lm-nav > * { pointer-events: auto; }
 .lm-nav-banner { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; max-width: 460px; display: flex; gap: .8rem;
@@ -393,15 +390,11 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 /* the buttons on the right of the map and the signs on the left would lie over it */
 .lm-navigating.lm-nav-along-on :is(.lm-nav-center, .lm-nav-limit, .lm-nav-speed, .lm-map-burger, .lm-traffic-btn, .lm-compass, .lm-dim, .lm-locate) { display: none; }
 /* 2D or 3D, above the compass; in navigation both above the height strip when it shows */
-.lm-dim { position: absolute; right: 10px; bottom: 210px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--bg);
+.lm-dim { position: absolute; right: 10px; z-index: 3; border-radius: 50%; border: 0; background: var(--bg);
   color: var(--fg); font: inherit; font-size: .85rem; font-weight: 700; box-shadow: var(--shadow); cursor: pointer; }
 .lm-dim:hover { background: var(--hot); }
 @media (max-width: 760px) {
-  .lm-dim { bottom: calc(var(--sheet, 40dvh) + 112px); }
 }
-.lm-navigating .lm-dim { bottom: 146px; }
-.lm-navigating.lm-nav-elev-on .lm-compass { bottom: 146px; }
-.lm-navigating.lm-nav-elev-on .lm-dim { bottom: 196px; }
 /* the language in the menu */
 .lm-lang-select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: .3rem .4rem; }
 
@@ -419,7 +412,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-traffic-pop p { margin: 0; font-size: .85rem; line-height: 1.35; }
 
 /* traffic on and off, above 2D/3D */
-.lm-traffic-btn { position: absolute; right: 10px; bottom: 260px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--bg);
+.lm-traffic-btn { position: absolute; right: 10px; z-index: 3; border-radius: 50%; border: 0; background: var(--bg);
   color: var(--muted); box-shadow: var(--shadow); cursor: pointer; display: grid; place-items: center; }
 .lm-traffic-btn[hidden] { display: none; }
 .lm-traffic-btn circle { fill: currentColor; opacity: .5; }
@@ -428,15 +421,10 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-traffic-btn.lm-on .lm-tl-y { fill: #f29900; opacity: 1; }
 .lm-traffic-btn.lm-on .lm-tl-g { fill: #1e8e3e; opacity: 1; }
 @media (max-width: 760px) {
-  .lm-traffic-btn { bottom: calc(var(--sheet, 40dvh) + 162px); }
 }
-.lm-navigating .lm-traffic-btn { bottom: 196px; }
-.lm-navigating.lm-nav-elev-on .lm-traffic-btn { bottom: 246px; }
 
 /* the menu while navigating: a round button above the traffic button */
-.lm-navigating .lm-map-burger { display: grid; place-items: center; position: absolute; top: auto; left: auto; right: 10px; bottom: 246px; z-index: 5; width: 40px;
-  height: 40px; border-radius: 50%; border: 0; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); cursor: pointer; }
-.lm-navigating.lm-nav-elev-on .lm-map-burger { bottom: 296px; }
+.lm-navigating .lm-map-burger { display: grid; place-items: center; position: absolute; top: auto; left: auto; right: 10px; z-index: 5; border-radius: 50%; border: 0; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); cursor: pointer; }
 /* the lanes before a turn, under the banner: the lanes to take light, the others dim */
 .lm-nav-lanes { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 88px); left: 10px; display: flex; gap: 2px; padding: 4px;
   border-radius: 10px; background: #01699f; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); max-width: calc(100% - 20px); overflow: hidden; }
@@ -491,3 +479,72 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-swap-acts { display: flex; gap: .5rem; flex-wrap: wrap; padding: 0 1rem .6rem; }
 /* no fix for a while: the distance to the turn is stale */
 .lm-nav-lost .lm-nav-dist, .lm-nav-lost .lm-nav-arrow { opacity: .35; }
+
+/* ------------------------------------------------------------------ one look for the controls
+   Colours: the blue of the hippo (--brand) and its complement, a warm orange (--warm). Sizes: every round
+   control over the map is --ctl, in one column on the right, --step apart; pills (chips, bubbles, buttons with
+   text) are fully round; panels and fields have --r-card corners. */
+:root {
+  --brand: #0284c7;
+  --brand-deep: #0369a1;
+  --accent: #0277b5;
+  --warm: #e8590c;
+  --warm-soft: #fff1e6;
+  --ctl: 44px;
+  --step: 54px;
+  --pill: 999px;
+  --r-card: 12px;
+  --space: #0b1626;
+}
+:root[data-theme=dark] { --accent: #4cb4ea; --warm: #ff9a52; --warm-soft: #3a2a20; }
+
+/* the globe zoomed out: the dark of space around it */
+.lm-map { background: var(--space); }
+
+/* round controls over the map */
+.lm-map-burger, .lm-locate, .lm-compass, .lm-dim, .lm-traffic-btn, .lm-nav-btn {
+  width: var(--ctl); height: var(--ctl); border-radius: 50%; }
+.lm-map-burger, .lm-locate, .lm-compass, .lm-dim, .lm-traffic-btn {
+  background: var(--bg); color: var(--fg); border: 0; box-shadow: var(--shadow); display: grid; place-items: center; }
+.lm-map-burger:hover, .lm-locate:hover, .lm-compass:hover, .lm-dim:hover, .lm-traffic-btn:hover { background: var(--hot); }
+.lm-locate.lm-on { color: var(--accent); }
+/* the column on the right: n steps above its foot (--c0), the foot above the sheet on a phone */
+.lm { --c0: 152px; } /* on a wide screen above the zoom buttons, the same gap as between the others */
+/* the zoom buttons of MapLibre (wide screens only) in the size and shape of the others */
+.lm-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { border-radius: calc(var(--ctl) / 2); box-shadow: var(--shadow); overflow: hidden; margin: 0 10px 10px 0; }
+.lm-map .maplibregl-ctrl-group button { width: var(--ctl); height: var(--ctl); }
+@media (max-width: 760px) { .lm { --c0: calc(var(--sheet, 40dvh) + 12px); } }
+.lm-locate { bottom: var(--c0); }
+.lm-compass { bottom: calc(var(--c0) + var(--step)); }
+.lm-dim { bottom: calc(var(--c0) + 2 * var(--step)); }
+.lm-traffic-btn { bottom: calc(var(--c0) + 3 * var(--step)); }
+/* navigating: no location button; the compass at the height of the speed limit, the menu on top */
+.lm.lm-navigating { --c0: 42px; }
+.lm.lm-navigating.lm-nav-elev-on { --c0: 96px; }
+.lm-navigating .lm-map-burger { bottom: calc(var(--c0) + 4 * var(--step)); }
+
+/* pills */
+.lm-chip, .lm-bubble, .lm-more, .lm-area, .lm-mode, .lm-nav-start, .lm-nav-center, .lm-place-acts .lm-action, .lm-copy { border-radius: var(--pill); }
+.lm-bubble { min-height: 36px; display: inline-flex; align-items: center; padding: 0 1rem; }
+.lm-bubbles { align-items: center; min-height: var(--ctl); }
+.lm-chip { min-height: 32px; display: inline-flex; align-items: center; }
+.lm-mode, .lm-more, .lm-area { min-height: 38px; }
+.lm-chip[aria-pressed=true], .lm-bubble[aria-pressed=true], .lm-mode[aria-checked=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* fields and the button beside them: one height */
+.lm-combo { min-height: var(--ctl); }
+.lm-input { padding-top: .55rem; padding-bottom: .55rem; }
+.lm-dir-btn { width: var(--ctl); height: var(--ctl); background: var(--brand); }
+
+/* panels and fields */
+.lm-suggest, .lm-status, .lm-end, .lm-style, .lm-powered, .lm-nav-banner, .lm-nav-bottom, .lm-nav-speed, .lm-nav-along, .lm-nav-elev,
+.lm-query pre, .lm-thumb, .lm-place-pic img { border-radius: var(--r-card); }
+.lm-swatch { border-radius: calc(var(--r-card) - 4px); }
+
+/* the blue of the hippo where the brand shows; the warm complement for the stops and places along a route */
+.lm-word-maps { color: var(--brand); }
+.lm-nav-banner { background: var(--brand); }
+.lm-nav-then { background: var(--brand-deep); }
+.lm-nav-go .lm-nav-start { box-shadow: 0 2px 8px rgba(2, 132, 199, .35); }
+.lm-end-stop .lm-end-dot { background: var(--warm); box-shadow: 0 0 0 1px var(--warm); }
+.lm-along-add { color: var(--warm); }

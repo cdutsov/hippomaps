@@ -15,7 +15,8 @@ OpenStreetMap data. Live at https://hippomaps.ch.
 - **Navigation** turn by turn, spoken in four languages, with re-routing, a 3D traveller and a preview mode
 - **Live traffic** in Switzerland: closures, queues and roadworks on the map and in the route time
 - **Transit lines** (metro, light rail, tram) in their colours
-- **Map styles**: nine styles, day and night by the sun, 3D terrain and buildings, relief shading
+- **Map**: a globe with the night side when zoomed out; nine styles, the default day map in the colours of Swiss
+  topographic maps, day and night by the sun, 3D terrain and buildings, relief shading; starred places as stars
 - **Languages**: English, German, French, Italian
 - **Privacy**: settings, starred places and recent searches stay in the browser
 - **Shareable links** for places, searches and routes

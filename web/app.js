@@ -280,14 +280,43 @@ const look = {
   transit: store.get("hm-transit") === "1",
 };
 // the height of the sun in degrees at a place and time (to a few tenths of a degree; NOAA)
-function sunHeight(lon, lat, when = new Date()) {
+// the sun at a time: its declination, and its hour angle (radians) at longitude 0
+function sunAt(when) {
   const rad = Math.PI / 180, d = when / 864e5 - 10957.5; // days since 2000-01-01 12:00 UTC
   const g = (357.529 + 0.98560028 * d) * rad, q = 280.459 + 0.98564736 * d;
   const L = (q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * rad, e = (23.439 - 0.00000036 * d) * rad;
   const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e) * Math.sin(L));
   const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
-  const ha = ((gmst * 15 + lon) * rad - ra);
+  return { dec, ha0: gmst * 15 * rad - ra };
+}
+function sunHeight(lon, lat, when = new Date()) {
+  const rad = Math.PI / 180, { dec, ha0 } = sunAt(when), ha = ha0 + lon * rad;
   return Math.asin(Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(ha)) / rad;
+}
+// the night side of the earth for the globe: where the sun is below 0°, -3° … -15° (twilight to night), one
+// polygon each, so that their shades add up towards the middle of the night
+function nightSide(when = new Date()) {
+  const rad = Math.PI / 180, { dec, ha0 } = sunAt(when), darkSouth = dec >= 0, pole = darkSouth ? -85 : 85;
+  const clamp = (v) => Math.max(-85, Math.min(85, v));
+  const features = [0, -3, -6, -9, -12, -15].map((h) => {
+    const c = Math.sin(h * rad), ring = [];
+    for (let lon = -180; lon <= 180; lon += 2) {
+      // the latitude where the sun is at h: sin(lat) sin(dec) + cos(lat) cos(dec) cos(ha) = sin(h)
+      const a = Math.sin(dec), b = Math.cos(dec) * Math.cos(ha0 + lon * rad), r = Math.hypot(a, b), t = Math.atan2(b, a);
+      let lat;
+      if (c / r >= 1) lat = -pole; // the whole meridian below h
+      else if (c / r <= -1) lat = pole; // none of it
+      else {
+        const s = Math.asin(c / r), norm = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+        const x1 = norm(s - t), x2 = norm(Math.PI - s - t);
+        lat = (Math.abs(x1) <= Math.PI / 2 ? x1 : x2) / rad;
+      }
+      ring.push([lon, clamp(lat)]);
+    }
+    ring.push([180, pole], [-180, pole], ring[0]);
+    return { type: "Feature", properties: { h }, geometry: { type: "Polygon", coordinates: [ring] } };
+  });
+  return { type: "FeatureCollection", features };
 }
 // the style shown: Automatic is the light style while the sun is up where the map is, the dark one after
 let autoDark = false;
@@ -464,8 +493,8 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty, along: empty };
-const ACCENT = "#d0312d";
+const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty, along: empty };
+const ACCENT = "#e8590c"; // the warm complement of the hippo blue (--warm)
 const STOP_COLOUR = "#e8590c"; // stops on a route, and the places along it
 // POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
 // tiles of zoom 14 leave the small ones out. Between zoom 14 and 15 the POIs come from a tile of zoom 14
@@ -582,7 +611,100 @@ async function poisEarlier() {
   map.addLayer(near, "pois");
   map.setFilter("pois", ["all", ["any", ["<", ["zoom"], 14], [">=", ["zoom"], 15]], filter]);
 }
+// the day map: the light style of overpass.ch, recoloured here in the manner of Swiss topographic maps. DAY names
+// the colours (steps in OKLCH: land almost white, the greens one hue family from grass through parks to forest so that
+// denser vegetation reads darker, water a clear light blue, motorways orange with a darker casing of the same hue,
+// boundaries a muted magenta, labels a dark cool grey). PASTEL maps them per layer (first match) from the colours of
+// the style.
+const DAY = {
+  land: "#fbfaf7", building: "#d9d3ce", grass: "#ddefcc", park: "#cde8c0", forest: "#b1d7a9", urbanGreen: "#d5ebc6",
+  water: "#9ed3f2", waterLabel: "#006c99", sand: "#fcf3da", glacier: "#f0f8fc", hospital: "#ffebeb",
+  school: "#fff1e0", industrial: "#edebf5", aerodrome: "#edeef5", zoo: "#cce5db", military: "#e0ecef",
+  pedestrian: "#f6f5f2", runway: "#f4f5f9", highway: "#ffcc8e", highwayCase: "#e4a067", casing: "#dfdcd4",
+  tunnel: "#fafaf9", tunnelCase: "#ededea", rail: "#b2afbd", boundary: "#b278ac", label: "#282e38",
+};
+const PASTEL = [
+  [/^(background|earth)$/, { "#cccccc": DAY.land, "#e2dfda": DAY.land }],
+  [/^landuse_(park|forest)$/, { "#9cd3b4": DAY.park, "#a0d9a0": DAY.forest, "#99d2bb": DAY.grass, "#e7e7e7": DAY.glacier,
+    "#e2e0d7": DAY.sand, "#c6dcdc": DAY.military, "#e2dfda": DAY.land }],
+  [/^landuse_urban_green$/, { "#9cd3b4": DAY.urbanGreen }],
+  [/^landuse_hospital$/, { "#e4dad9": DAY.hospital }],
+  [/^landuse_industrial$/, { "#d1dde1": DAY.industrial }],
+  [/^landuse_school$/, { "#e4ded7": DAY.school }],
+  [/^landuse_beach$/, { "#e8e4d0": DAY.sand }],
+  [/^landuse_zoo$/, { "#c6dcdc": DAY.zoo }],
+  [/^landuse_aerodrome$/, { "#dadbdf": DAY.aerodrome }],
+  [/^(landuse_runway|roads_runway|roads_taxiway)$/, { "#e9e9ed": DAY.runway }],
+  [/^landuse_(pedestrian|pier)$/, { "#e3e0d4": DAY.pedestrian, "#e0e0e0": DAY.tunnelCase }],
+  [/^water/, { "#80deea": DAY.water, "#728dd4": DAY.waterLabel }],
+  [/^buildings$/, { "#cccccc": DAY.building }],
+  [/^roads_tunnels/, { "#e0e0e0": DAY.tunnelCase, "#d5d5d5": DAY.tunnel }],
+  [/^roads_.*highway.*casing/, { "#e0e0e0": DAY.highwayCase }],
+  [/^roads_.*highway/, { "#ffffff": DAY.highway }],
+  [/casing/, { "#e0e0e0": DAY.casing }],
+  [/^roads_rail$/, { "#a7b1b3": DAY.rail }],
+  [/^boundaries/, { "#adadad": DAY.boundary }],
+  [/^(places_|earth_label)/, { "#e0e0e0": DAY.land, "#e2dfda": DAY.land, "#5c5c5c": DAY.label }],
+  [/^pois$/, { "#e2dfda": DAY.land }],
+];
+const repaint = (v, to) => (typeof v === "string" ? to[v.toLowerCase()] || v : Array.isArray(v) ? v.map((x) => repaint(x, to)) : v);
+const pastel = () => {
+  for (const l of map.getStyle().layers) {
+    const to = PASTEL.find(([re]) => re.test(l.id))?.[1];
+    if (!to) continue;
+    for (const [k, v] of Object.entries(l.paint || {})) {
+      if (!k.endsWith("color")) continue;
+      const w = repaint(v, to);
+      if (JSON.stringify(w) !== JSON.stringify(v)) map.setPaintProperty(l.id, k, w);
+    }
+  }
+};
+
+// icons drawn here (a new style drops them): a star for the starred places, a pin for the place shown
+const drawIcon = (name, w, h, draw) => {
+  if (map.hasImage(name)) return;
+  const k = 2, c = document.createElement("canvas");
+  c.width = w * k; c.height = h * k;
+  const g = c.getContext("2d");
+  g.scale(k, k);
+  draw(g);
+  map.addImage(name, g.getImageData(0, 0, c.width, c.height), { pixelRatio: k });
+};
+const addIcons = () => {
+  drawIcon("lm-star-icon", 26, 26, (g) => {
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 4.8 : 11, a = -Math.PI / 2 + (i * Math.PI) / 5;
+      g.lineTo(13 + r * Math.cos(a), 13.5 + r * Math.sin(a));
+    }
+    g.closePath();
+    g.shadowColor = "rgba(0,0,0,.3)"; g.shadowBlur = 2; g.shadowOffsetY = 1;
+    g.fillStyle = "#f5b301"; g.fill();
+    g.shadowColor = "transparent";
+    g.lineJoin = "round"; g.lineWidth = 1.8; g.strokeStyle = "#fff"; g.stroke();
+  });
+  drawIcon("lm-pin-icon", 32, 42, (g) => {
+    g.beginPath();
+    g.moveTo(16, 40);
+    g.bezierCurveTo(13, 33, 4, 26, 4, 16);
+    g.arc(16, 16, 12, Math.PI, 0);
+    g.bezierCurveTo(28, 26, 19, 33, 16, 40);
+    g.closePath();
+    g.shadowColor = "rgba(0,0,0,.35)"; g.shadowBlur = 3; g.shadowOffsetY = 1.5;
+    g.fillStyle = "#0369a1"; g.fill();
+    g.shadowColor = "transparent";
+    g.lineWidth = 2; g.strokeStyle = "#fff"; g.stroke();
+    g.beginPath(); g.arc(16, 16, 4.5, 0, 2 * Math.PI); g.fillStyle = "#fff"; g.fill();
+  });
+};
+const pinLayer = (id, source, filter) => ({ id, type: "symbol", source, ...(filter ? { filter } : {}),
+  layout: { "icon-image": "lm-pin-icon", "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true } });
+
 map.on("style.load", () => {
+  if (shownStyle() === "light") pastel();
+  addIcons();
+  // a globe when zoomed out; MapLibre turns it into the flat map from about zoom 12 (a new style resets it)
+  map.setProjection({ type: "globe" });
   // 3D buildings see-through, so the map and the route behind them stay in view
   for (const l of map.getStyle().layers) if (l.type === "fill-extrusion") map.setPaintProperty(l.id, "fill-extrusion-opacity", 0.6);
   poisEarlier();
@@ -591,6 +713,8 @@ map.on("style.load", () => {
   const dashed = ["in", ["get", "kind"], ["literal", ["border", "circle"]]];
   const pts = ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]];
   const polys = ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]];
+  map.addLayer({ id: "lm-night", type: "fill", source: "lm-night", maxzoom: 7,
+    paint: { "fill-color": "#0b1626", "fill-antialias": false, "fill-opacity": ["interpolate", ["linear"], ["zoom"], 3, 0.11, 6.5, 0] } }, below);
   map.addLayer({ id: "lm-drawn-dashed", type: "line", source: "lm-lines", filter: dashed,
     paint: { "line-color": "#1f5fbf", "line-width": ["match", ["get", "kind"], "circle", 1.2, 2], "line-dasharray": [3, 2], "line-opacity": 0.8 } }, below);
   map.addLayer({ id: "lm-drawn", type: "line", source: "lm-lines", filter: ["!", dashed], layout: { "line-cap": "round", "line-join": "round" },
@@ -606,8 +730,7 @@ map.on("style.load", () => {
     paint: { "circle-radius": 11, "circle-color": ACCENT, "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
   map.addLayer({ id: "lm-hover-line", type: "line", source: "lm-hover", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 4, "line-opacity": 0.5 } });
   map.addLayer({ id: "lm-sel-line", type: "line", source: "lm-selected", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 5, "line-opacity": 0.65 } });
-  map.addLayer({ id: "lm-sel", type: "circle", source: "lm-selected", filter: pts,
-    paint: { "circle-radius": 13, "circle-color": "#111827", "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
+  map.addLayer(pinLayer("lm-sel", "lm-selected", pts));
   map.addLayer({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
   map.addLayer({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
     paint: { "circle-radius": 7, "circle-color": "#1a73e8", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
@@ -638,8 +761,8 @@ map.on("style.load", () => {
     "circle-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#6b7280", "jam", "#dc2626", "accident", "#dc2626", "#f08c00"] } });
   map.addLayer({ id: "lm-traffic-works-pt", type: "circle", source: "lm-traffic", minzoom: 11, filter: ["all", tpt, ["==", ["get", "t"], "works"]], paint: {
     "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-color": "#f08c00" } });
-  map.addLayer({ id: "lm-stars", type: "circle", source: "lm-stars", paint: {
-    "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 4, 15, 8], "circle-color": "#f5b301", "circle-stroke-width": 2, "circle-stroke-color": "#fff" } });
+  map.addLayer({ id: "lm-stars", type: "symbol", source: "lm-stars", layout: { "icon-image": "lm-star-icon",
+    "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 15, 1], "icon-allow-overlap": true, "icon-ignore-placement": true } });
   map.addLayer({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
   map.addLayer({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
@@ -654,13 +777,12 @@ map.on("style.load", () => {
     paint: { "text-color": theme() === "dark" ? "#ffd8a8" : "#7c2d12", "text-halo-color": theme() === "dark" ? "#111" : "#fff", "text-halo-width": 1.5 } });
   // the start (white), the stops (orange, numbered) and the destination (red)
   map.addLayer({ id: "lm-route-ends", type: "circle", source: "lm-route", filter: ["!", line], paint: {
-    "circle-radius": ["match", ["get", "end"], "stop", 9, 7], "circle-color": ["match", ["get", "end"], "from", "#fff", "stop", STOP_COLOUR, ACCENT],
+    "circle-radius": ["match", ["get", "end"], "stop", 9, 7], "circle-color": ["match", ["get", "end"], "from", "#fff", "stop", STOP_COLOUR, "#d0312d"],
     "circle-stroke-color": ["match", ["get", "end"], "from", "#111827", "#fff"], "circle-stroke-width": ["match", ["get", "end"], "stop", 2, 3] } });
   if (font) map.addLayer({ id: "lm-route-stop-n", type: "symbol", source: "lm-route", filter: ["==", ["get", "end"], "stop"],
     layout: { "text-field": ["get", "n"], "text-font": font, "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } });
-  map.addLayer({ id: "lm-pin", type: "circle", source: "lm-pin",
-    paint: { "circle-radius": 8, "circle-color": "#111827", "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
+  map.addLayer(pinLayer("lm-pin", "lm-pin"));
   map.addLayer({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
       "text-max-width": 10, "text-optional": true },
@@ -670,6 +792,7 @@ const setSource = (name, d) => {
   sources[name] = d || empty;
   map.getSource(`lm-${name}`)?.setData(sources[name]);
 };
+setInterval(() => setSource("night", nightSide()), 5 * 60e3); // the night moves 1.25° in five minutes
 const one = (f) => ({ type: "FeatureCollection", features: f ? [f] : [] });
 for (const layer of ["lm-point", "lm-line", "lm-fill"]) {
   map.on("mouseenter", layer, (e) => {
