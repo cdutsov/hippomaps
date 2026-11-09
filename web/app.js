@@ -592,9 +592,7 @@ map.on("style.load", () => {
   map.addLayer({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
   map.addLayer({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
     paint: { "circle-radius": 7, "circle-color": "#1a73e8", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
-  // the area of a tap: its outline dashed in the blue of overpass.ch, on a soft glow
-  map.addLayer({ id: "lm-area-glow", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "round" },
-    paint: { "line-color": "#0284c7", "line-width": 9, "line-opacity": 0.22, "line-blur": 2 } }, below);
+  // the area of a tap: its outline dashed in the blue of overpass.ch
   map.addLayer({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "butt" },
     paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95, "line-dasharray": [3, 2] } }, below);
   // directions: the line with a casing, the start (white) and the destination (red)
@@ -1462,7 +1460,7 @@ async function run(text, extra = {}, { push = true, bbox = null, sel = null } = 
     if (push) writeURL(null);
     return transitSearch(tq, text);
   }
-  const params = new URLSearchParams({ q: text, bbox: bbox || viewBox() });
+  const params = new URLSearchParams({ q: text, bbox: bbox || viewBox(), lang: LANG }); // places in the language of the reader ("Tessin")
   for (const k of extraKeys) if (extra[k]) params.set(k, extra[k]);
   state.text = text;
   state.extra = extra;

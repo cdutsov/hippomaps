@@ -11,7 +11,8 @@ export function texts(num) {
     de: {
       placeholder: "Orte suchen, oder was und wo",
       hints: ["Restaurants am Zürichsee", "Tankstellen entlang der A3", "Campingplätze am Genfersee", "Biergärten in München",
-        "vegane Restaurants in Zürich", "Aussichtspunkte bei Luzern"],
+        "vegane Restaurants in Zürich", "Aussichtspunkte bei Luzern", "Brücken über den Rhein in Basel", "Burgen im Tessin",
+        "Berghütten über 2500 m im Wallis", "Leuchttürme in der Bretagne"],
       examples: ["Cafés", "Migros", "Museen in Bern", "Spielplätze in der Nähe", "Restaurants jetzt offen", "Hotels an der Limmat in Zürich"],
       intro: "Suchen Sie in einfachen Worten: einen Ort, eine Kette, oder was und wo. Ein Wort allein sucht im Kartenausschnitt.",
       searching: "Suche läuft…",
@@ -143,7 +144,8 @@ export function texts(num) {
     fr: {
       placeholder: "Chercher des lieux, ou quoi et où",
       hints: ["cabanes au-dessus de 2500 m en Valais", "restaurants végans à Zurich", "points de vue près de Lucerne", "châteaux en Valais",
-        "fontaines à Genève", "restaurants au bord du lac de Neuchâtel", "boulangeries à Lausanne"],
+        "fontaines à Genève", "restaurants au bord du lac de Neuchâtel", "boulangeries à Lausanne", "ponts sur le Rhin à Bâle",
+        "châteaux au Tessin", "phares en Bretagne"],
       examples: ["cafés", "Migros", "musées à Berne", "places de jeux près de moi", "restaurants ouverts maintenant", "hôtels au bord du lac à Genève"],
       intro: "Cherchez en mots simples : un lieu, une chaîne, ou quoi et où. Un mot seul cherche dans la vue de la carte.",
       searching: "Recherche…",
