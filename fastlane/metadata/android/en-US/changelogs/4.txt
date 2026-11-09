@@ -1,0 +1,1 @@
+Built for Android 16. A sharper icon, and a themed icon on Android 13 and newer.

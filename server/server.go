@@ -86,15 +86,16 @@ func (c Config) allowedThumb(u string) bool {
 
 // Server is the http.Handler of the app.
 type Server struct {
-	cfg    Config
-	log    *slog.Logger
-	mux    *http.ServeMux
-	page   *template.Template
-	hashes map[string]string // file -> short hash, for addresses that change with the file
-	client *http.Client
-	cache  *memo
-	perIP  *window
-	calls  chan struct{} // calls to Wikimedia at once
+	cfg          Config
+	log          *slog.Logger
+	mux          *http.ServeMux
+	page         *template.Template
+	privacyPages *template.Template // privacy.html, privacy-de.html
+	hashes       map[string]string  // file -> short hash, for addresses that change with the file
+	client       *http.Client
+	cache        *memo
+	perIP        *window
+	calls        chan struct{} // calls to Wikimedia at once
 
 	routeClient *http.Client
 	routesPerIP *window
@@ -140,6 +141,7 @@ func New(cfg Config) *Server {
 		return nil
 	})
 	s.page = template.Must(template.New("index.html").Funcs(template.FuncMap{"asset": s.asset}).ParseFS(web.Files, "index.html"))
+	s.privacyPages = template.Must(template.New("privacy").Funcs(template.FuncMap{"asset": s.asset}).ParseFS(web.Files, "privacy.html", "privacy-de.html"))
 	base := strings.TrimRight(cfg.Base, "/")
 	if base == "" { // the page at the root of its own site (hippomaps.ch)
 		s.mux.HandleFunc("GET /{$}", s.index)
@@ -149,6 +151,9 @@ func New(cfg Config) *Server {
 			http.Redirect(w, r, base, http.StatusMovedPermanently)
 		})
 	}
+	// the privacy policy (the app links it from its menu; Google Play asks for its address)
+	s.mux.HandleFunc("GET "+base+"/privacy", s.privacy("privacy.html"))
+	s.mux.HandleFunc("GET "+base+"/de/privacy", s.privacy("privacy-de.html"))
 	s.mux.Handle("GET "+base+"/static/", http.StripPrefix(base+"/static/", http.HandlerFunc(s.static)))
 	if cfg.Pictures {
 		s.mux.HandleFunc("GET "+base+"/api/picture", s.picture)
@@ -192,10 +197,16 @@ func New(cfg Config) *Server {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
-	if s.cfg.PublicURL == "" || r.URL.Path != s.home() { // only the page itself is for search engines
+	if s.cfg.PublicURL == "" || !s.listed(r.URL.Path) { // only the pages are for search engines, not the API
 		h.Set("X-Robots-Tag", "noindex")
 	}
 	s.mux.ServeHTTP(w, r)
+}
+
+// listed: the page and the privacy policy, the pages of the sitemap
+func (s *Server) listed(p string) bool {
+	b := strings.TrimRight(s.cfg.Base, "/")
+	return p == s.home() || p == b+"/privacy" || p == b+"/de/privacy"
 }
 
 // home is the path of the page
@@ -214,7 +225,7 @@ func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+"\n"+`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>%s/</loc></url></urlset>`+"\n",
+	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+"\n"+`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>%[1]s/</loc></url><url><loc>%[1]s/privacy</loc></url><url><loc>%[1]s/de/privacy</loc></url></urlset>`+"\n",
 		html.EscapeString(strings.TrimRight(s.cfg.PublicURL, "/")))
 }
 
@@ -239,6 +250,25 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=()")
 	h.Set("Referrer-Policy", "strict-origin-when-cross-origin") // the tiles key holds for the site only
 	w.Write(buf.Bytes())
+}
+
+// privacy serves the privacy policy in one language: a page of text, no script
+func (s *Server) privacy(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var buf bytes.Buffer
+		data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "Public": strings.TrimRight(s.cfg.PublicURL, "/")}
+		if err := s.privacyPages.ExecuteTemplate(&buf, name, data); err != nil {
+			s.log.Error("privacy", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		h := w.Header()
+		h.Set("Content-Type", "text/html; charset=utf-8")
+		h.Set("Cache-Control", "no-cache")
+		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Write(buf.Bytes())
+	}
 }
 
 // csp lets the page reach this site and the tiles API; pictures and spoken sentences come as blobs.
@@ -276,7 +306,7 @@ var types = map[string]string{".js": "text/javascript; charset=utf-8", ".mjs": "
 func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	p := path.Clean(strings.TrimPrefix(r.URL.Path, "/"))
 	b, err := fs.ReadFile(web.Files, p)
-	if err != nil || p == "index.html" || strings.HasPrefix(p, ".") {
+	if err != nil || strings.HasSuffix(p, ".html") || strings.HasPrefix(p, ".") { // the pages are templates
 		http.NotFound(w, r)
 		return
 	}

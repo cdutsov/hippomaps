@@ -279,6 +279,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-toggle input:checked { background: var(--accent); }
 .lm-toggle input:checked::after { left: 21px; }
 .lm-menu-foot { color: var(--muted); font-size: .72rem; margin-top: 1.2rem; }
+.lm-menu-privacy { display: inline-block; color: var(--muted); font-size: .72rem; margin-top: .4rem; }
 @media (max-width: 760px) {
   .lm-map-burger { display: grid; position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 3; border-radius: 50%;
     background: var(--bg); color: var(--fg); box-shadow: var(--shadow); }

@@ -1,6 +1,6 @@
 # Every version pinned; no dynamic versions.
 [versions]
-agp = "8.7.3"
+agp = "8.13.2"
 kotlin = "2.0.21"
 core = "1.15.0"
 activity = "1.9.3"

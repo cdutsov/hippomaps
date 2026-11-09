@@ -1,10 +1,13 @@
-# Headless Android emulator for testing the app: API 34 Google APIs x86_64, KVM.
+# Headless Android emulator for testing the app: Google APIs x86_64, KVM; API 34 by default,
+# Android 16 with --build-arg API=36 --build-arg SYSIMG_ZIP=x86_64-36_r07.zip
+# --build-arg SYSIMG_SHA1=c6bf44bdcd885bb902b4ba752d111a073ad7a817.
 # Emulator and system image are fetched by exact archive name and SHA-1 (the
 # checksums of Google's repository manifest).
-FROM hippomaps-android-build:1
+FROM hippomaps-android-build:2
 
 ARG EMULATOR_ZIP=emulator-linux_x64-16740729.zip
 ARG EMULATOR_SHA1=f41f9e31eb5ca64926603c03265c50bbc0ff4172
+ARG API=34
 ARG SYSIMG_ZIP=x86_64-34_r14.zip
 ARG SYSIMG_SHA1=e0f6c9a0691aa27bd597d0deb1bcfdc943ac8ca7
 
@@ -18,11 +21,11 @@ RUN set -e; cd /tmp; \
     fetch "$EMULATOR_ZIP" https://dl.google.com/android/repository "$EMULATOR_SHA1"; \
     fetch "$SYSIMG_ZIP" https://dl.google.com/android/repository/sys-img/google_apis "$SYSIMG_SHA1"; \
     unzip -q "$EMULATOR_ZIP" -d "$ANDROID_HOME"; \
-    mkdir -p "$ANDROID_HOME/system-images/android-34/google_apis"; \
-    unzip -q "$SYSIMG_ZIP" -d "$ANDROID_HOME/system-images/android-34/google_apis"; \
+    mkdir -p "$ANDROID_HOME/system-images/android-${API}/google_apis"; \
+    unzip -q "$SYSIMG_ZIP" -d "$ANDROID_HOME/system-images/android-${API}/google_apis"; \
     rm -f /tmp/*.zip
 
-ENV PATH=$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools
+ENV PATH=$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools API=${API}
 # python3 for test/cdp.py (reads the page of a debug build over the DevTools protocol)
 RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 COPY cdp.py /usr/local/bin/cdp.py

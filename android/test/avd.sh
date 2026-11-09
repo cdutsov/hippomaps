@@ -1,12 +1,13 @@
 #!/bin/sh
 # Creates the test device (Pixel-like, 1080 x 2400, 420 dpi) and starts the emulator headless.
 set -eu
+API=${API:-34}
 AVD_HOME=/root/.android/avd
 mkdir -p "$AVD_HOME/test.avd"
 cat >"$AVD_HOME/test.ini" <<INI
 avd.ini.encoding=UTF-8
 path=$AVD_HOME/test.avd
-target=android-34
+target=android-$API
 INI
 cat >"$AVD_HOME/test.avd/config.ini" <<INI
 AvdId=test
@@ -23,7 +24,7 @@ hw.mainKeys=no
 hw.gpu.enabled=yes
 hw.gpu.mode=swiftshader_indirect
 disk.dataPartition.size=4G
-image.sysdir.1=system-images/android-34/google_apis/x86_64/
+image.sysdir.1=system-images/android-$API/google_apis/x86_64/
 tag.id=google_apis
 tag.display=Google APIs
 skin.dynamic=yes

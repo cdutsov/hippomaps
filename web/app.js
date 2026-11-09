@@ -180,6 +180,7 @@ const EN = {
   languageNote: "Page, names on the map, directions and voice",
   automatic: "Automatic",
   poweredBy: "Powered by",
+  privacy: "Privacy",
   clear: "Clear",
   search: "Search",
   sheet: "Show or hide the list",
@@ -1125,6 +1126,9 @@ langSel.addEventListener("change", () => {
 });
 const menuFootText = () => (TRAFFIC ? `${T.credit} ${T.trafficCredit}` : T.credit);
 const menuFoot = el("p", "lm-menu-foot", {}, menuFootText());
+// the privacy policy, in German for German, else in English
+const privacyHref = () => root.dataset.privacy.replace(/\/privacy$/, UI === "de" ? "/de/privacy" : "/privacy");
+const privacyLink = el("a", "lm-menu-privacy", { href: privacyHref() }, T.privacy);
 const langRow = el("label", "lm-toggle lm-lang");
 const langText = el("span", "lm-toggle-text");
 langText.append(el("span", "", {}, T.language), el("span", "lm-toggle-note", {}, T.languageNote));
@@ -1140,7 +1144,7 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
   ...(TRANSIT ? [transitRow] : []),
   langRow,
   forgetBtn,
-  poweredBy(), menuFoot);
+  poweredBy(), menuFoot, privacyLink);
 root.append(backdrop, menu);
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
 function poweredBy() {
@@ -4315,6 +4319,7 @@ function setLang(chosen) {
   }
   foot.textContent = footText();
   menuFoot.textContent = menuFootText();
+  privacyLink.href = privacyHref();
   hints.splice(0, hints.length, ...(T.hints || []));
   if (!input.value) newHint();
   for (const end of [route.from, route.to]) if (end?.me) end.label = T.myPlace;

@@ -1,0 +1,18 @@
+HippoMaps ist die Android-App von hippomaps.ch, einer Karte mit Suche und Navigation auf Daten von OpenStreetMap.
+
+• Suche in eigenen Worten («Cafés in der Zürcher Altstadt», «Campingplätze am Genfersee») mit Vorschlägen beim Tippen
+• Ortsseiten mit Bild von Wikimedia Commons, Öffnungszeiten, Website, Telefon, Adresse und Rollstuhlzugang
+• Routen mit dem Auto, dem Velo und zu Fuss, mit bis zu 8 Zwischenstopps und Orten entlang der Route (Tankstellen, Ladestationen, Raststätten, Essen)
+• Navigation mit gesprochenen Anweisungen, auch bei gesperrtem Bildschirm
+• Höhenprofil mit dem Velo und zu Fuss
+• Verkehrslage in der Schweiz: Sperrungen, Staus und Baustellen
+• Metro-, Stadtbahn- und Tramlinien in ihren Farben
+• Neun Kartenstile, Tag- und Nachtmodus, 3D-Gelände und Gebäude
+• Deutsch, Englisch, Französisch und Italienisch
+• Öffnet geo:-Links und die Kartenlinks anderer Apps
+
+Kein Konto, keine Werbung, kein Tracking. Einstellungen, gemerkte Orte und letzte Suchen bleiben auf dem Telefon.
+
+Die App zeigt hippomaps.ch und braucht eine Internetverbindung. Karten, Suche und Höhen kommen von overpass.ch, Routen von Valhalla. Der Quellcode ist freie Software (GPL-3.0 oder später): https://gitlab.com/cdutsov/hippomaps
+
+Kartendaten © OpenStreetMap-Mitwirkende (ODbL).

@@ -8,7 +8,7 @@ set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 SIGNING_DIR=${SIGNING_DIR:-/root/.config/hippomaps-android}
-IMAGE=hippomaps-android-build:1
+IMAGE=hippomaps-android-build:2
 JDK_IMAGE=eclipse-temurin:17.0.13_11-jdk-jammy
 CACHE=hippomaps-android-gradle   # Docker volume: Gradle caches and downloads
 CPUS=${CPUS:-4}

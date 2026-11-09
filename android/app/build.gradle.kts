@@ -13,15 +13,15 @@ val signingProps = System.getenv("HIPPOMAPS_SIGNING")?.let { path ->
 
 android {
     namespace = "ch.hippomaps.app"
-    compileSdk = 35
-    buildToolsVersion = "35.0.0"
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "ch.hippomaps.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        targetSdk = 36
+        versionCode = 4
+        versionName = "1.3.0"
     }
 
     signingConfigs {

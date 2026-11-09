@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- themed icon of Android 13 and newer: the hippo alone, at the place and size of the foreground -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/hm_icon_mono"
+    android:inset="14dp" />

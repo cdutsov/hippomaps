@@ -95,6 +95,12 @@ change of the JDK, Gradle or the Android Gradle plugin can break reproducibility
 `fdroid build` in the image `registry.gitlab.com/fdroid/fdroidserver:buildserver-trixie` and
 `apksigcopier compare` before the tag.
 
+## Google Play
+
+`PLAY.md`: signing with the same key (`play-key.sh`), the account, the listing and the answers to the
+forms of Play Console. The icons come from `icon/hippo.svg` (`icon/render.sh`): launcher and splash at
+320 px, a themed (monochrome) layer for Android 13 and newer, and the 512 px store icon.
+
 ## Opening hippomaps.ch links in the app
 
 For Android to open https://hippomaps.ch links in the app without asking, the site must serve
@@ -121,6 +127,7 @@ KVM:
 ```
 docker build -t hippomaps-android-emulator:1 android/test
 docker run -d --name hm-emu --device /dev/kvm hippomaps-android-emulator:1
+# Android 16: the build arguments at the top of test/Dockerfile, image hippomaps-android-emulator:36
 docker exec hm-emu adb wait-for-device
 docker cp android/dist/hippomaps.apk hm-emu:/tmp/ && docker exec hm-emu adb install -r /tmp/hippomaps.apk
 docker exec hm-emu adb emu geo fix 8.5403 47.3779
@@ -138,10 +145,5 @@ debug build over the DevTools protocol, e.g. the banner text while the screen is
   (Samsung, Xiaomi), which can still stop a foreground service.
 - `navigator.permissions.query({name: "geolocation"})` still answers from the WebView, not from
   the app permission.
-- The launcher and splash icons come from the 192 px web icon; a larger or vector source would
-  make them sharper on high-density screens.
-- No themed (monochrome) launcher icon for Android 13 and newer.
 - No offline maps; the app needs a connection like the website.
-- Google Play raises the required targetSdk every year (API 36 for updates from late 2026): check
-  before the first upload. Lint lists newer AGP and AndroidX versions than the pinned ones.
-- Play Store listing (texts, screenshots, privacy notes) and Play App Signing.
+- Lint lists newer AGP and AndroidX versions than the pinned ones (AGP 9 needs a migration).

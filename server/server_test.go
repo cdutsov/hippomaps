@@ -2,6 +2,7 @@ package server
 
 import (
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gitlab.com/cdutsov/hippomaps/web"
 )
 
 var png = []byte("\x89PNG\r\n\x1a\nfake")
@@ -251,5 +254,48 @@ func TestMemo(t *testing.T) {
 	m.now = func() time.Time { return at.Add(2 * time.Hour) }
 	if _, ok := m.get("m"); ok {
 		t.Error("old value kept")
+	}
+}
+
+// The privacy policy: English and German, linked from each other, no script; listed for search engines on a site of
+// its own; the templates are not served as files.
+func TestPrivacy(t *testing.T) {
+	s := testServer(t, nil)
+	for p, want := range map[string]string{"/labs/maps/privacy": "Privacy policy", "/labs/maps/de/privacy": "Datenschutzerklärung"} {
+		w := get(s, p)
+		body := w.Body.String()
+		if w.Code != 200 || !strings.Contains(body, want) || !strings.Contains(body, "info@overpass.ch") || strings.Contains(body, "<script") {
+			t.Fatalf("%s: %d %s", p, w.Code, body)
+		}
+		if !strings.Contains(body, `/labs/maps/static/privacy.css?v=`) || !strings.Contains(body, `href="/labs/maps/de/privacy"`) && !strings.Contains(body, `href="/labs/maps/privacy"`) {
+			t.Errorf("%s: links %s", p, body)
+		}
+		if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") || strings.Contains(csp, "script") {
+			t.Errorf("%s: csp %s", p, csp)
+		}
+	}
+	for _, p := range []string{"/labs/maps/static/privacy.html", "/labs/maps/static/privacy-de.html"} {
+		if w := get(s, p); w.Code == 200 {
+			t.Errorf("%s served as a file", p)
+		}
+	}
+	if w := get(s, "/labs/maps/static/privacy.css"); w.Code != 200 {
+		t.Errorf("privacy.css: %d", w.Code)
+	}
+	// on its own site (hippomaps.ch): in the sitemap, without noindex
+	own := testServer(t, nil, func(c *Config) { c.Base = ""; c.PublicURL = "https://hippomaps.example" })
+	if w := own.listed("/privacy") && own.listed("/de/privacy") && !own.listed("/api/route"); !w {
+		t.Error("listed")
+	}
+	if w := get(own, "/privacy"); w.Code != 200 || w.Header().Get("X-Robots-Tag") != "" || !strings.Contains(w.Body.String(), `<link rel="canonical" href="https://hippomaps.example/privacy">`) {
+		t.Errorf("own site: %d %v", w.Code, w.Header())
+	}
+	if w := get(own, "/sitemap.xml"); !strings.Contains(w.Body.String(), "<loc>https://hippomaps.example/de/privacy</loc>") {
+		t.Errorf("sitemap: %s", w.Body.String())
+	}
+	// the menu links it (app.js), in German for German
+	app, _ := fs.ReadFile(web.Files, "app.js")
+	if !strings.Contains(string(app), `"/de/privacy"`) || !strings.Contains(string(app), "privacyLink") {
+		t.Error("app.js: no link to the privacy policy")
 	}
 }

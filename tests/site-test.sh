@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # hippomaps on its site (default https://hippomaps.ch): the service, the page (for search engines), its files, the key of the
 # map tiles, the pictures from Wikimedia Commons, directions in Switzerland by car with speed limits, lanes and traffic,
-# heights on foot, the voice, traffic. About 22 requests to the site, one or two to Wikimedia (then kept for a day), two
+# heights on foot, the voice, traffic. About 25 requests to the site, one or two to Wikimedia (then kept for a day), two
 # routes; the spoken turns of navigation in the source (tests/nav-announce.test.mjs, node in Docker). BROWSER=1 adds the page in headless Chromium (tests/browser.py, two minutes; needs chromium and websocket-client).
 #   tests/site-test.sh                       PAGE=https://… tests/site-test.sh
 # Ends with "hippomaps test: N passed, M failed"; exit 1 on a failure.
@@ -43,6 +43,13 @@ code=$(get "$PAGE/robots.txt")
 [[ $code == 200 ]] && grep -q "^Sitemap: $PAGE/sitemap.xml" "$TMP/b" && grep -q "^Disallow: /api/" "$TMP/b" && ok "robots.txt with the sitemap" || ko "robots.txt: HTTP $code"
 code=$(get "$PAGE/sitemap.xml")
 [[ $code == 200 ]] && grep -qF "<loc>$PAGE/</loc>" "$TMP/b" && ok "sitemap.xml" || ko "sitemap.xml: HTTP $code"
+# the privacy policy (Google Play asks for its address; the menu of the app links it): English and German, in the sitemap
+for pr in "privacy|Privacy policy" "de/privacy|Datenschutzerklärung"; do
+	code=$(get "$PAGE/${pr%%|*}")
+	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -q 'info@overpass.ch' "$TMP/b" && [[ -z $(hdr X-Robots-Tag) ]] && ok "the privacy policy /${pr%%|*}" || ko "/${pr%%|*}: HTTP $code"
+done
+code=$(get "$PAGE/sitemap.xml")
+grep -qF "<loc>$PAGE/de/privacy</loc>" "$TMP/b" && ok "the privacy policy in the sitemap" || ko "the sitemap does not list the privacy policy"
 # the app for Android opens links of the site: its signing key in assetlinks.json
 code=$(get "$PAGE/.well-known/assetlinks.json")
 [[ $code == 200 ]] && jq -e '.[0].target.package_name == "ch.hippomaps.app" and (.[0].target.sha256_cert_fingerprints | length) > 0' "$TMP/b" >/dev/null && ok "assetlinks.json for the app" || ko "assetlinks.json: HTTP $code"

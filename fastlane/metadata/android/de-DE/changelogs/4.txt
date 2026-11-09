@@ -1,0 +1,1 @@
+Für Android 16 gebaut. Ein schärferes Symbol und ein Designsymbol ab Android 13.

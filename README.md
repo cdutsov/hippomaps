@@ -88,12 +88,15 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | `GET traffic` | traffic incidents |
 | `GET search/{search,query,complete,here}` | relayed overpass-search |
 
+`GET /privacy` and `/de/privacy` serve the privacy policy (`web/privacy*.html`), linked from the menu.
+
 `GET /healthz` answers `ok`; `hippomaps healthcheck` asks it (the Docker health check).
 
 ## Android
 
 `android/` holds the app (Kotlin, one activity, AndroidX only, no Google Play services). `android/build.sh` builds the
-signed APK and AAB in Docker; the build is reproducible, and F-Droid publishes it with the same signature. Store texts and
+signed APK and AAB in Docker; the build is reproducible, and F-Droid publishes it with the same signature. Google Play:
+[android/PLAY.md](android/PLAY.md). Store texts and
 screenshots are in `fastlane/`. Details: [android/README.md](android/README.md).
 
 ## Tests
