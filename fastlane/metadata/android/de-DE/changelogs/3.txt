@@ -1,0 +1,1 @@
+Erste Version auf F-Droid. Zwischenstopps und Orte entlang der Route; Navigation im Hintergrund mit gesprochenen Anweisungen; Links anderer Karten-Apps öffnen sich in HippoMaps.

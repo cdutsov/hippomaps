@@ -180,7 +180,9 @@ proxy in front sets `X-Forwarded-For`, which the limit of pictures counts by.
 ```
 cmd/hippomaps/   settings from the environment, listen, healthcheck
 server/          the page, its files, the pictures, directions; tests with a fake Wikimedia and a fake Valhalla
-web/             index.html, app.js, app.css, icon.svg, and vendor/
+web/             index.html, app.js, app.css, the icons, and vendor/
+android/         the Android app (android/README.md)
+fastlane/        texts, icon and screenshots of the app for F-Droid
 ```
 
 `web/vendor/` holds maplibre-gl 6.13.0 (BSD-3-Clause, `LICENSE.txt`), three.js 0.170.0 (MIT, `LICENSE`) and opening_hours 3.15.0 (LGPL-3.0-only) with suncalc
@@ -188,6 +190,11 @@ web/             index.html, app.js, app.css, icon.svg, and vendor/
 browsers keep their files for a year.
 
 Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons, each under the licence its credit names.
+
+## Licence
+
+hippomaps (the server, the page and the Android app) is free software under the GNU General Public License, version 3 or
+any later version (GPL-3.0-or-later, `LICENSE`). The libraries in `web/vendor/` keep their own licences (above).
 
 ## A site of its own
 

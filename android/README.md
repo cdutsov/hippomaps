@@ -38,7 +38,7 @@ The page and the app talk through a script injected at document start, for https
 only (`app/src/main/assets/bridge.js`, `WebViewCompat.addWebMessageListener`). The user agent ends
 in `hippomaps-android/<version>`.
 
-Package `ch.hippomaps.app`, version 1.1.0 (code 2), minSdk 26 (Android 8), targetSdk 35. Kotlin, one activity
+Package `ch.hippomaps.app`, version 1.2.0 (code 3), minSdk 26 (Android 8), targetSdk 35. Kotlin, one activity
 (`MainActivity.kt`) and one service, AndroidX core, activity, webkit and
 splashscreen.
 
@@ -71,6 +71,29 @@ be updated under the same name: keep a copy in the backups.
 ```
 adb install -r android/dist/hippomaps.apk
 ```
+
+## F-Droid
+
+F-Droid builds the app from the tag `v<versionName>` (recipe `metadata/ch.hippomaps.app.yml` in
+fdroiddata) and publishes it with our signature: the build is reproducible, so F-Droid copies the
+signature of our APK onto its own build and publishes only when the two are the same. Users can
+switch between the F-Droid APK and ours, and `assetlinks.json` needs no second fingerprint. The
+texts, icon, screenshots and changelogs are in `fastlane/metadata/android/` at the top of the
+repository.
+
+A release:
+
+1. raise `versionCode` and `versionName` in `app/build.gradle.kts`; add
+   `fastlane/metadata/android/{en-US,de-DE}/changelogs/<versionCode>.txt` (500 characters at most)
+2. commit, tag `v<versionName>`, push the commit and the tag
+3. `android/build.sh` in a checkout of the tag
+4. a GitLab release for the tag with `dist/hippomaps.apk` attached as `hippomaps-<versionName>.apk`
+   (the `Binaries` URL of the recipe: `/-/releases/v<versionName>/downloads/hippomaps-<versionName>.apk`)
+
+F-Droid finds the new tag by itself (`UpdateCheckMode: Tags`) and builds it within a few days. A
+change of the JDK, Gradle or the Android Gradle plugin can break reproducibility: check with
+`fdroid build` in the image `registry.gitlab.com/fdroid/fdroidserver:buildserver-trixie` and
+`apksigcopier compare` before the tag.
 
 ## Opening hippomaps.ch links in the app
 

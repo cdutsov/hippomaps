@@ -59,6 +59,11 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    // no Google-encrypted dependency list in the APK or bundle: F-Droid rejects that signing block
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
     lint {
         abortOnError = true
         warningsAsErrors = false

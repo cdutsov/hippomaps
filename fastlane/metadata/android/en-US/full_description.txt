@@ -1,0 +1,20 @@
+<p>HippoMaps is the Android app of <a href="https://hippomaps.ch">hippomaps.ch</a>, a map with search and navigation built on OpenStreetMap data.</p>
+
+<ul>
+<li>Search in plain words ("cafés in Zurich old town", "campsites by Lake Geneva") with suggestions while you type</li>
+<li>Place pages with a picture from Wikimedia Commons, opening hours, website, phone, address and wheelchair access</li>
+<li>Directions by car, bike and on foot, with up to 8 stops and places along the route (fuel, charging, rest areas, food)</li>
+<li>Turn-by-turn navigation with spoken instructions; it goes on with the screen locked</li>
+<li>Height profile by bike and on foot</li>
+<li>Live traffic in Switzerland: closures, queues and roadworks</li>
+<li>Metro, light rail and tram lines in their colours</li>
+<li>Nine map styles, a day and night mode, 3D terrain and buildings</li>
+<li>English, German, French and Italian</li>
+<li>Opens geo: links and links of Google Maps, OpenStreetMap and Apple Maps</li>
+</ul>
+
+<p>Location comes from the Android location service; the app needs no Google Play services. Settings, starred places and recent searches stay on the phone.</p>
+
+<p>The app shows hippomaps.ch and needs an internet connection. Maps, search, geocoding and heights come from overpass.ch, routes from Valhalla.</p>
+
+<p>Map data © OpenStreetMap contributors (ODbL).</p>
