@@ -32,7 +32,7 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
   or more (`tunnels` of the route).
 - Bubbles over the map: Restaurants, Hotels, Transit, ATMs, and on a wide screen Cafés, Supermarkets, Pharmacies, Parking,
   Fuel; a tap searches the map view. Transit switches the lines of metro, light rail, monorail and tram in their colours
-  (`/api/transit?tile=10/x/y`: Overpass of overpass.ch with `ELEVATION_KEY`, each tile kept a day; a switch in the menu,
+  (`/api/transit?tile=10/x/y`: `OVERPASS_URL`, or Overpass of overpass.ch with `ELEVATION_KEY`, each tile kept a day; a switch in the menu,
   `hm-transit`). "metro lines in Lausanne", "U-Bahn in Berlin", "tram in Zürich" show and list the lines of that city.
 - Saved in the browser (local storage, never sent to the server): the settings (map style, 3D, language, traffic, mode,
   sound), starred places (`hm-stars`: a star beside Directions on a place, a tapped point, a town found; yellow on the map;
@@ -59,7 +59,7 @@ go run ./cmd/hippomaps            # :8096, the page on /labs/maps
   kept in the browser (`hm-mode`). By bike and on foot, the height profile (with `ELEVATION_KEY`): up and down, coloured by
   how steep each part is; under the mouse or a finger the height and distance, and the point on the map. In navigation a strip
   of it shows the point reached and the climb still to come.
-- Search along the route (with `ELEVATION_KEY`): under the route, the kinds of places of the mode (by car fuel, charging, rest
+- Search along the route (with `OVERPASS_URL` or `ELEVATION_KEY`): under the route, the kinds of places of the mode (by car fuel, charging, rest
   areas, food, cafés, groceries, toilets, hotels; by bike and on foot drinking water, bike shops, pharmacies among them). A kind
   shows the places near the line (500 m by car, 250 by bike, 150 on foot) in the order of the route, with how far along and how
   far off the route each is and its opening hours, as orange points on the map; + adds one as a stop. The kind stays chosen for
@@ -134,7 +134,7 @@ level] of line, 1 slow, 2 queued, as it is now), `delay` (seconds that live traf
 metres]), all from one call to `trace_attributes` leaving now.
 
 `POST {base}/api/along` with `{"line":[[lon,lat],…],"cat":"fuel","mode":"car"}` (up to 60,000 points) finds the places of a kind
-near the line from the Overpass API of overpass.ch (`ELEVATION_URL` + `/v1/interpreter` with `ELEVATION_KEY`; the line
+near the line from `OVERPASS_URL`, or the Overpass API of overpass.ch (`ELEVATION_URL` + `/v1/interpreter` with `ELEVATION_KEY`; the line
 simplified to 600 points at most, `around` 500 m by car, 250 by bike, 150 on foot). Kinds: `fuel`, `charging`, `rest`, `food`,
 `cafe`, `groceries`, `toilets`, `water`, `hotel`, `bike`, `pharmacy`. It answers GeoJSON points in the order of the route with
 `id`, `name`, `type`, `tags` (a few), `opening_hours`, `at` (km along the line) and `off` (metres from it), and `total`; with
@@ -160,7 +160,8 @@ By bike and on foot the answer has `elev`: `{"up","down","min","max","pts":[[km,
 | `ROUTING_URL` | | Valhalla, for directions; empty: no directions |
 | `ROUTES_PER_IP` | `120` | directions a visitor gets in 10 minutes |
 | `ELEVATION_URL` | `https://api.overpass.ch` | the elevation API, for height profiles |
-| `ELEVATION_KEY` | | its key, server side only (a key of all the APIs: Overpass too); empty: no height profiles, transit lines or search along the route |
+| `ELEVATION_KEY` | | its key, server side only (a key of all the APIs: Overpass too); empty: no height profiles, and no transit lines or search along the route without `OVERPASS_URL` |
+| `OVERPASS_URL` | | an Overpass API of its own (`http://overpass/api/interpreter`), asked without a key for the transit lines and the search along the route; empty: the one of overpass.ch with `ELEVATION_KEY` |
 | `TTS_URL` | | a Piper server (`/say?lang=&text=`, audio/mpeg) for the spoken instructions; empty: the voices of the browser |
 | `PUBLIC_URL` | | the address of the page on a site of its own (`https://hippomaps.ch`): then for search engines (no noindex, a canonical link, `/robots.txt`, `/sitemap.xml`); empty: unlisted |
 | `SEARCH_UPSTREAM` | | overpass-search of another site (`https://overpass.ch/labs/search/api`), relayed under `{base}/api/search` with the address of the visitor; it sets the search API of the page. For a site of its own: the search API answers its own site only |

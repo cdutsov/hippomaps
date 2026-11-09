@@ -1,14 +1,12 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,7 +14,7 @@ import (
 )
 
 // Search along a route: the places of a kind near the line of a route (fuel, charging, food…),
-// from the Overpass API of overpass.ch (ElevationURL, ElevationKey: a key of all the APIs).
+// from Overpass (OverpassURL, or the Overpass API of overpass.ch with ElevationKey).
 //
 //	POST {base}/api/along   {"line":[[lon,lat],…],"cat":"fuel","mode":"car"}
 //
@@ -130,11 +128,7 @@ func (s *Server) alongQuery(ctx context.Context, line [][2]float64, filter strin
 		fmt.Fprintf(&coords, "%.5f,%.5f", p[1], p[0])
 	}
 	q := fmt.Sprintf(`[out:json][timeout:25];nwr%s(around:%d,%s);out tags center;`, filter, int(radius), coords.String())
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.ElevationURL, "/")+"/v1/interpreter",
-		bytes.NewReader([]byte("data="+url.QueryEscape(q))))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("X-API-Key", s.cfg.ElevationKey)
-	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	req := s.overpassRequest(ctx, q)
 	resp, err := s.routeClient.Do(req)
 	if err != nil {
 		return nil, 0, err

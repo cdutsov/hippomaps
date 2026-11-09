@@ -49,6 +49,7 @@ type Config struct {
 	RoutingURL   string        // Valhalla, for directions; empty: no directions
 	ElevationURL string        // the elevation API of overpass.ch, for height profiles of routes by bike and on foot
 	ElevationKey string        // a key for it (a maps key does not do); empty: no height profiles
+	OverpassURL  string        // an Overpass API of its own, asked without a key; empty: the one of overpass.ch with ElevationKey
 	RoutesPerIP  int           // directions a visitor gets in RouteWindow
 	TTSURL       string        // a text-to-speech server for navigation (Piper); empty: the voices of the browser
 	SaysPerIP    int           // spoken sentences a visitor gets in RouteWindow, beyond those in memory
@@ -160,7 +161,7 @@ func New(cfg Config) *Server {
 	if s.cfg.SearchUpstream != "" {
 		s.mux.HandleFunc("GET "+base+"/api/search/{rest...}", s.search)
 	}
-	if s.cfg.ElevationKey != "" { // the key of the APIs of overpass.ch: Overpass too
+	if s.overpass() { // an Overpass API of its own, or the key of the APIs of overpass.ch: Overpass too
 		s.mux.HandleFunc("GET "+base+"/api/transit", s.transit)
 		if s.cfg.RoutingURL != "" {
 			s.mux.HandleFunc("POST "+base+"/api/along", s.along)
@@ -221,7 +222,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Transit": s.cfg.ElevationKey != "", "Along": s.cfg.ElevationKey != "" && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
 	if err := s.page.Execute(&buf, data); err != nil {
 		s.log.Error("page", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

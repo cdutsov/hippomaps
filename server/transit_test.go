@@ -62,3 +62,26 @@ func TestTransit(t *testing.T) {
 		t.Errorf("transit without a key: %d", w.Code)
 	}
 }
+
+// OverpassURL: an Overpass API of its own, asked without a key, also with no ElevationKey
+func TestTransitOwnOverpass(t *testing.T) {
+	var calls atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		r.ParseForm()
+		if r.URL.Path != "/api/interpreter" || r.Header.Get("X-API-Key") != "" || !strings.Contains(r.PostForm.Get("data"), `out geom(`) {
+			w.WriteHeader(400)
+			return
+		}
+		io.WriteString(w, `{"elements":[{"type":"relation","id":1,"tags":{"route":"tram","ref":"4"},"members":[
+			{"type":"way","role":"","geometry":[{"lat":47.37,"lon":8.54},{"lat":47.38,"lon":8.54}]}]}]}`)
+	}))
+	t.Cleanup(up.Close)
+	s := testServer(t, nil, func(c *Config) { c.OverpassURL = up.URL + "/api/interpreter"; c.ElevationKey = "" })
+	if !strings.Contains(get(s, "/labs/maps").Body.String(), `data-transit="/labs/maps/api/transit"`) {
+		t.Fatalf("page has no data-transit")
+	}
+	if w := get(s, "/labs/maps/api/transit?tile=10/536/358"); w.Code != 200 || !strings.Contains(w.Body.String(), `"ref":"4"`) || calls.Load() != 1 {
+		t.Fatalf("transit: %d %s (%d calls)", w.Code, w.Body, calls.Load())
+	}
+}

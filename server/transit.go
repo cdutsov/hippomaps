@@ -15,7 +15,7 @@ import (
 )
 
 // Public transport on the map: the lines of metro, light rail, monorail and tram with their
-// colours, from the Overpass API of overpass.ch (ElevationURL, ElevationKey: a key of all the APIs).
+// colours, from Overpass (OverpassURL, or the Overpass API of overpass.ch with ElevationKey).
 //
 //	GET {base}/api/transit?tile=10/536/358   GeoJSON, a feature per route: {kind, ref, name, colour, network}
 //
@@ -105,11 +105,7 @@ func (s *Server) transitTile(ctx context.Context, z, x, y int) ([]byte, error) {
 	so, we, no, ea := tileBox(z, x, y)
 	box := fmt.Sprintf("%.5f,%.5f,%.5f,%.5f", so, we, no, ea)
 	q := `[out:json][timeout:60];rel["route"~"^(subway|light_rail|monorail|tram)$"](` + box + `);out geom(` + box + `);`
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.ElevationURL, "/")+"/v1/interpreter",
-		bytes.NewReader([]byte("data="+url.QueryEscape(q))))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("X-API-Key", s.cfg.ElevationKey)
-	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	req := s.overpassRequest(ctx, q)
 	resp, err := s.routeClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -185,4 +181,23 @@ func (s *Server) transitTile(ctx context.Context, z, x, y int) ([]byte, error) {
 		out.Features = append(out.Features, geoFeature{Type: "Feature", Geometry: geoGeometry{Type: "MultiLineString", Coordinates: lines}, Properties: props})
 	}
 	return json.Marshal(out)
+}
+
+// overpass: an Overpass API to ask, of its own or of overpass.ch.
+func (s *Server) overpass() bool { return s.cfg.OverpassURL != "" || s.cfg.ElevationKey != "" }
+
+// overpassRequest posts the query q to OverpassURL without a key, or to the Overpass API of
+// overpass.ch with ElevationKey.
+func (s *Server) overpassRequest(ctx context.Context, q string) *http.Request {
+	u, key := s.cfg.OverpassURL, ""
+	if u == "" {
+		u, key = strings.TrimRight(s.cfg.ElevationURL, "/")+"/v1/interpreter", s.cfg.ElevationKey
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader([]byte("data="+url.QueryEscape(q))))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if key != "" {
+		req.Header.Set("X-API-Key", key)
+	}
+	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	return req
 }

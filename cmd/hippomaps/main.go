@@ -82,6 +82,7 @@ func config() (server.Config, error) {
 	cfg.RoutesPerIP = num("ROUTES_PER_IP", cfg.RoutesPerIP)
 	cfg.ElevationURL = strings.TrimRight(env("ELEVATION_URL", cfg.ElevationURL), "/")
 	cfg.ElevationKey = env("ELEVATION_KEY", "")
+	cfg.OverpassURL = env("OVERPASS_URL", "")
 	cfg.TTSURL = env("TTS_URL", "")
 	cfg.TrafficURL = env("TRAFFIC_URL", "")
 	cfg.SaysPerIP = num("SAYS_PER_IP", cfg.SaysPerIP)
