@@ -2,7 +2,7 @@
 # hippomaps on its site (default https://hippomaps.ch): the service, the page (for search engines), its files, the key of the
 # map tiles, the pictures from Wikimedia Commons, directions in Switzerland by car with speed limits, lanes and traffic,
 # heights on foot, the voice, traffic. About 22 requests to the site, one or two to Wikimedia (then kept for a day), two
-# routes. BROWSER=1 adds the page in headless Chromium (tests/browser.py, two minutes; needs chromium and websocket-client).
+# routes; the spoken turns of navigation in the source (tests/nav-announce.test.mjs, node in Docker). BROWSER=1 adds the page in headless Chromium (tests/browser.py, two minutes; needs chromium and websocket-client).
 #   tests/site-test.sh                       PAGE=https://… tests/site-test.sh
 # Ends with "hippomaps test: N passed, M failed"; exit 1 on a failure.
 set -uo pipefail
@@ -146,6 +146,17 @@ for f in avatar.js i18n.js vendor/three-0.170.0/three.module.min.js; do
 	code=$(get "$PAGE/static/$f")
 	[[ $code == 200 ]] && ok "$f" || ko "$f: HTTP $code"
 done
+
+# the spoken turns of navigation in the source next to this test (tests/nav-announce.test.mjs): node in a
+# container, when there is Docker; a few seconds, no request to the site
+if [[ -f $HERE/nav-announce.test.mjs && -f $HERE/../web/app.js ]] && command -v docker >/dev/null; then
+	echo "Source"
+	if out=$(docker run --rm -v "$(cd "$HERE/.." && pwd)":/w:ro -w /w node:24.21.0-alpine3.23 node --test tests/nav-announce.test.mjs 2>&1); then
+		ok "the spoken turns of navigation ($(grep -o '^ℹ pass [0-9]*' <<<"$out" | cut -d' ' -f3) node tests)"
+	else
+		ko "the spoken turns of navigation: $(grep -m1 -A2 '^✖' <<<"$out" | tr '\n' ' ')"
+	fi
+fi
 
 # the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about two minutes
 if [[ ${BROWSER:-0} == 1 ]]; then

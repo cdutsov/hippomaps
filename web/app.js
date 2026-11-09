@@ -58,6 +58,7 @@ const EN = {
   hereLooking: "Looking at this point…",
   mapLost: "The map stopped drawing in this browser: it took the graphics back. Reload the page; with 3D off the map needs less memory.",
   hereNothing: "Nothing with a name right here. Zoom in closer, or tap a symbol of the map.",
+  navHereNothing: "Nothing with a name around this point.",
   locBlocked: "Location is blocked for this page. Allow it in the settings of the browser, then try again.",
   locFailed: "Your location could not be found.",
   locMissing: "This browser does not share a location.",
@@ -126,6 +127,7 @@ const EN = {
   rerouted: "Route recalculated.",
   gpsLost: "GPS signal lost.",
   arrived: "You have arrived.",
+  stopReached: "You have reached the stop.",
   noGPS: "Navigation needs your location. Allow it in the settings of the browser, then try again.",
   waitGPS: "Waiting for your location…",
   then: "Then",
@@ -199,6 +201,8 @@ const el = (tag, cls, attrs = {}, text) => {
   if (text != null) e.textContent = text;
   return e;
 };
+// the text of an element, changed only when it differs (each change makes the browser lay out again)
+const setText = (e, text) => { if (e.textContent !== text) e.textContent = text; };
 const svg = (d, size = 18) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ICON = {
@@ -343,12 +347,12 @@ const nightNow = () => (meForSun ? isNight(meForSun[0], meForSun[1]) : ((h) => h
 autoDark = nightNow();
 const theme = () => (["dark", "black", "driving-night"].includes(shownStyle()) ? "dark" : "light");
 document.documentElement.dataset.theme = theme();
-const styleURL = () => {
+const styleURL = (name = shownStyle()) => {
   const p = new URLSearchParams({ lang: ["de", "fr", "it"].includes(LANG) ? LANG : "en" });
   if (look.shading) p.set("hillshade", "1");
   if (look.threeD) p.set("terrain", "1");
-  if (look.buildings && shownStyle() !== "relief") p.set("buildings", "1");
-  return `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${shownStyle().replace(/-night$/, "")}.json?${p}`;
+  if (look.buildings && name !== "relief") p.set("buildings", "1");
+  return `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${name.replace(/-night$/, "")}.json?${p}`;
 };
 
 // ------------------------------------------------------------------ the side bar
@@ -453,6 +457,8 @@ side.append(sheetBtn, top, form, status, body, foot);
 // last view of this browser (a reload, a return), the map starts where the visitor is
 const lastView = (() => { try { return localStorage.getItem("hm-last-view"); } catch { return null; } })();
 const linkedView = /(^|&)map=/.test(location.hash.slice(1)) && location.hash !== lastView;
+// the tilt of the map in navigation: 50 degrees shows the way ahead; more draws many far tiles
+const NAV_PITCH = 50;
 const map = new maplibregl.Map({
   container: mapEl,
   style: styleURL(),
@@ -461,7 +467,10 @@ const map = new maplibregl.Map({
   hash: "map",
   maxPitch: 85,
   attributionControl: { compact: true },
+  // at most two pixels of the screen to one of the map: three or more draw a phone screen with more than twice the work
+  pixelRatio: Math.min(devicePixelRatio, 2),
 });
+window.hmMap = map; // for tests/browser.py: the sources and layers of the map
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 // the toast over the map: the search again, in what the map shows now
@@ -488,7 +497,7 @@ dimBtn.addEventListener("click", () => {
   nav.flat = !nav.flat;
   store.set("hm-nav-2d", nav.flat ? "1" : "0");
   showDim();
-  if (nav.follow) map.easeTo({ pitch: nav.flat ? 0 : 60, duration: 500 });
+  if (nav.follow) map.easeTo({ pitch: nav.flat ? 0 : NAV_PITCH, duration: 500 });
 });
 mapEl.append(areaBtn, compassBtn, dimBtn, locBtn);
 const needle = compassBtn.querySelector(".lm-needle");
@@ -609,16 +618,24 @@ async function poisEarlier() {
     poiTiles ||= src.tiles || (await (await fetch(src.url)).json()).tiles;
   } catch { return; }
   if (!poiTiles?.length || !map.getLayer("pois") || map.getLayer("lm-pois-near")) return;
+  const near = nearPois(pois);
+  if (!near) return;
+  if (!map.getSource("lm-pois-near")) map.addSource("lm-pois-near", NEAR_SOURCE);
+  map.addLayer(near.layer, "pois");
+  map.setFilter("pois", near.filter);
+}
+const NEAR_SOURCE = { type: "vector", tiles: ["hmpoi://{z}/{x}/{y}"], minzoom: 14, maxzoom: 14, attribution: "" };
+// the layer of the POIs between zoom 14 and 15 from the layer pois of a style, and the filter of pois without them;
+// null for a style without min_zoom (as it is)
+function nearPois(pois) {
   const earlier = (f) => Array.isArray(f) && f[0] === ">=" && JSON.stringify(f[1]) === '["zoom"]' && JSON.stringify(f[2]?.[1]) === '["get","min_zoom"]'
     ? [">=", ["zoom"], ["-", ["get", "min_zoom"], 2]]
     : Array.isArray(f) ? f.map(earlier) : f;
   const filter = earlier(pois.filter);
-  if (JSON.stringify(filter) === JSON.stringify(pois.filter)) return; // a style without min_zoom: as it is
-  map.addSource("lm-pois-near", { type: "vector", tiles: ["hmpoi://{z}/{x}/{y}"], minzoom: 14, maxzoom: 14, attribution: "" });
-  const near = { ...pois, id: "lm-pois-near", source: "lm-pois-near", minzoom: 14, maxzoom: 15, filter };
-  delete near.metadata;
-  map.addLayer(near, "pois");
-  map.setFilter("pois", ["all", ["any", ["<", ["zoom"], 14], [">=", ["zoom"], 15]], filter]);
+  if (JSON.stringify(filter) === JSON.stringify(pois.filter)) return null;
+  const layer = { ...pois, id: "lm-pois-near", source: "lm-pois-near", minzoom: 14, maxzoom: 15, filter };
+  delete layer.metadata;
+  return { layer, filter: ["all", ["any", ["<", ["zoom"], 14], [">=", ["zoom"], 15]], filter] };
 }
 // the day map: the light style of overpass.ch, recoloured here in the manner of Swiss topographic maps. DAY names
 // the colours (steps in OKLCH: land almost white, the greens one hue family from grass through parks to forest so that
@@ -657,17 +674,18 @@ const PASTEL = [
   [/^pois$/, { "#e2dfda": DAY.land }],
 ];
 const repaint = (v, to) => (typeof v === "string" ? to[v.toLowerCase()] || v : Array.isArray(v) ? v.map((x) => repaint(x, to)) : v);
-const pastel = () => {
-  for (const l of map.getStyle().layers) {
-    const to = PASTEL.find(([re]) => re.test(l.id))?.[1];
-    if (!to) continue;
-    for (const [k, v] of Object.entries(l.paint || {})) {
-      if (!k.endsWith("color")) continue;
-      const w = repaint(v, to);
-      if (JSON.stringify(w) !== JSON.stringify(v)) map.setPaintProperty(l.id, k, w);
-    }
+// pastel recolours the light style on the map; pastelStyle the same in a style JSON
+const pastelPaint = (l, set) => {
+  const to = PASTEL.find(([re]) => re.test(l.id))?.[1];
+  if (!to) return;
+  for (const [k, v] of Object.entries(l.paint || {})) {
+    if (!k.endsWith("color")) continue;
+    const w = repaint(v, to);
+    if (JSON.stringify(w) !== JSON.stringify(v)) set(k, w);
   }
 };
+const pastel = () => { for (const l of map.getStyle().layers) pastelPaint(l, (k, w) => map.setPaintProperty(l.id, k, w)); };
+const pastelStyle = (st) => { for (const l of st.layers) pastelPaint(l, (k, w) => { l.paint[k] = w; }); };
 
 // icons drawn here (a new style drops them): a star for the starred places, a pin for the place shown
 const drawIcon = (name, w, h, draw) => {
@@ -709,6 +727,9 @@ const addIcons = () => {
 const pinLayer = (id, source, filter) => ({ id, type: "symbol", source, ...(filter ? { filter } : {}),
   layout: { "icon-image": "lm-pin-icon", "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true } });
 
+// the colours of our names, by theme: places along the route, and the results
+const TEXT_COLOUR = { "lm-along-name": ["#ffd8a8", "#7c2d12"], "lm-label": ["#ffb4a9", "#7f1d1d"] };
+const textPaint = (id) => ({ "text-color": TEXT_COLOUR[id][theme() === "dark" ? 0 : 1], "text-halo-color": theme() === "dark" ? "#111" : "#fff" });
 map.on("style.load", () => {
   if (shownStyle() === "light") pastel();
   addIcons();
@@ -717,85 +738,88 @@ map.on("style.load", () => {
   // 3D buildings see-through, so the map and the route behind them stay in view
   for (const l of map.getStyle().layers) if (l.type === "fill-extrusion") map.setPaintProperty(l.id, "fill-extrusion-opacity", 0.6);
   poisEarlier();
-  for (const [name, d] of Object.entries(sources)) map.addSource(`lm-${name}`, { type: "geojson", data: d });
+  const add = (l, before) => { if (!map.getLayer(l.id)) map.addLayer(l, before); };
+  // tiles of our layers up to zoom 14 only, drawn larger beyond (0.3 m steps there, a pixel or two at zoom 19): tiles
+  // to zoom 18 cost the phone much work while the camera moves, and empty sources too
+  for (const [name, d] of Object.entries(sources)) if (!map.getSource(`lm-${name}`)) map.addSource(`lm-${name}`, { type: "geojson", data: d, maxzoom: 14, tolerance: 0.1 });
   const below = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
   const dashed = ["in", ["get", "kind"], ["literal", ["border", "circle"]]];
   const pts = ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]];
   const polys = ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]];
-  map.addLayer({ id: "lm-night", type: "fill", source: "lm-night", maxzoom: 7,
+  add({ id: "lm-night", type: "fill", source: "lm-night", maxzoom: 7,
     paint: { "fill-color": "#0b1626", "fill-antialias": false, "fill-opacity": ["interpolate", ["linear"], ["zoom"], 3, 0.11, 6.5, 0] } }, below);
-  map.addLayer({ id: "lm-drawn-dashed", type: "line", source: "lm-lines", filter: dashed,
+  add({ id: "lm-drawn-dashed", type: "line", source: "lm-lines", filter: dashed,
     paint: { "line-color": "#1f5fbf", "line-width": ["match", ["get", "kind"], "circle", 1.2, 2], "line-dasharray": [3, 2], "line-opacity": 0.8 } }, below);
-  map.addLayer({ id: "lm-drawn", type: "line", source: "lm-lines", filter: ["!", dashed], layout: { "line-cap": "round", "line-join": "round" },
+  add({ id: "lm-drawn", type: "line", source: "lm-lines", filter: ["!", dashed], layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "kind"], "road", "#c2410c", "river", "#0284c7", "#1f5fbf"], "line-width": ["match", ["get", "kind"], "shape", 1.5, 3], "line-opacity": 0.85 } }, below);
-  map.addLayer({ id: "lm-fill", type: "fill", source: "lm-results", filter: polys, paint: { "fill-color": ACCENT, "fill-opacity": 0.15 } }, below);
-  map.addLayer({ id: "lm-line", type: "line", source: "lm-results", filter: ["!", pts], layout: { "line-cap": "round", "line-join": "round" },
+  add({ id: "lm-fill", type: "fill", source: "lm-results", filter: polys, paint: { "fill-color": ACCENT, "fill-opacity": 0.15 } }, below);
+  add({ id: "lm-line", type: "line", source: "lm-results", filter: ["!", pts], layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ACCENT, "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.5, 16, 4] } }, below);
-  map.addLayer({ id: "lm-point", type: "circle", source: "lm-results", filter: pts, paint: {
+  add({ id: "lm-point", type: "circle", source: "lm-results", filter: pts, paint: {
     "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, ["case", ["boolean", ["get", "place"], false], 8, 3], 15, ["case", ["boolean", ["get", "place"], false], 10, 7]],
     "circle-color": ["case", ["boolean", ["get", "place"], false], "#1f5fbf", ACCENT],
     "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
-  map.addLayer({ id: "lm-hover", type: "circle", source: "lm-hover", filter: pts,
+  add({ id: "lm-hover", type: "circle", source: "lm-hover", filter: pts,
     paint: { "circle-radius": 11, "circle-color": ACCENT, "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
-  map.addLayer({ id: "lm-hover-line", type: "line", source: "lm-hover", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 4, "line-opacity": 0.5 } });
-  map.addLayer({ id: "lm-sel-line", type: "line", source: "lm-selected", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 5, "line-opacity": 0.65 } });
-  map.addLayer(pinLayer("lm-sel", "lm-selected", pts));
-  map.addLayer({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
-  map.addLayer({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
+  add({ id: "lm-hover-line", type: "line", source: "lm-hover", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 4, "line-opacity": 0.5 } });
+  add({ id: "lm-sel-line", type: "line", source: "lm-selected", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 5, "line-opacity": 0.65 } });
+  add(pinLayer("lm-sel", "lm-selected", pts));
+  add({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
+  add({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
     paint: { "circle-radius": 7, "circle-color": "#1a73e8", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
   // the area of a tap: its outline dashed in the blue of overpass.ch
-  map.addLayer({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "butt" },
+  add({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "butt" },
     paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95, "line-dasharray": [3, 2] } }, below);
   // directions: the line with a casing, the start (white) and the destination (red)
   const line = ["==", ["geometry-type"], "LineString"];
   // traffic under the route: closures dark red, queues red, slow traffic and roadworks orange
   const tline = ["==", ["geometry-type"], "LineString"];
   // transit: each line in its colour, metro wider than tram; its number along it when near
-  map.addLayer({ id: "lm-transit-line", type: "line", source: "lm-transit", layout: { "line-cap": "round", "line-join": "round" },
+  add({ id: "lm-transit-line", type: "line", source: "lm-transit", layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["to-color", ["get", "colour"], "#7a7f87"], "line-opacity": 0.9,
       "line-width": ["interpolate", ["linear"], ["zoom"], 10, ["match", ["get", "kind"], "subway", 2.5, 1.5], 15, ["match", ["get", "kind"], "subway", 6, 3.5]] } }, below);
   const font = map.getStyle().layers.find((l) => l.layout?.["text-font"])?.layout["text-font"];
-  if (font) map.addLayer({ id: "lm-transit-ref", type: "symbol", source: "lm-transit", minzoom: 13, filter: ["has", "ref"],
+  if (font) add({ id: "lm-transit-ref", type: "symbol", source: "lm-transit", minzoom: 13, filter: ["has", "ref"],
     layout: { "symbol-placement": "line", "text-field": ["get", "ref"], "text-font": font, "text-size": 12, "symbol-spacing": 300 },
     paint: { "text-color": "#fff", "text-halo-color": ["to-color", ["get", "colour"], "#7a7f87"], "text-halo-width": 2.5 } });
-  map.addLayer({ id: "lm-traffic-line", type: "line", source: "lm-traffic", filter: ["all", tline, ["!=", ["get", "t"], "works"]],
+  add({ id: "lm-traffic-line", type: "line", source: "lm-traffic", filter: ["all", tline, ["!=", ["get", "t"], "works"]],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#9ca3af", "jam", "#dc2626", "#f08c00"],
       "line-width": ["interpolate", ["linear"], ["zoom"], 7, 2, 14, 6], "line-opacity": 0.85 } }, below);
-  map.addLayer({ id: "lm-traffic-works", type: "line", source: "lm-traffic", minzoom: 11, filter: ["all", tline, ["==", ["get", "t"], "works"]],
+  add({ id: "lm-traffic-works", type: "line", source: "lm-traffic", minzoom: 11, filter: ["all", tline, ["==", ["get", "t"], "works"]],
     paint: { "line-color": "#f08c00", "line-width": 3, "line-dasharray": [2, 1.5], "line-opacity": 0.8 } }, below);
   const tpt = ["==", ["geometry-type"], "Point"];
-  map.addLayer({ id: "lm-traffic-pt", type: "circle", source: "lm-traffic", minzoom: 7, filter: ["all", tpt, ["!=", ["get", "t"], "works"]], paint: {
+  add({ id: "lm-traffic-pt", type: "circle", source: "lm-traffic", minzoom: 7, filter: ["all", tpt, ["!=", ["get", "t"], "works"]], paint: {
     "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 4, 14, 8], "circle-stroke-width": 2, "circle-stroke-color": "#fff",
     "circle-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#6b7280", "jam", "#dc2626", "accident", "#dc2626", "#f08c00"] } });
-  map.addLayer({ id: "lm-traffic-works-pt", type: "circle", source: "lm-traffic", minzoom: 11, filter: ["all", tpt, ["==", ["get", "t"], "works"]], paint: {
+  add({ id: "lm-traffic-works-pt", type: "circle", source: "lm-traffic", minzoom: 11, filter: ["all", tpt, ["==", ["get", "t"], "works"]], paint: {
     "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-color": "#f08c00" } });
-  map.addLayer({ id: "lm-stars", type: "symbol", source: "lm-stars", layout: { "icon-image": "lm-star-icon",
+  add({ id: "lm-stars", type: "symbol", source: "lm-stars", layout: { "icon-image": "lm-star-icon",
     "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 15, 1], "icon-allow-overlap": true, "icon-ignore-placement": true } });
-  map.addLayer({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
+  add({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
-  map.addLayer({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
+  add({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#1a73e8", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
-  map.addLayer({ id: "lm-route-traffic", type: "line", source: "lm-routetraffic", layout: { "line-cap": "round", "line-join": "round" },
+  add({ id: "lm-route-traffic", type: "line", source: "lm-routetraffic", layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "level"], 2, "#d93025", "#f29900"], "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
   // places along the route (search along the route): orange, their name when near
-  map.addLayer({ id: "lm-along", type: "circle", source: "lm-along", paint: {
+  add({ id: "lm-along", type: "circle", source: "lm-along", paint: {
     "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 4, 15, 8], "circle-color": STOP_COLOUR, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
-  if (font) map.addLayer({ id: "lm-along-name", type: "symbol", source: "lm-along", minzoom: 13, filter: ["has", "name"],
+  if (font) add({ id: "lm-along-name", type: "symbol", source: "lm-along", minzoom: 13, filter: ["has", "name"],
     layout: { "text-field": ["get", "name"], "text-font": font, "text-size": 12, "text-offset": [0, 1], "text-anchor": "top", "text-max-width": 10, "text-optional": true },
-    paint: { "text-color": theme() === "dark" ? "#ffd8a8" : "#7c2d12", "text-halo-color": theme() === "dark" ? "#111" : "#fff", "text-halo-width": 1.5 } });
+    paint: { ...textPaint("lm-along-name"), "text-halo-width": 1.5 } });
   // the start (white), the stops (orange, numbered) and the destination (red)
-  map.addLayer({ id: "lm-route-ends", type: "circle", source: "lm-route", filter: ["!", line], paint: {
+  add({ id: "lm-route-ends", type: "circle", source: "lm-route", filter: ["!", line], paint: {
     "circle-radius": ["match", ["get", "end"], "stop", 9, 7], "circle-color": ["match", ["get", "end"], "from", "#fff", "stop", STOP_COLOUR, "#d0312d"],
     "circle-stroke-color": ["match", ["get", "end"], "from", "#111827", "#fff"], "circle-stroke-width": ["match", ["get", "end"], "stop", 2, 3] } });
-  if (font) map.addLayer({ id: "lm-route-stop-n", type: "symbol", source: "lm-route", filter: ["==", ["get", "end"], "stop"],
+  if (font) add({ id: "lm-route-stop-n", type: "symbol", source: "lm-route", filter: ["==", ["get", "end"], "stop"],
     layout: { "text-field": ["get", "n"], "text-font": font, "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } });
-  map.addLayer(pinLayer("lm-pin", "lm-pin"));
-  map.addLayer({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
+  add(pinLayer("lm-pin", "lm-pin"));
+  add({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
       "text-max-width": 10, "text-optional": true },
-    paint: { "text-color": theme() === "dark" ? "#ffb4a9" : "#7f1d1d", "text-halo-color": theme() === "dark" ? "#111" : "#fff", "text-halo-width": 1.5 } });
+    paint: { ...textPaint("lm-label"), "text-halo-width": 1.5 } });
 });
 const setSource = (name, d) => {
   sources[name] = d || empty;
@@ -1063,14 +1087,13 @@ const toggle = (label, note, on, set) => {
 function setThreeD(on) {
   look.threeD = on;
   store.set("hm-3d", on ? "1" : "0");
-  restyle();
-  // the new style stops a camera move: tilt once it is there
+  // the new style stops a camera move: tilt again once it is there
   const tilt = () => {
     if (on && map.getPitch() < 30) map.easeTo({ pitch: 60, duration: 800 });
     if (!on) map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
   };
+  restyle(tilt);
   tilt();
-  map.once("style.load", tilt);
   showDim();
 }
 function setBuildings(on) {
@@ -1138,14 +1161,74 @@ function checkDayNight() {
 }
 setInterval(checkDayNight, 300e3);
 
+// A new style (another look, a tunnel, sunset) goes onto the map as a diff of the one shown: the tiles of the sources
+// both have stay, and only the layers that differ change. The styles are kept here once fetched (and turned
+// dark), so a switch back and forth in tunnels asks the server nothing. then: after the switch.
 let restyleN = 0;
-function restyle() {
-  const n = ++restyleN;
-  if (!shownStyle().endsWith("-night")) return map.setStyle(styleURL(), { diff: false }); // our layers come back on style.load
-  // the night of a style that has none (driving): its colours turned dark
-  fetch(styleURL()).then((r) => r.json()).then((st) => {
-    if (n === restyleN) map.setStyle(nightStyle(st), { diff: false });
-  }).catch(() => { if (n === restyleN) map.setStyle(styleURL(), { diff: false }); });
+const styleCache = new Map(); // the URL of a style (with " night": turned dark) → a promise of its JSON
+function styleJSON(url, night = false) {
+  const key = night ? `${url} night` : url;
+  if (!styleCache.has(key)) {
+    // the night of a style that has none (driving): its colours turned dark
+    const p = night ? styleJSON(url).then((st) => nightStyle(structuredClone(st)))
+      : fetch(url).then((r) => { if (!r.ok) throw new Error(`style ${r.status}`); return r.json(); });
+    p.catch(() => styleCache.delete(key));
+    styleCache.set(key, p);
+  }
+  return styleCache.get(key);
+}
+function restyle(then) {
+  const n = ++restyleN, url = styleURL();
+  styleJSON(url, shownStyle().endsWith("-night")).then((st) => {
+    if (n !== restyleN) return;
+    const was = map.style;
+    // style.load comes after a diff too (our layers are there, and kept); a style that cannot be a diff is built
+    // anew, with style.load once it is there
+    map.setStyle(st, { diff: true, transformStyle: ourStyle });
+    if (map.style !== was) return then && map.once("style.load", then);
+    then?.();
+  }).catch(() => {
+    if (n !== restyleN) return;
+    map.setStyle(url, { diff: false });
+    if (then) map.once("style.load", then);
+  });
+}
+// ourStyle makes the style st (from the server) the one the map shows: the light style recoloured (pastel), 3D
+// buildings see-through, the globe, and our sources and layers of the style shown (prev) carried over, each
+// before the same layer of the style as before, the names in the colours of the theme
+function ourStyle(prev, st) {
+  st = structuredClone(st);
+  if (shownStyle() === "light") pastelStyle(st);
+  for (const l of st.layers) if (l.type === "fill-extrusion") l.paint = { ...l.paint, "fill-extrusion-opacity": 0.6 };
+  st.projection = { type: "globe" };
+  if (!prev) return st;
+  for (const [id, src] of Object.entries(prev.sources || {})) if (id.startsWith("lm-")) st.sources[id] = src;
+  const ids = new Set(st.layers.map((l) => l.id));
+  const firstSymbol = st.layers.find((l) => l.type === "symbol")?.id;
+  // ours by the layer of the style that came next (null: at the top)
+  const before = new Map();
+  let ours = [];
+  for (const l of prev.layers || []) {
+    if (l.id === "lm-pois-near") continue; // made again from the pois of the new style
+    if (l.id.startsWith("lm-")) {
+      ours.push(TEXT_COLOUR[l.id] ? { ...l, paint: { ...l.paint, ...textPaint(l.id) } } : l);
+      continue;
+    }
+    if (!ours.length) continue;
+    const at = ids.has(l.id) ? l.id : l.type === "symbol" ? firstSymbol || null : null;
+    before.set(at, [...(before.get(at) || []), ...ours]);
+    ours = [];
+  }
+  before.set(null, [...(before.get(null) || []), ...ours]);
+  const pois = st.layers.find((l) => l.id === "pois");
+  const near = pois && poiTiles?.length && prev.sources?.["lm-pois-near"] && nearPois(pois);
+  if (near) {
+    st.sources["lm-pois-near"] ||= NEAR_SOURCE;
+    pois.filter = near.filter;
+    before.set("pois", [...(before.get("pois") || []), near.layer]);
+  }
+  st.layers = [...st.layers.flatMap((l) => [...(before.get(l.id) || []), l]), ...before.get(null)];
+  return st;
 }
 // nightStyle turns the colours of a style around in lightness, keeping their hue: light ground and
 // white roads go dark, dark text goes light, orange motorways stay orange but darker
@@ -2452,6 +2535,7 @@ function drawRouteTraffic(d, from = 0, at = null) {
     if (a < from && at) pts.unshift(at);
     if (pts.length > 1) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: pts }, properties: { level } });
   }
+  if (!fs.length && !sources.routetraffic.features.length) return; // none, as before
   setSource("routetraffic", { type: "FeatureCollection", features: fs });
 }
 // the colour of an arrival time: green, orange with slow traffic ahead, red with a queue ahead
@@ -3146,17 +3230,99 @@ const arrowSVG = (type, size) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="${ARROW[arrowOf(type)]}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 // the colours of route numbers on a sign: motorways (A) red, European routes green, others blue
 const shieldClass = (r) => (/^A\s?\d/.test(r) ? "lm-shield-a" : /^E\s?\d/.test(r) ? "lm-shield-e" : "lm-shield");
-// how near a turn is said first (alert) and again (pre), and how far off the line is off the route, in metres
-// off: metres from the line that count as off the route, plus the accuracy of the fix up to acc; fixes:
-// that many fixes off in a row bring a new route; away: off sooner (at half the distance) when the
-// traveller moves at more than 2 m/s at 60 degrees or more from the way of the route (a turn missed)
+// how far off the line is off the route, in metres: off: metres from the line that count as off the
+// route, plus the accuracy of the fix up to acc; fixes: that many fixes off in a row bring a new route;
+// away: off sooner (at half the distance) when the traveller moves at more than 2 m/s at 60 degrees or
+// more from the way of the route (a turn missed); reach: this near the destination or a stop counts as
+// there (arrived). v: the speed in m/s when none is known yet.
+// A turn is said twice: ahead with how far ("In 150 metres, turn right onto X"), and at the turn
+// (pre). The turn is said `pre` seconds before it, between preMin and preMax metres. Ahead: at `ahead`
+// metres, or `aheadS` seconds before at the speed, whichever comes first, up to aheadMax; by car the
+// distance goes by the speed (town, country road, motorway). Not below aheadMin metres: two turns
+// close together have no "in x metres" for the second (the first says "Then …").
 const NAV = {
-  car: { alert: 700, pre: 160, off: 45, acc: 60, fixes: 3, away: true, arrive: 40 },
-  bike: { alert: 250, pre: 50, off: 25, acc: 25, fixes: 2, away: true, arrive: 20 },
-  walk: { alert: 120, pre: 25, off: 25, acc: 20, fixes: 3, away: false, arrive: 15 },
+  car: { off: 45, acc: 60, fixes: 3, away: true, arrive: 40, reach: 50, v: 14, pre: 6, preMin: 60, preMax: 200,
+    ahead: (v) => (v < 15 ? 200 : v < 24 ? 500 : 1000), aheadS: 0, aheadMax: 1000, aheadMin: 100 },
+  bike: { off: 25, acc: 25, fixes: 2, away: true, arrive: 20, reach: 30, v: 5, pre: 5, preMin: 20, preMax: 30,
+    ahead: () => 150, aheadS: 12, aheadMax: 300, aheadMin: 50 },
+  walk: { off: 25, acc: 20, fixes: 3, away: false, arrive: 15, reach: 25, v: 1.4, pre: 7, preMin: 10, preMax: 15,
+    ahead: () => 60, aheadS: 30, aheadMax: 100, aheadMin: 30 },
 };
+// "In 150 metres, " in the language of the steps; the instruction of Valhalla follows (in German after
+// a colon, with its capital)
+const SAY_IN = {
+  en: (d, km) => `In ${d} ${km ? (d === "1" ? "kilometer" : "kilometers") : "meters"}, `,
+  de: (d, km) => `In ${d} ${km ? "Kilometern" : "Metern"}: `.replace(/^In 1 Kilometern/, "In einem Kilometer"),
+  fr: (d, km) => `Dans ${d} ${km ? (d === "1" ? "kilomètre" : "kilomètres") : "mètres"}, `,
+  it: (d, km) => `Tra ${d} ${km ? (d === "1" ? "chilometro" : "chilometri") : "metri"}, `,
+  es: (d, km) => `En ${d} ${km ? (d === "1" ? "kilómetro" : "kilómetros") : "metros"}, `,
+  nl: (d, km) => `Over ${d} ${km ? "kilometer" : "meter"}, `,
+  pt: (d, km) => `Em ${d} ${km ? (d === "1" ? "quilómetro" : "quilómetros") : "metros"}, `,
+};
+// a distance in metres rounded down to one that is said: 10s up to 100 m, 50s up to 300 m, 100s up
+// to 1 km, then half kilometres
+const sayRound = (m) => (m < 100 ? Math.floor(m / 10) * 10 : m < 300 ? Math.floor(m / 50) * 50 : m < 1000 ? Math.floor(m / 100) * 100 : Math.floor(m / 500) * 500);
+// the speed for the timing of the sentences: of the device (Preview drives three times as fast), else
+// that of the step by Valhalla by car, else of the mode
+function sayV(st) {
+  const cfg = NAV[route.mode];
+  const ms = nav.on ? (nav.sim ? (nav.speed || 0) / 3 : nav.speed) : null;
+  const plan = st?.s > 0 ? (st.km * 1000) / st.s : 0;
+  if (route.mode === "car") return Math.max(ms || 0, plan || cfg.v);
+  return ms > 1 ? ms : cfg.v;
+}
+// the turn of step n said ahead: at metres before it, and the sentence ({at, text}); null when there
+// is no room for it after the turn before (or nothing to say: straight on). v: the speed in m/s; by
+// car the speed of the road by Valhalla, so that the sentence is fetched before it is needed.
+function aheadOf(steps, n, v) {
+  const st = steps[n], prev = steps[n - 1], cfg = NAV[route.mode];
+  if (!st || !prev || !st.alert || [7, 8, 22].includes(st.type)) return null;
+  if (route.mode === "car") v = prev.s > 0 ? (prev.km * 1000) / prev.s : cfg.v;
+  const gap = prev.km * 1000, pre = preAt(v);
+  const want = Math.min(cfg.aheadMax, Math.max(cfg.ahead(v), v * cfg.aheadS));
+  // room after the turn before: its instruction has been said (some 2 s)
+  const at = sayRound(Math.min(want, gap - Math.max(10, v * 2)));
+  if (at < cfg.aheadMin || at < pre * 2) return null;
+  const km = at >= 1000, d = km ? String(at / 1000).replace(".", STEP_LANG === "en" ? "." : ",") : String(at);
+  const lead = (SAY_IN[STEP_LANG] || SAY_IN.en)(d, km);
+  const text = lead + (STEP_LANG === "de" ? st.alert : st.alert.replace(/^\p{Lu}(?=\p{Ll})/u, (c) => c.toLowerCase()));
+  return { at, text };
+}
+// how near the turn its instruction is said, in metres
+function preAt(v) {
+  const cfg = NAV[route.mode];
+  return Math.min(cfg.preMax, Math.max(cfg.preMin, v * cfg.pre));
+}
 // flat: false, navigation follows tilted (its 2D/3D button is gone)
 const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", flat: false, spoken: new Set(), off: 0, rerouting: false };
+
+// During navigation the camera eases from fix to fix and never stops, and the traveller asks for a
+// frame every frame: on a 90 or 120 Hz screen the map would draw 90 or 120 times a second. Capped
+// at 30: every repaint MapLibre asks for (camera, traveller, tiles, gestures) waits for our own
+// animation frame and draws there with map.redraw() once 1/30 s has passed since the last draw.
+// The camera and the traveller place themselves by the clock, so a skipped frame does not slow them.
+const fpsCap = (() => {
+  const own = map.triggerRepaint; // Map.prototype.triggerRepaint
+  const gap = 1000 / 30;
+  let on = false, pending = 0, next = 0;
+  const tick = (ts) => {
+    pending = 0;
+    if (!on) return own.call(map);
+    if (ts < next - 4) { pending = requestAnimationFrame(tick); return; } // too soon: the next frame
+    next = (ts - next < gap ? next : ts) + gap; // 30 a second on average, also at 90 or 144 Hz; restart after a pause
+    map.redraw();
+  };
+  return (yes) => {
+    if (yes === on) return;
+    on = yes;
+    if (on) map.triggerRepaint = () => { if (!pending) pending = requestAnimationFrame(tick); };
+    else {
+      delete map.triggerRepaint; // back to the prototype
+      if (pending) { cancelAnimationFrame(pending); pending = 0; }
+      map.triggerRepaint();
+    }
+  };
+})();
 
 const navBox = el("div", "lm-nav", { "aria-live": "polite" });
 navBox.hidden = true;
@@ -3168,10 +3334,12 @@ navLanes.hidden = true;
 // the arrows of a lane (bits of Valhalla) as arrows of ARROW, from left to right
 const LANE_ARROWS = [[256, "uturnLeft"], [4, "sharpLeft"], [8, "left"], [16, "slightLeft"], [512, "slightLeft"], [2, "straight"],
   [1024, "slightRight"], [32, "slightRight"], [64, "right"], [128, "sharpRight"]];
+let shownLanes = null;
 function renderLanes(st, toNext) {
   const lanes = route.mode === "car" && toNext < 1200 ? st.lanes : null;
   navLanes.hidden = !lanes?.length;
-  if (navLanes.hidden) return;
+  if (navLanes.hidden || lanes === shownLanes) return; // the lanes shown
+  shownLanes = lanes;
   navLanes.innerHTML = "";
   for (const l of lanes) {
     const take = l.a || l.v || 0;
@@ -3230,7 +3398,7 @@ function navLoad(d) {
   nav.cum = cumOf(d.line);
   nav.stops = (d.stops || []).map((i, j) => ({ i, ...(d.via?.[j] || {}) })); // the stops ahead, by index of the line
   nav.simAlong = 0;
-  if (!navAlong.hidden) navAlongOpen(); // the places along the new line
+  if (navAlong.dataset.kind === "along") navAlongOpen(); // the places along the new line
   navElev.innerHTML = "";
   nav.elev = d.elev?.pts?.length > 1 ? heightChart(d.elev, { compact: true }) : null;
   navElev.hidden = !nav.elev;
@@ -3239,6 +3407,10 @@ function navLoad(d) {
   nav.idx = 0;
   nav.spoken = new Set();
   nav.off = 0;
+  nav.endMin = Infinity; // the nearest the traveller came to the destination, in metres
+  nav.endAway = 0;
+  nav.endTrail = [];
+  nav.slowT = null;
 }
 // snap a point to the line: the nearest point from a little behind the last one to well ahead
 function snap(p, wide) {
@@ -3313,25 +3485,53 @@ const player = new Audio();
 // MP3, or WAV where the browser plays no MP3 (Firefox on Linux without the codecs of the system)
 let sayFormat = player.canPlayType("audio/mpeg") ? "mp3" : "wav";
 const sayCache = new Map(); // lang and text → a promise of a blob URL, or null
+const sayDone = new Map(); // the same, once there: the blob URL, or null
+// the sentences of the route being followed (preSayAll), kept however many: they are still to be said
+let sayKeep = new Set();
+const SAY_MAX = 150; // sentences kept besides, the oldest go (and their sound with them)
 function fetchSay(text, lang = STEP_LANG) {
   if (!SAY || !text || !OUR_VOICES.includes(lang)) return null;
   const key = `${sayFormat}\n${lang}\n${text}`;
   if (!sayCache.has(key)) {
-    sayCache.set(key, fetch(`${SAY}?${new URLSearchParams({ lang, text, format: sayFormat })}`)
-      .then((r) => (r.ok ? r.blob() : null)).then((b) => (b ? URL.createObjectURL(b) : null)).catch(() => null));
+    const p = fetch(`${SAY}?${new URLSearchParams({ lang, text, format: sayFormat })}`)
+      .then((r) => (r.ok ? r.blob() : null)).then((b) => (b ? URL.createObjectURL(b) : null)).catch(() => null);
+    p.then((url) => { if (sayCache.get(key) === p) sayDone.set(key, url); else if (url) URL.revokeObjectURL(url); });
+    sayCache.set(key, p);
+    sayTrim();
   }
   return sayCache.get(key);
 }
+// sayTrim drops the oldest sentences beyond SAY_MAX: not one on its way, nor one of the route, nor the one playing
+function sayTrim() {
+  let over = sayCache.size - SAY_MAX;
+  for (const key of sayCache.keys()) {
+    if (over <= 0) return;
+    if (!sayDone.has(key)) continue;
+    const url = sayDone.get(key);
+    if (key.startsWith(`${sayFormat}\n`) && sayKeep.has(key.slice(key.indexOf("\n", sayFormat.length + 1) + 1))) continue;
+    if (url && player.src === url) continue;
+    sayCache.delete(key);
+    sayDone.delete(key);
+    if (url) URL.revokeObjectURL(url);
+    over--;
+  }
+}
 // the sentences of the next turns, before they are needed
-function preSay(steps) {
-  for (const st of steps) if (st) for (const t of [st.alert, st.pre || st.text, st.post]) fetchSay(t);
+function preSay(steps, all = nav.d?.steps || route.answer?.steps || []) {
+  for (const st of steps) if (st) for (const t of sentencesOf(all, st)) fetchSay(t);
+}
+// the sentences of a step: said ahead (at the speed now), at the turn, after it
+function sentencesOf(all, st) {
+  const n = all.indexOf(st);
+  return [n > 0 && aheadOf(all, n, sayV(all[n - 1]))?.text, st.pre || st.text, st.post].filter(Boolean);
 }
 // all the sentences of a route, in its order, two at a time: a new sentence may take the voice of
 // the server several seconds, so they are there before the turns come (the next turns go first,
 // through preSay)
 let sayQueue = [], sayQueueRunning = 0;
 function preSayAll(steps) {
-  sayQueue = steps.flatMap((st) => [st.alert, st.pre || st.text, st.post]).filter(Boolean);
+  sayQueue = steps.flatMap((st) => sentencesOf(steps, st));
+  sayKeep = new Set([...sayQueue, T.gpsLost, T.rerouted]);
   const next = () => {
     while (sayQueueRunning < 2 && sayQueue.length) {
       const p = fetchSay(sayQueue.shift());
@@ -3421,11 +3621,13 @@ function hush() {
 }
 const clock = (s) => new Date(Date.now() + s * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 // the sign of the next junction, by car, in its last 2 km
+let shownSign = null;
 function renderSign(st, toNext) {
-  navSign.innerHTML = "";
   const show = route.mode === "car" && toNext < 2000 && (st.exit || st.toward?.length || st.routes?.length || st.exit_name);
   navSign.hidden = !show;
-  if (!show) return;
+  if (!show || st === shownSign) return; // the sign shown
+  shownSign = st;
+  navSign.innerHTML = "";
   navSign.className = `lm-nav-sign ${st.highway || st.exit ? "lm-sign-motorway" : "lm-sign-road"}`;
   const top = el("div", "lm-sign-top");
   if (st.exit) top.append(el("span", "lm-sign-exit", {}, `${T.exit} ${st.exit}`));
@@ -3458,24 +3660,32 @@ function navUpdate(p, rawPos, off = false) {
   const cur = steps[k], span = (nav.cum[next.i] - nav.cum[cur.i]) || 1;
   let s = (cur.s || 0) * Math.min(1, toNext / span);
   for (let j = k + 1; j < steps.length; j++) s += steps[j].s || 0;
-  // the banner: the turn, how far, onto what
-  navBanner.innerHTML = "";
-  const arrow = el("div", "lm-nav-arrow");
-  arrow.innerHTML = arrowSVG(next.type, 44);
-  const txt = el("div", "lm-nav-text");
-  txt.append(el("div", "lm-nav-dist", {}, fmtKm(toNext / 1000)));
+  // the banner: the turn, how far, onto what; made anew for a new turn (or after a message in it), else
+  // only the distance changes
   // the street to turn into; a bare route number ("1") says less than the instruction
-  txt.append(el("div", "lm-nav-instr", {}, next.stop ? `${T.stop}: ${d.via?.[next.stop - 1]?.label || next.text}`
-    : next.street && !/^[\d\s/]+$/.test(next.street) && next.type !== 4 ? next.street : next.text));
-  if (next.roundabout) txt.lastChild.textContent = next.text;
-  navBanner.append(arrow, txt);
+  const instr = next.roundabout ? next.text : next.stop ? `${T.stop}: ${d.via?.[next.stop - 1]?.label || next.text}`
+    : next.street && !/^[\d\s/]+$/.test(next.street) && next.type !== 4 ? next.street : next.text;
+  const shown = nav.banner;
+  if (shown?.type === next.type && shown.instr.textContent === instr && shown.dist.isConnected) {
+    setText(shown.dist, fmtKm(toNext / 1000));
+  } else {
+    navBanner.innerHTML = "";
+    const arrow = el("div", "lm-nav-arrow");
+    arrow.innerHTML = arrowSVG(next.type, 44);
+    const txt = el("div", "lm-nav-text");
+    const dist = el("div", "lm-nav-dist", {}, fmtKm(toNext / 1000));
+    txt.append(dist, el("div", "lm-nav-instr", {}, instr));
+    navBanner.append(arrow, txt);
+    nav.banner = { type: next.type, instr: txt.lastChild, dist };
+  }
   renderSign(next, toNext);
   renderLanes(next, toNext);
   // the turn after, when it comes soon after this one
   const after = steps[k + 2];
-  navThen.innerHTML = "";
   navThen.hidden = !(after && toNext < 1000 && nav.cum[after.i] - nav.cum[next.i] < 250);
-  if (!navThen.hidden) {
+  if (!navThen.hidden && navThen.dataset.shown !== `${after.type} ${T.then}`) {
+    navThen.innerHTML = "";
+    navThen.dataset.shown = `${after.type} ${T.then}`;
     navThen.append(T.then);
     const a = el("span", "lm-nav-then-arrow");
     a.innerHTML = arrowSVG(after.type, 20);
@@ -3497,21 +3707,32 @@ function navUpdate(p, rawPos, off = false) {
     navSpeed.classList.toggle("lm-over", !!lim && kmh > lim[2] + 3);
     navSpeed.title = navSpeed.ariaLabel = T.speedNow(kmh);
   }
-  navEta.innerHTML = "";
-  navEta.append(el("strong", trafficClass(d, p.i), {}, clock(s)), el("span", "", {}, `${T.duration(s)} · ${fmtKm(left / 1000)}`));
+  if (!navEta.firstChild) navEta.append(el("strong"), el("span"));
+  if (navEta.firstChild.className !== trafficClass(d, p.i)) navEta.firstChild.className = trafficClass(d, p.i);
+  setText(navEta.firstChild, clock(s));
+  setText(navEta.lastChild, `${T.duration(s)} · ${fmtKm(left / 1000)}`);
   // the spoken instructions: early, then at the turn; after the turn what comes
   const n = steps.indexOf(next);
   preSay([cur, next, steps[k + 2], steps[k + 3]]);
-  if (k === 0 && !nav.spoken.has("0")) {
+  // ahead: once, when the turn is about that far ("In 150 metres, …"), not when it is already much
+  // nearer (a fix after a gap); at the turn: once, a few seconds before it
+  const v = sayV(cur), pre = preAt(v), ahead = n > k ? aheadOf(steps, n, v) : null;
+  if (reachStop(p, rawPos)) {
+    // "You have reached the stop", then the way on
+  } else if (k === 0 && !nav.spoken.has("0")) {
     nav.spoken.add("0");
     say1(steps[0].pre || steps[0].text);
-  } else if (toNext <= cfg.pre && !nav.spoken.has(`${n}p`)) {
+  } else if (toNext <= pre && !nav.spoken.has(`${n}p`)) {
+    // an arrival (a stop, the destination) is said when the traveller is there (reachStop, navArrive):
+    // before it "You will arrive", unless said already (ahead)
+    const arrival = next.type >= 4 && next.type <= 6, alerted = nav.spoken.has(`${n}a`);
     nav.spoken.add(`${n}p`).add(`${n}a`);
-    say1(next.pre || next.text);
-  } else if (toNext <= cfg.alert && toNext > cfg.pre * 1.8 && !nav.spoken.has(`${n}a`) && next.alert) {
+    if (!arrival) say1(next.pre || next.text);
+    else if (!alerted && next.alert) say1(next.alert);
+  } else if (ahead && toNext <= ahead.at + Math.max(3, v) && !nav.spoken.has(`${n}a`)) {
     nav.spoken.add(`${n}a`);
-    say1(next.alert);
-  } else if (cur.post && !nav.spoken.has(`${k}post`) && p.along - nav.cum[cur.i] >= cfg.arrive && toNext > cfg.alert * 1.3) {
+    if (toNext >= ahead.at * 0.7 && toNext > pre + v * 3) say1(ahead.text);
+  } else if (cur.post && !nav.spoken.has(`${k}post`) && p.along - nav.cum[cur.i] >= cfg.arrive && toNext > (ahead?.at || pre) + v * 6 + 20) {
     // after a turn, with the next one far: how far the way goes on ("Continue for 2 kilometres"), when
     // the instruction of the turn is said
     nav.spoken.add(`${k}post`);
@@ -3527,10 +3748,60 @@ function navUpdate(p, rawPos, off = false) {
   navDayNight(p, at);
   if (nav.elev) nav.elev.mark((p.along / (total || 1)) * nav.elev.km);
   if (nav.follow) {
-    map.easeTo({ center: at, bearing: heading, pitch: nav.flat ? 0 : 60, zoom: navZoom(at), padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
+    map.easeTo({ center: at, bearing: heading, pitch: nav.flat ? 0 : NAV_PITCH, zoom: navZoom(at), padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
   }
   drawNavLine(p);
-  if (left <= cfg.arrive) navArrive();
+  if (nav.sim && left <= cfg.arrive) navArrive(); // with real fixes onFix decides (arrivedNow)
+}
+// distance in metres between two points near each other
+const metres = (a, b) => {
+  const A = flat(a, a[1]), B = flat(b, a[1]);
+  return Math.hypot(A[0] - B[0], A[1] - B[1]);
+};
+// A stop reached: within reach of it, or at it along the line; said once ("You have reached the
+// stop", then the way on), and no new route back to it. ll: the fix, null in Preview.
+function reachStop(p, ll) {
+  const cfg = NAV[route.mode], j = nav.stops.findIndex((x) => !x.done && x.i >= nav.idx - 3);
+  const x = nav.stops[j];
+  if (!x) return false;
+  const ahead = nav.cum[x.i] - p.along;
+  if (ahead > 3 * cfg.reach) return false;
+  const near = ahead <= (nav.sim ? cfg.arrive : cfg.reach) || (ll && Math.min(metres(ll, nav.d.line[x.i]), x.ll ? metres(ll, x.ll) : Infinity) <= cfg.reach);
+  if (!near) return false;
+  x.done = true;
+  const steps = nav.d.steps, k = steps.findIndex((st) => st.stop === j + 1), on = k >= 0 ? steps[k + 1] : null;
+  if (on) nav.spoken.add(`${k}p`).add(`${k}a`).add(`${k + 1}p`).add(`${k + 1}a`);
+  speak([[T.stopReached, UI], on && (on.pre || on.text)]);
+  return true;
+}
+// Arrived, with real fixes (5 to 20 m off, one a second): the traveller stops a little before the end,
+// rides past it, stands on the other side of the street, or goes to a destination off the road (the
+// line ends on the road nearest to it). Within reach of the end of the line or of the destination,
+// or at the end of the line; or near (1.5 times reach) and stopped for 5 s, or (twice reach) going away again for two
+// fixes. Only on the last stretch of the route: a round trip starts where it ends.
+function arrivedNow(p, ll, pos, acc, onLine) {
+  const cfg = NAV[route.mode], total = nav.cum[nav.cum.length - 1], left = Math.max(0, total - p.along);
+  if (left > 3 * cfg.reach + acc) {
+    nav.endMin = Infinity;
+    nav.endTrail = [];
+    return false;
+  }
+  const d = Math.min(metres(ll, nav.d.line[nav.d.line.length - 1]), route.to?.ll ? metres(ll, route.to.ll) : Infinity, onLine ? left : Infinity);
+  if (d <= cfg.reach) return true;
+  const t = pos.timestamp || Date.now();
+  nav.endMin = Math.min(nav.endMin, d);
+  nav.endAway = nav.endMin <= 2 * cfg.reach + acc / 2 && d >= nav.endMin + Math.max(15, acc) ? nav.endAway + 1 : 0;
+  if (nav.endAway >= 2) return true;
+  // stopped: the speed of the device, else the fixes of the last 5 s within a few metres
+  nav.endTrail = nav.endTrail.filter((f) => t - f.t <= 6000).concat({ t, ll });
+  if (d > 1.5 * cfg.reach + acc / 2) return (nav.slowT = null, false);
+  const sp = pos.coords.speed, oldest = nav.endTrail[0];
+  if (sp != null && !Number.isNaN(sp)) {
+    if (sp >= 1) nav.slowT = null;
+    else if (nav.slowT == null) nav.slowT = t;
+    return nav.slowT != null && t - nav.slowT >= 5000;
+  }
+  return t - oldest.t >= 5000 && nav.endTrail.every((f) => metres(f.ll, oldest.ll) <= Math.max(10, acc));
 }
 // The zoom of navigation follows the speed: the map shows the next 25 seconds of the way ahead of
 // the traveller (a common rule of navigation apps), 120 m at least (on foot) and 1 km at most (fast
@@ -3538,10 +3809,14 @@ function navUpdate(p, rawPos, off = false) {
 // at 60 degrees the map shows about twice the ground of a flat one there. By bike and on foot the
 // map is a zoom closer (the metres of a pixel are of tiles of 512 px there, 256 by car): streets and
 // paths, not the town.
+// the height of the map, read once after each resize: a read each second makes the browser lay out the page
+let mapHeight = 0;
+map.on("resize", () => { mapHeight = 0; });
+const mapH = () => mapHeight || (mapHeight = mapEl.clientHeight);
 function navZoom(at) {
   const ms = Math.max(0, nav.sim ? (nav.speed || 0) / 3 : nav.speed || 0);
   const ahead = Math.min(1000, Math.max(120, ms * 25));
-  const px = mapEl.clientHeight * 0.55 * (nav.flat ? 1 : 2);
+  const px = mapH() * 0.55 * (nav.flat ? 1 : 2);
   const slow = route.mode !== "car";
   const target = Math.min(slow ? 19.5 : 18.6, Math.max(slow ? 16 : 15,
     Math.log2(((slow ? 156543 : 78271.5) * Math.cos((at[1] * Math.PI) / 180) * px) / ahead)));
@@ -3549,10 +3824,14 @@ function navZoom(at) {
   return nav.zoom;
 }
 const navPad = () => {
-  const h = mapEl.clientHeight;
+  const h = mapH();
   return { top: Math.round(h * 0.42), bottom: nav.elev ? 140 : 90, left: 20, right: 20 };
 };
 function drawNavLine(p) {
+  const key = `${p.i} ${p.ll}`;
+  if (nav.lineAt === key && nav.lineOf === nav.d) return; // standing still: the same line
+  nav.lineAt = key;
+  nav.lineOf = nav.d;
   drawRouteTraffic(nav.d, p.i, p.ll);
   const rest = [p.ll, ...nav.d.line.slice(p.i + 1)];
   setSource("route", { type: "FeatureCollection", features: [
@@ -3576,6 +3855,11 @@ function navArrive() {
     if (last?.pre) say1(last.pre);
     else say1(T.arrived, UI);
   }
+  // navigation ends when the sentence is said, 4 s after it (6 s at least, 20 s at most)
+  const trip = nav.trip, wait = (ms) => new Promise((done) => setTimeout(done, ms));
+  Promise.all([wait(6000), Promise.race([sayChain.then(() => wait(4000)), wait(20e3)])]).then(() => {
+    if (nav.on && nav.arrived && nav.trip === trip) navStop();
+  });
 }
 function stopTracking() {
   if (nav.watch != null) navigator.geolocation.clearWatch(nav.watch);
@@ -3619,11 +3903,19 @@ function onFix(pos) {
   const moving = h != null && !Number.isNaN(h) && pos.coords.speed > 1 ? h : null;
   const turn = moving == null ? 0 : Math.abs(((moving - p.heading + 540) % 360) - 180);
   const away = cfg.away && moving != null && pos.coords.speed > 2 && turn >= 60 && p.dist > (cfg.off + acc) / 2;
-  if (!first && (p.dist > cfg.off + acc || away)) {
+  const off = !first && (p.dist > cfg.off + acc || away);
+  if (!first && arrivedNow(p, ll, pos, acc, !off)) {
+    nav.at = p.dist <= cfg.off + acc ? p.ll : ll;
+    nav.avatar?.set(nav.at, p.heading, 900, 0);
+    return navArrive();
+  }
+  if (off) {
     nav.off++;
     ll.heading = moving;
     navUpdate(p, ll, true);
-    if (nav.off >= cfg.fixes && !nav.rerouting) reroute(ll);
+    // no new route on the last stretch: the traveller goes to a door, a gate or a yard off the road
+    const last = nav.cum[nav.cum.length - 1] - p.along <= 3 * cfg.reach + acc;
+    if (nav.off >= cfg.fixes && !nav.rerouting && !last) reroute(ll);
     return;
   }
   nav.off = 0;
@@ -3640,7 +3932,7 @@ function onFix(pos) {
 async function reroute(ll, stops = null, { quiet = false } = {}) {
   nav.rerouting = nav.routing = true;
   if (!quiet) navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
-  const via = stops || nav.stops.filter((x) => x.i > nav.idx && x.ll).map(({ ll, label }) => ({ ll, label }));
+  const via = stops || nav.stops.filter((x) => x.i > nav.idx && x.ll && !x.done).map(({ ll, label }) => ({ ll, label }));
   try {
     const q = new URLSearchParams({ from: `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`, to: `${route.to.ll[1].toFixed(5)},${route.to.ll[0].toFixed(5)}`, mode: route.mode, lang: LANG });
     for (const x of via) q.append("via", `${x.ll[1].toFixed(5)},${x.ll[0].toFixed(5)}`);
@@ -3665,11 +3957,16 @@ async function reroute(ll, stops = null, { quiet = false } = {}) {
 async function navStart(sim) {
   if (!route.answer) return;
   if (!nav.muted) unlockSound();
-  preSay(route.answer.steps.slice(0, 2));
+  preSay(route.answer.steps.slice(0, 2), route.answer.steps);
   preSayAll(route.answer.steps);
   fetchSay(T.gpsLost, UI);
   fetchSay(T.rerouted, UI);
+  // the styles of day and night by car (tunnels) and the one to come back to, before they are needed
+  const styles = route.mode === "car" ? [shownStyle(), "driving", "driving-night"] : [shownStyle()];
+  for (const k of styles) styleJSON(styleURL(k), k.endsWith("-night")).catch(() => {});
   nav.on = true;
+  fpsCap(true);
+  nav.trip = (nav.trip || 0) + 1;
   unfollowMe();
   alongDone();
   nav.sim = sim;
@@ -3746,6 +4043,7 @@ async function keepAwake() {
 document.addEventListener("visibilitychange", keepAwake);
 function navStop() {
   nav.on = false;
+  fpsCap(false);
   navAlongClose();
   if (navLook) { // back to the style of the menu
     navLook = null;
@@ -3768,6 +4066,7 @@ function navStop() {
     map.resize();
     if (route.changed && !routeView.hidden) { // a stop added in navigation: the route of directions with it
       route.changed = false;
+      map.jumpTo({ pitch: look.threeD ? 50 : 0, bearing: 0 }); // flat again, as below
       renderRoute();
       return findRoute();
     }
@@ -3796,34 +4095,134 @@ function navAlongOpen() {
     ahead: () => (nav.along || 0) / 1000,
     chosen: navAlongCat,
     onChoose: (cat) => { navAlongCat = cat; },
-    onAdd: (p) => {
-      if (!nav.at || nav.routing) return;
-      // the stops ahead with the new one where it falls on the route
-      const ahead = nav.stops.filter((x) => x.i > nav.idx && x.ll);
-      const a = projectOn(nav.d.line, nav.cum, p.ll);
-      const k = ahead.findIndex((x) => nav.cum[x.i] > a);
-      ahead.splice(k < 0 ? ahead.length : k, 0, p);
-      const via = ahead.slice(0, MAX_STOPS).map(({ ll, label }) => ({ ll, label }));
-      // the stop goes into directions too: after navigation they show the route with it
-      insertStop({ ll: p.ll, label: p.label });
-      route.changed = true;
-      navAlongClose();
-      const at = [...nav.at];
-      at.heading = nav.sim ? null : nav.heading;
-      reroute(at, via);
-    },
+    onAdd: navAddStop,
   }));
+  navAlong.dataset.kind = "along";
   navAlong.hidden = false;
   root.classList.add("lm-nav-along-on");
+}
+// a stop added in navigation: a new route from here, through the stops ahead with the new one where
+// it falls on the route
+function navAddStop(p) {
+  if (!nav.at || nav.routing) return;
+  const ahead = nav.stops.filter((x) => x.i > nav.idx && x.ll && !x.done);
+  const a = projectOn(nav.d.line, nav.cum, p.ll);
+  const k = ahead.findIndex((x) => nav.cum[x.i] > a);
+  ahead.splice(k < 0 ? ahead.length : k, 0, p);
+  const via = ahead.slice(0, MAX_STOPS).map(({ ll, label }) => ({ ll, label }));
+  // the stop goes into directions too: after navigation they show the route with it
+  insertStop({ ll: p.ll, label: p.label });
+  route.changed = true;
+  navAlongClose();
+  const at = [...nav.at];
+  at.heading = nav.sim ? null : nav.heading;
+  reroute(at, via);
 }
 function navAlongClose() {
   navAlong.hidden = true;
   navAlong.innerHTML = "";
+  delete navAlong.dataset.kind;
   root.classList.remove("lm-nav-along-on");
   alongDone();
+  hereCtl?.abort();
+  setSource("pin", empty);
   setSource("selected", empty);
 }
-navAlongBtn.addEventListener("click", () => (navAlong.hidden ? navAlongOpen() : navAlongClose()));
+navAlongBtn.addEventListener("click", () => (navAlong.dataset.kind === "along" ? navAlongClose() : navAlongOpen()));
+// A long press on the map in navigation (or a right click): the point, its address and the named
+// places around it, in the panel of the places along; the point or one of them as a stop.
+async function navPointOpen(ll, symbol) {
+  hereCtl?.abort();
+  const ctl = hereCtl = new AbortController();
+  alongDone();
+  const lat = +ll.lat.toFixed(5), lon = +ll.lng.toFixed(5), coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  setSource("pin", one({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: {} }));
+  setSource("selected", empty);
+  navAlong.innerHTML = "";
+  navAlong.dataset.kind = "point";
+  const head = el("div", "lm-nav-along-head");
+  const name = el("strong", "", {}, symbol || T.here);
+  const x = el("button", "lm-icon-btn", { type: "button", title: T.close, "aria-label": T.close });
+  x.innerHTML = svg(ICON.close, 18);
+  x.addEventListener("click", navAlongClose);
+  head.append(name, x);
+  const sub = el("p", "lm-dsub lm-nav-point-sub", {}, coords);
+  const acts = el("div", "lm-chips lm-nav-point-acts");
+  const add = el("button", "lm-chip lm-nav-point-add", { type: "button" });
+  add.innerHTML = svg(ICON.plus, 16);
+  add.append(T.useAsStop);
+  add.disabled = nav.stops.filter((s) => s.i > nav.idx && s.ll).length >= MAX_STOPS;
+  add.addEventListener("click", () => navAddStop({ ll: [lon, lat], label: name.textContent }));
+  acts.append(add);
+  const note = el("p", "lm-notes lm-along-msg", { role: "status", "aria-live": "polite" }, T.hereLooking);
+  navAlong.append(head, sub, acts, note);
+  navAlong.hidden = false;
+  root.classList.add("lm-nav-along-on");
+  let d;
+  try {
+    const r = await fetch(`${API}/here?${new URLSearchParams({ lat, lon, zoom: String(Math.max(16, Math.round(map.getZoom()))) })}`, { signal: ctl.signal });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok) { note.textContent = problem(d); return; }
+  } catch (err) {
+    if (err.name !== "AbortError") note.textContent = T.failed;
+    return;
+  }
+  if (ctl.signal.aborted || navAlong.dataset.kind !== "point") return;
+  name.textContent = d.place?.label || symbol || d.area?.label || T.here;
+  sub.textContent = [d.place?.detail, coords].filter(Boolean).join(" · ");
+  const fs = d.results?.features || [];
+  for (const f of fs) state.byId.set(f.properties.id, f);
+  note.textContent = fs.length ? "" : T.navHereNothing;
+  note.hidden = fs.length > 0;
+  if (!fs.length) return;
+  // the places around on the map as the places along are, a tap on one finds its line in the list
+  setSource("along", { type: "FeatureCollection", features: fs.filter((f) => f.geometry?.type === "Point") });
+  navAlong.append(el("p", "lm-count", {}, T.around));
+  const ol = el("ol", "lm-results lm-along-list");
+  for (const f of fs) {
+    const c = f.geometry?.type === "Point" ? f : { ...f, geometry: { type: "Point", coordinates: center(f) } };
+    ol.append(alongItem(c, { onAdd: navAddStop }));
+  }
+  navAlong.append(ol);
+  if (fs.some((f) => f.properties.opening_hours)) loadHours().then(() => markHours(ol));
+}
+// A finger held still on the map for half a second; a second finger or a move of more than 10 px is
+// a gesture of the map. The click after it does nothing.
+{
+  let t = 0, start = null;
+  const cancel = () => { clearTimeout(t); start = null; };
+  let pressedAt = 0;
+  const press = (x, y) => {
+    if (!nav.on) return;
+    pressedAt = Date.now();
+    const b = map.getCanvasContainer().getBoundingClientRect();
+    const pt = { x: x - b.left, y: y - b.top };
+    navPointOpen(map.unproject([pt.x, pt.y]), symbolAt(pt));
+  };
+  const canvas = map.getCanvasContainer();
+  canvas.addEventListener("touchstart", (e) => {
+    cancel();
+    if (!nav.on || e.touches.length !== 1) return;
+    const { clientX: x, clientY: y } = e.touches[0];
+    start = [x, y];
+    t = setTimeout(() => { start = null; ghostUntil = Date.now() + 700; press(x, y); }, 500);
+  }, { passive: true });
+  canvas.addEventListener("touchmove", (e) => {
+    if (!start) return;
+    const p = e.touches[0];
+    if (e.touches.length !== 1 || Math.hypot(p.clientX - start[0], p.clientY - start[1]) > 10) cancel();
+  }, { passive: true });
+  canvas.addEventListener("touchend", cancel, { passive: true });
+  canvas.addEventListener("touchcancel", cancel, { passive: true });
+  // a right click; the long press of a phone sends one too, after the press above
+  map.on("contextmenu", (e) => {
+    if (!nav.on) return;
+    e.preventDefault();
+    e.originalEvent?.preventDefault?.();
+    if (Date.now() - pressedAt < 1500) return;
+    press(e.originalEvent.clientX, e.originalEvent.clientY);
+  });
+}
 showDim();
 navMute.addEventListener("click", () => {
   nav.muted = !nav.muted;

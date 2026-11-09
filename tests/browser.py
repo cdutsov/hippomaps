@@ -7,11 +7,22 @@ Prints "ok <what>" per check and "FAIL <what>" per failure; exits 1 on a failure
 in Zurich (a granted location) on a phone screen. Checks: the map starts at the location; the
 Directions button opens start and destination, a typed destination gives a route by car with its
 time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
-sentences of the server; the language changed while navigating (no new page); the traffic button; a stop and the places along a
-route; the X clears everything; German texts after the language of the menu; and no errors of the page on the way. Needs chromium and websocket-client.
+sentences of the server; the language changed while navigating (no new page); a long press while
+navigating (the point and the places around, the point as a stop); the traffic button; the map drawn at 2 pixels per point at most, our sources with tiles to zoom 14 only, the
+banner kept between updates of one turn, dark and light switched in place (our layers and the route kept, no new load of the map); a stop and the places along a
+route; navigation drawn at 30 frames a second at most, the camera following, tilted 50 degrees; arrival by bike with Start and fixes that stop short of the end (said once, navigation
+ends); the X clears everything; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
+enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
+twice (the voice answered with silence in the test); German texts after the language of the menu; and no
+errors of the page on the way. Needs chromium and websocket-client.
 """
+import base64
 import json
+import math
 import os
+import random
+import re
+import struct
 import shutil
 import subprocess
 import sys
@@ -25,6 +36,26 @@ URL = sys.argv[1].rstrip("/")
 PORT = 9341
 ZURICH = (47.3779, 8.5403)
 fails = []
+# the sentences spoken (window.hmSaid): the sounds of the server played, the texts of the browser voice
+SAID_HOOK = r"""(() => {
+  const said = window.hmSaid = [], text = {};
+  const f0 = window.fetch, c0 = URL.createObjectURL, p0 = HTMLMediaElement.prototype.play;
+  window.fetch = function (u) {
+    const r = f0.apply(this, arguments);
+    if (!String(u).includes('/api/say')) return r;
+    const t = new URL(String(u), location.href).searchParams.get('text');
+    return r.then((res) => { const b0 = res.blob.bind(res); res.blob = () => b0().then((b) => { b.hmText = t; return b; }); return res; });
+  };
+  URL.createObjectURL = function (b) { const u = c0.apply(this, arguments); if (b && b.hmText) text[u] = b.hmText; return u; };
+  HTMLMediaElement.prototype.play = function () { if (text[this.src]) said.push(text[this.src]); return p0.apply(this, arguments); };
+  if (window.speechSynthesis) {
+    const s0 = speechSynthesis.speak.bind(speechSynthesis);
+    speechSynthesis.speak = (u) => { if (u.text.trim()) said.push(u.text); return s0(u); };
+  }
+})();"""
+# a WAV of 0.3 s of silence: the answer of /api/say in the ride by bike
+SILENCE = base64.b64encode(b"RIFF" + struct.pack("<I", 36 + 4800) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, 8000, 16000, 2, 16)
+                           + b"data" + struct.pack("<I", 4800) + bytes(4800)).decode()
 
 
 def check(cond, what):
@@ -45,7 +76,7 @@ try:
         except Exception:
             time.sleep(0.2)
     ws = websocket.create_connection([t for t in tabs if t["type"] == "page"][0]["webSocketDebuggerUrl"], timeout=60)
-    n, errors = [0], []
+    n, errors, said_n = [0], [], [0]
 
     def call(method, **params):
         n[0] += 1
@@ -54,6 +85,11 @@ try:
             m = json.loads(ws.recv())
             if m.get("method") == "Runtime.exceptionThrown":
                 errors.append(m["params"]["exceptionDetails"].get("exception", {}).get("description", "")[:200])
+            if m.get("method") == "Fetch.requestPaused":  # the voice, answered here with a short silence (no load on Piper)
+                ws.send(json.dumps({"id": 10**7 + n[0], "method": "Fetch.fulfillRequest", "params": {"requestId": m["params"]["requestId"],
+                    "responseCode": 200, "responseHeaders": [{"name": "Content-Type", "value": "audio/wav"}], "body": SILENCE}}))
+                said_n[0] += 1
+                continue
             if m.get("method") == "Runtime.consoleAPICalled" and m["params"]["type"] == "error":
                 errors.append(" ".join(str(a.get("value", a.get("description", ""))) for a in m["params"]["args"])[:200])
             if m.get("id") == n[0]:
@@ -93,6 +129,11 @@ try:
 
     check(wait("document.querySelector('.maplibregl-canvas')", 30), "the map draws")
     check(wait("location.hash.includes('/47.37')", 20), "the map starts at the location")
+    # the map drawn with 2 pixels per point at most (phones have 3; at 3 here the double tap and the focus fail in headless Chromium)
+    check(wait("window.hmMap?.isStyleLoaded()", 30) and js("hmMap.getPixelRatio() <= 2"), "the map drawn at 2 pixels per point at most")
+    # our sources (route, pins, results …): tiles up to zoom 14 only
+    check(js("(() => { const s = Object.entries(hmMap.getStyle().sources).filter(([k, v]) => k.startsWith('lm-') && v.type === 'geojson'); return s.length > 5 && s.every(([, v]) => v.maxzoom === 14); })()"),
+          "our sources with tiles to zoom 14")
 
     # directions: the button, a typed destination, the route by car
     # a double tap zooms the map and opens nothing
@@ -151,10 +192,28 @@ try:
     js("document.querySelector('.lm-nav-go .lm-chip').click()")
     check(wait("document.getElementById('app').classList.contains('lm-navigating')", 5), "Preview starts navigation")
     check(wait("/\\d/.test(document.querySelector('.lm-nav-dist')?.textContent || '')", 10), "the banner shows the next turn")
+    # between updates of one turn only the distance changes: the same element, another text (an update each 0.5 s)
+    same = False
+    for _ in range(4):
+        js("window.hmDist = document.querySelector('.lm-nav-dist'); window.hmDistText = hmDist.textContent; window.hmInstr = document.querySelector('.lm-nav-instr')?.textContent")
+        time.sleep(1.6)
+        if js("document.querySelector('.lm-nav-instr')?.textContent === hmInstr && hmDist.textContent !== hmDistText"):
+            same = js("document.querySelector('.lm-nav-dist') === hmDist")
+            break
+    check(same, "the banner kept between updates, its distance changed")
     check(wait("!document.querySelector('.lm-nav-speed').hidden && /km\\/h/.test(document.querySelector('.lm-nav-speed').textContent)", 15),
           "the speed now")
     check(wait(r"document.getElementById('app').classList.contains('lm-navigating') && /^\d+$/.test(document.querySelector('.lm-nav-limit').textContent) && !document.querySelector('.lm-nav-limit').hidden", 40), "the speed limit")
     check(js("!document.querySelector('.lm-sprite')"), "the traveller in 3D")
+    # navigation draws at most 30 frames a second (fpsCap in app.js), and the camera follows the traveller
+    check(js("Object.hasOwn(window.hmMap, 'triggerRepaint')"), "while navigating the map repaints through the 30 fps cap")
+    c0 = js("JSON.stringify([hmMap.getCenter(), hmMap.getBearing()])")
+    js("window.hmRenders = 0; window.hmCount = () => hmRenders++; hmMap.on('render', hmCount); window.hmT0 = performance.now()")
+    check(wait(f"JSON.stringify([hmMap.getCenter(), hmMap.getBearing()]) !== {json.dumps(c0)}", 10), "the camera follows during navigation")
+    check(wait("Math.abs(hmMap.getPitch() - 50) < 1", 10), "the map tilted 50 degrees in navigation")
+    time.sleep(2)
+    fps = js("(() => { hmMap.off('render', hmCount); return hmRenders * 1000 / (performance.now() - hmT0); })()")
+    check(fps is not None and fps <= 33, f"the map draws at most 30 frames a second while navigating ({fps or 0:.1f})")
     # the menu while navigating: the map keeps following
     js("document.querySelector('.lm-map-burger').click()")
     time.sleep(0.5)
@@ -171,9 +230,31 @@ try:
     check(wait("document.documentElement.lang === 'en' && /search/i.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 10), "Automatic: the language of the browser again")
     if js("!!document.getElementById('app').dataset.say"):
         check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/say'))", 20), "the voice of the server speaks")
+    # a finger held on the map while navigating: the point and the places around it; the point as a stop
+    r = js("(() => { const b = document.querySelector('.maplibregl-canvas').getBoundingClientRect(); return [b.left + b.width * 0.3, b.top + b.height * 0.4]; })()")
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": r[0], "y": r[1]}])
+    time.sleep(0.8)
+    call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    check(wait("document.querySelector('.lm-nav-along')?.dataset.kind === 'point' && !document.querySelector('.lm-nav-along').hidden && !document.querySelector('.lm-nav-along .lm-notes')?.textContent.includes('…')", 20),
+          "a long press while navigating opens the point")
+    js("window.hmRoutes = performance.getEntriesByType('resource').filter(e => e.name.includes('/api/route')).length; document.querySelector('.lm-nav-point-add').click()")
+    check(wait("document.querySelector('.lm-nav-along').hidden && performance.getEntriesByType('resource').some((e, i, a) => e.name.includes('/api/route') && e.name.includes('via=') && a.filter(x => x.name.includes('/api/route')).length > window.hmRoutes)", 30)
+          and js("document.getElementById('app').classList.contains('lm-navigating')"),
+          "the point pressed as a stop: a new route through it, navigation goes on")
     js("document.querySelector('.lm-nav-x').click()")
     check(wait("!document.getElementById('app').classList.contains('lm-navigating')", 5), "navigation ends")
+    check(js("!Object.hasOwn(hmMap, 'triggerRepaint') && hmMap.triggerRepaint === Object.getPrototypeOf(hmMap).triggerRepaint"),
+          "after navigation the map repaints without the cap")
     check(wait("(location.hash.split('/')[4] || '0') === '0'", 5), "the map is flat again after navigation")
+    # light and dark from the menu, the route on the map: the new style as a diff of the one shown (the same style object,
+    # no new load of the map and its tiles), our layers and the route kept, our names in the colours of the theme
+    js("window.hmStyle = hmMap.style")
+    for style, colour in (("light", "#7f1d1d"), ("dark", "#ffb4a9"), ("light", "#7f1d1d")):
+        js(f"document.querySelector('.lm-style[data-style={style}]').click()")
+        check(wait(f"document.documentElement.dataset.theme === '{'dark' if style == 'dark' else 'light'}' && hmMap.getPaintProperty('lm-label', 'text-color') === '{colour}'", 15)
+              and js("hmMap.style === hmStyle && !!hmMap.getLayer('lm-route-line') && !!hmMap.getLayer('lm-night') && hmMap.getStyle().sources['lm-route'].data.features.length > 0"),
+              f"the {style} style switched in place: our layers and the route kept")
+    js("document.querySelector('.lm-style[data-style=auto]').click()")
 
     # traffic on and off
     if js("!!document.getElementById('app').dataset.traffic"):
@@ -334,6 +415,38 @@ try:
     check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && /Zurich HB/.test(document.querySelector('.lm-end-from input')?.value || '') && document.querySelector('.lm-mode[aria-checked=true]')?.textContent.includes('Walk')", 40),
           "a shared route opens with its start, destination and mode")
     check(js("!!document.querySelector('.lm-nav-go .lm-share')"), "Share beside Start")
+    # arrival by bike with Start: fixes stop 40 m short of the end of the route and 10 m beside it
+    # (no fix within the reach of 30 m): "You have arrived" said once, then navigation ends by itself
+    call("Page.addScriptToEvaluateOnNewDocument", source=SAID_HOOK)
+    a, b = (47.37000, 8.54000), (47.37300, 8.54300)
+    line = json.load(urllib.request.urlopen(f"{URL}/api/route?from={a[0]},{a[1]}&to={b[0]},{b[1]}&mode=bike&lang=en", timeout=30))["line"]
+
+    def short_of(m, side=0.0):  # the point m metres before the end of the line, side metres to its left
+        kx, ky = 111320 * math.cos(math.radians(line[-1][1])), 111320
+        left = m
+        for i in range(len(line) - 1, 0, -1):
+            (x0, y0), (x1, y1) = line[i - 1], line[i]
+            dx, dy = (x0 - x1) * kx, (y0 - y1) * ky
+            seg = math.hypot(dx, dy)
+            if seg >= left or i == 1:
+                t = min(1, left / seg) if seg else 0
+                return y1 + (dy * t - dx / (seg or 1) * side) / ky, x1 + (dx * t + dy / (seg or 1) * side) / kx
+            left -= seg
+    p = short_of(100)
+    call("Emulation.setGeolocationOverride", latitude=p[0], longitude=p[1], accuracy=15)
+    call("Page.navigate", url=URL + f"/?from={a[0]},{a[1]}&to={b[0]},{b[1]}&mode=bike")
+    wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40)
+    js("document.querySelector('.lm-nav-start').click()")
+    wait("document.getElementById('app').classList.contains('lm-navigating')", 5)
+    for m, side in [(85, 0), (70, 0), (55, 5), (45, 10)] + [(40, 10)] * 8:
+        time.sleep(1)
+        p = short_of(m, side)
+        call("Emulation.setGeolocationOverride", latitude=p[0], longitude=p[1], accuracy=15)
+    check(wait("/arrived/i.test(document.querySelector('.lm-nav-banner')?.textContent || '')", 10), "by bike, stopped 40 m short: You have arrived")
+    check(wait("!document.getElementById('app').classList.contains('lm-navigating')", 25), "after the arrival navigation ends by itself")
+    said = js("window.hmSaid || []")
+    check(len([t for t in said if re.search(r"have arrived", t, re.I)]) == 1, f"the arrival said once ({said[-3:]})")
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
     # a stop on the way, and the places along the route
     call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&via=47.05020,8.30930&vn=Lucerne&to=46.94900,7.43910&tn=Bern&mode=car")
     check(wait("document.querySelectorAll('.lm-end-stop').length === 1 && document.querySelectorAll('.lm-step-stop').length === 1", 40),
@@ -346,6 +459,60 @@ try:
               "a rest area added as a stop: the route by both")
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+
+    # a ride by bike with the location of the device: fixes every 5 m at 5 m/s (five a second, to be quick), a
+    # little noise. The sentences spoken (the texts of /api/say, answered here with silence) with the
+    # distance on the banner: a turn far enough from the one before is said ahead ("In 150 meters, turn
+    # left …", at about that distance), then at the turn (40 m or nearer); no sentence twice in a row.
+    BIKE = ((47.37550, 8.53050), (47.37000, 8.52700))  # St. Jakobstrasse to Hallwylstrasse: 770 m, two turns 200 m and more apart
+    call("Emulation.setGeolocationOverride", latitude=BIKE[0][0], longitude=BIKE[0][1], accuracy=8)
+    js("window.hmOld = 1")  # (the page before must not count as the new one)
+    call("Page.navigate", url=URL + f"/?from={BIKE[0][0]},{BIKE[0][1]}&fn=A&to={BIKE[1][0]},{BIKE[1][1]}&tn=B&mode=bike")
+    if wait("!window.hmOld && document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40):
+        call("Fetch.enable", patterns=[{"urlPattern": "*/api/say*"}])
+        # what is played: the text of each sound of /api/say (or of the voice of the browser), with the banner
+        js("""(() => { window.hmSaid = []; const text = new WeakMap(), byUrl = {}, f = window.fetch;
+          window.fetch = function (u, ...a) { const p = f.call(this, u, ...a); if (!String(u).includes('/api/say')) return p;
+            const t = new URL(u, location).searchParams.get('text');
+            return p.then((r) => { const b = r.blob.bind(r); r.blob = () => b().then((x) => { text.set(x, t); return x; }); return r; }); };
+          const co = URL.createObjectURL; URL.createObjectURL = function (b) { const u = co.call(this, b); if (text.has(b)) byUrl[u] = text.get(b); return u; };
+          const dist = () => document.querySelector('.lm-nav-dist')?.textContent || '';
+          const play = HTMLMediaElement.prototype.play; HTMLMediaElement.prototype.play = function () { if (byUrl[this.src]) hmSaid.push([byUrl[this.src], dist()]); return play.call(this); };
+          if (window.speechSynthesis) { const sp = speechSynthesis.speak.bind(speechSynthesis); speechSynthesis.speak = (u) => { if (u.text.trim()) hmSaid.push([u.text, dist()]); return sp(u); }; }
+        })()""")
+        line = json.load(urllib.request.urlopen(f"{URL}/api/route?from={BIKE[0][0]},{BIKE[0][1]}&to={BIKE[1][0]},{BIKE[1][1]}&mode=bike&lang=en", timeout=30))["line"]
+        pts, carry = [], 0.0
+        for a, b in zip(line, line[1:]):
+            dx, dy = (b[0] - a[0]) * 111320 * math.cos(math.radians(a[1])), (b[1] - a[1]) * 111320
+            seg, x = math.hypot(dx, dy), carry
+            while x < seg:
+                pts.append((a[1] + (b[1] - a[1]) * x / seg, a[0] + (b[0] - a[0]) * x / seg, math.degrees(math.atan2(dx, dy)) % 360))
+                x += 5
+            carry = x - seg
+        js("document.querySelector('.lm-nav-start').click()")
+        check(wait("document.getElementById('app').classList.contains('lm-navigating')", 5), "by bike: Start navigates")
+        rnd = random.Random(1)
+        for lat, lon, h in pts:
+            call("Emulation.setGeolocationOverride", latitude=lat + rnd.gauss(0, 2) / 111320, longitude=lon + rnd.gauss(0, 2) / 111320 / math.cos(math.radians(lat)),
+                 accuracy=8, heading=h, speed=5 + rnd.gauss(0, 0.3))
+            time.sleep(0.2)
+        time.sleep(1)
+        said = js("window.hmSaid") or []
+        print("  spoken: " + " | ".join(f"{d} {t}" for t, d in said), flush=True)
+        # the distance on the banner in metres; none when arrived (the banner without a distance)
+        metres = lambda d: float(d.split()[0]) * (1000 if d.endswith("km") else 1) if re.match(r"^[\d.]+ k?m$", d) else 0 if d == "" else None
+        ahead = [(i, int(m.group(1)), metres(d)) for i, (t, d) in enumerate(said) for m in [re.match(r"In (\d+) meters, ", t)] if m]
+        check(len(ahead) >= 1, "by bike, a turn said ahead with its distance (In N meters, …)")
+        check(all(d is not None and n - 20 <= d <= n + 10 for _, n, d in ahead), "said ahead at about that distance")
+        # the sentence after one said ahead, past "Continue for …": the turn itself, near it
+        near = [next(((t, metres(d)) for t, d in said[i + 1:] if not t.startswith("Continue")), (None, None)) for i, _, _ in ahead]
+        check(bool(near) and all(t and not t.startswith("In ") and d is not None and d <= 40 for t, d in near), "then the turn itself, 40 m or nearer")
+        check(all(a[0] != b[0] for a, b in zip(said, said[1:])), "no sentence twice in a row")
+        call("Fetch.disable")
+        js("document.querySelector('.lm-nav-x')?.click()")
+    else:
+        check(False, "a route by bike for the ride")
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
 
     # German
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
