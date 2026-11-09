@@ -20,8 +20,8 @@ android {
         applicationId = "ch.hippomaps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     signingConfigs {
@@ -71,4 +71,5 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.splashscreen)
+    testImplementation(libs.junit)
 }

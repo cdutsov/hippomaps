@@ -37,7 +37,7 @@ docker build -q -t "$IMAGE" "$here" >/dev/null
 docker run --rm --cpus "$CPUS" --memory 8g \
 	-v "$here:/src" -v "$CACHE:/root/.gradle" -v "$SIGNING_DIR:/signing:ro" \
 	-e HIPPOMAPS_SIGNING=/signing/signing.properties \
-	"$IMAGE" nice -n 10 gradle --no-daemon --console=plain -q lint assembleRelease bundleRelease
+	"$IMAGE" nice -n 10 gradle --no-daemon --console=plain -q testReleaseUnitTest lint assembleRelease bundleRelease
 
 mkdir -p "$here/dist"
 cp "$here/app/build/outputs/apk/release/app-release.apk" "$here/dist/hippomaps.apk"

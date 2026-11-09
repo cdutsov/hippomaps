@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="offline_title">Keine Verbindung</string>
-    <string name="offline_text">hippomaps konnte nicht geladen werden. Die Karte lädt von selbst neu, sobald das Telefon wieder online ist.</string>
+    <string name="offline_text">HippoMaps konnte nicht geladen werden. Die Karte lädt von selbst neu, sobald das Telefon wieder online ist.</string>
     <string name="retry">Erneut versuchen</string>
     <string name="nav_channel">Navigation</string>
-    <string name="nav_running">Navigation mit hippomaps</string>
+    <string name="nav_running">Navigation mit HippoMaps</string>
     <string name="nav_stop">Beenden</string>
+    <string name="link_unknown">Dieser Link enthält keinen Ort, den HippoMaps zeigen kann.</string>
 </resources>

@@ -210,6 +210,8 @@ try:
     check(wait("document.querySelector('.lm-place-acts .lm-action')", 40) and wait("document.querySelector('.lm-dir-btn').hidden", 3),
           "a place found: Directions under its name only")
     check(wait("!document.querySelector('.lm-place-pic').hidden && document.querySelector('.lm-place-pic img')?.naturalWidth > 0", 30), "a place found: its photo")
+    check(js("document.querySelector('.lm-place-pic').getBoundingClientRect().top >= document.querySelector('.lm-place-acts').getBoundingClientRect().bottom - 1"),
+          "a place found: its photo under the buttons")
     check(js("(() => { const t = document.querySelector('.lm-title').getBoundingClientRect(), a = document.querySelector('.lm-place-acts').getBoundingClientRect();"
              " return a.top >= t.bottom - 1; })()"), "a place found: its buttons under its name")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
@@ -234,6 +236,25 @@ try:
             break
     check(wait("document.querySelector('.lm-input').value === '' && document.getElementById('app').dataset.sheet === 'peek'", 10),
           "Back to no search: the panel down to the search box")
+
+    # a point tapped with no search, then its <: nothing under the empty box, the panel folds
+    js("location.hash = '#map=17/47.3700/8.5400'")
+    time.sleep(1.5)
+    js("document.querySelector('.lm-input').blur()")
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 120, "y": 300}])
+    call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    if wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 10):
+        for _ in range(3):  # its < (or its X) until the list
+            js("(document.querySelector('.lm-here:not([hidden]) .lm-back, .lm-detail:not([hidden]) .lm-back') || document.querySelector('.lm-here:not([hidden]) .lm-card-x, .lm-detail:not([hidden]) .lm-card-x'))?.click()")
+            if wait("!document.querySelector('.lm-listview').hidden", 2):
+                break
+    check(wait("!document.querySelector('.lm-listview').hidden && document.getElementById('app').dataset.sheet === 'peek'", 10),
+          f"< back to nothing under the empty search box: the panel folds ({js('document.getElementById(\'app\').dataset.sheet')})")
+
+    # the empty search box shows examples of searches in turn
+    js("document.querySelector('.lm-input').blur()")
+    first = js("document.querySelector('.lm-input').placeholder")
+    check(wait(f"document.querySelector('.lm-input').placeholder !== {json.dumps(first)}", 10), "the empty search box shows examples in turn")
 
     # a place starred: in the empty search box, and on the map; the last search there too
     js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Thun'; document.querySelector('.lm-form').requestSubmit(); })()")
@@ -276,6 +297,19 @@ try:
     time.sleep(3)
     check(js("document.documentElement.dataset.theme") == theme0, "day and night stay with the visitor when the map goes far away")
 
+    # out far, the searches of the bubbles go (Transit stays); close in, they are back
+    js("location.hash = '#map=8/47.0/8.0'")
+    check(wait("document.querySelector('.lm-bubbles').classList.contains('lm-far') && [...document.querySelectorAll('.lm-bubble')].every(b => b.classList.contains('lm-bubble-transit') || !b.offsetParent)", 10),
+          "the map out far: no search bubbles")
+    js("location.hash = '#map=14/47.3769/8.5417'")
+    check(wait("!document.querySelector('.lm-bubbles').classList.contains('lm-far') && [...document.querySelectorAll('.lm-bubble')].some(b => !b.classList.contains('lm-bubble-transit') && b.offsetParent)", 10),
+          "the map close in: the search bubbles back")
+    # the 2D/3D button: the terrain without the buildings; the buildings are the switch of the menu
+    js("performance.clearResourceTimings()")
+    js("document.querySelector('.lm-dim').click()")
+    check(wait("performance.getEntriesByType('resource').some(e => /styles\\/.*terrain=1/.test(e.name) && !/buildings=1/.test(e.name))", 15),
+          "the 3D button: terrain, not buildings")
+    js("document.querySelector('.lm-dim').click()")
     # POIs before their zoom: at 14.3 the tile of POIs is put together from tiles of zoom 15
     js("location.hash = '#map=14.3/47.3717/8.5390'")
     check(wait("performance.getEntriesByType('resource').some(e => /maps\\/vector\\/15\\//.test(e.name))", 30), "POIs at zoom 14 from the tiles of zoom 15")
@@ -295,7 +329,7 @@ try:
     # German
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)
-    check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').placeholder)", 30), "the page in German")
+    check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 30), "the page in German")
     js("localStorage.removeItem('hm-lang')")
 
     real = [e for e in errors if "Map cannot fit" not in e]

@@ -29,6 +29,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
@@ -42,6 +43,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.concurrent.thread
 
 class MainActivity : ComponentActivity() {
 
@@ -154,11 +158,12 @@ class MainActivity : ComponentActivity() {
 
         getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(network)
 
-        val start = intent?.data?.takeIf { isOurs(it) }?.toString()
+        val start = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data?.toString()?.let(::linkOf)
         if (savedInstanceState != null && start == null && web.restoreState(savedInstanceState) != null) {
             // restored
         } else {
             web.loadUrl(start ?: HOME)
+            if (start == null && savedInstanceState == null) intent?.let { openLater(it) }
         }
     }
 
@@ -468,11 +473,65 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        val data = intent.data
-        if (intent.action == Intent.ACTION_VIEW && isOurs(data)) {
-            clearHistoryWhenLoaded = true
-            web.loadUrl(data.toString())
+        if (intent.action != Intent.ACTION_VIEW) return
+        val link = intent.data?.toString()?.let(::linkOf)
+        if (link != null) open(link) else openLater(intent)
+    }
+
+    private fun open(link: String) {
+        clearHistoryWhenLoaded = true
+        web.loadUrl(link)
+    }
+
+    // the page of a link: one of hippomaps.ch as it is, a map link of another app or site (geo:,
+    // Google Maps, OpenStreetMap, Apple Maps) as the place, route or search of hippomaps.ch
+    private fun linkOf(s: String): String? =
+        if (isOurs(Uri.parse(s))) s else MapLinks.convert(s)?.takeIf { isOurs(Uri.parse(it)) }
+
+    // a short link (maps.app.goo.gl) leads to its map link through redirects, asked here; anything
+    // else not understood says so, and the map stays as it is
+    private fun openLater(intent: Intent) {
+        if (intent.action != Intent.ACTION_VIEW) return
+        val s = intent.data?.toString() ?: return
+        if (!MapLinks.isShort(s)) return notUnderstood()
+        thread(name = "short-link") {
+            val link = resolve(s)?.let(::linkOf)
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                if (link != null) open(link) else notUnderstood()
+            }
         }
+    }
+
+    private fun notUnderstood() = Toast.makeText(this, R.string.link_unknown, Toast.LENGTH_LONG).show()
+
+    // follows up to six redirects of https links, without loading their pages; the consent page of
+    // Google carries the link in continue=
+    private fun resolve(start: String): String? {
+        var link = start
+        repeat(6) {
+            if (MapLinks.convert(link) != null && !MapLinks.isShort(link)) return link
+            val u = MapLinks.parse(link) ?: return null
+            if (u.host == "consent.google.com") return u.params["continue"]
+            if (!link.startsWith("https://", ignoreCase = true)) return null
+            val c = try {
+                (URL(link).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = false
+                    connectTimeout = 6000
+                    readTimeout = 6000
+                    setRequestProperty("User-Agent", "hippomaps-android")
+                }
+            } catch (e: Exception) { return null }
+            try {
+                if (c.responseCode !in 300..399) return null
+                link = URL(URL(link), c.getHeaderField("Location") ?: return null).toString()
+            } catch (e: Exception) {
+                return null
+            } finally {
+                c.disconnect()
+            }
+        }
+        return null
     }
 
     // ---------------------------------------------------------------- back

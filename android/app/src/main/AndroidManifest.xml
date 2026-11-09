@@ -43,6 +43,62 @@
                 <data android:scheme="https" />
                 <data android:host="hippomaps.ch" />
             </intent-filter>
+            <!-- hippomaps.ch over http and www: the same page -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="hippomaps.ch" />
+                <data android:host="www.hippomaps.ch" />
+            </intent-filter>
+            <!-- coordinates and places of other apps (MapLinks.kt): geo:47.37,8.54, geo:0,0?q=…,
+                 google.navigation:q=… -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="google.navigation" />
+            </intent-filter>
+            <!-- map links: Google Maps, OpenStreetMap, Apple Maps, short links of Google Maps -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="maps.google.com" />
+                <data android:host="maps.google.ch" />
+                <data android:host="maps.google.de" />
+                <data android:host="maps.app.goo.gl" />
+                <data android:host="www.openstreetmap.org" />
+                <data android:host="openstreetmap.org" />
+                <data android:host="osm.org" />
+                <data android:host="maps.apple.com" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="www.google.com" />
+                <data android:host="google.com" />
+                <data android:host="www.google.ch" />
+                <data android:host="google.ch" />
+                <data android:host="www.google.de" />
+                <data android:host="www.google.fr" />
+                <data android:host="www.google.it" />
+                <data android:host="www.google.at" />
+                <data android:host="goo.gl" />
+                <data android:pathPrefix="/maps" />
+            </intent-filter>
         </activity>
 
         <service

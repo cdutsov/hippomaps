@@ -81,6 +81,15 @@ then the links open in the browser, or in the app after the user enables the lin
 settings ("Open by default"). With Play App Signing, add the SHA-256 of the Play signing key to
 the file as well.
 
+## Map links of other apps
+
+The app is offered (not verified, the user picks it) for `geo:` coordinates, `google.navigation:`,
+Google Maps links (`maps.google.*`, `www.google.*/maps`, short links `maps.app.goo.gl` and
+`goo.gl/maps`), OpenStreetMap (`openstreetmap.org`, `osm.org`), Apple Maps (`maps.apple.com`), and
+hippomaps.ch over http and www. `MapLinks.kt` turns each into a place (`?at=`), a route (`?to=`), a
+search (`?q=`) or a view (`#map=`) of hippomaps.ch; the app follows the redirects of a short link
+itself. A link with no place says so in a toast. Unit tests: `app/src/test` (run by `build.sh`).
+
 ## Testing
 
 `test/Dockerfile` and `test/avd.sh` run a headless emulator (API 34, Google APIs, x86_64) with

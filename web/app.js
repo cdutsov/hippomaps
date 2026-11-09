@@ -27,6 +27,10 @@ const extraKeys = [...placeKeys, "what", "view"]; // view=1: the same search in 
 
 const EN = {
   placeholder: "Search places, or what and where",
+  // the search box shows these in turn while it is empty: each runs on the search as written
+  hints: ["restaurants near Lake Zurich", "gas stations along the A3", "bridges over the Rhine in Basel", "castles in Ticino",
+    "mountain huts over 2500 m in Valais", "campsites by Lake Geneva", "beer gardens in Munich", "lighthouses in Brittany",
+    "vegan restaurants in Zurich", "viewpoints near Lucerne", "drinking water in Geneva", "ice cream along the Limmat"],
   examples: ["cafés", "Migros", "museums in Bern", "playgrounds near me", "restaurants open now", "hotels along the Limmat in Zurich"],
   intro: "Search in plain words: a place, a chain, or what and where. A word alone searches the map view.",
   searching: "Searching…",
@@ -143,8 +147,8 @@ const EN = {
   closeMenu: "Close the menu",
   mapStyle: "Map style",
   show: "Show",
-  threeD: "3D",
-  threeDNote: "Terrain and buildings; tilt with two fingers or the right mouse button",
+  buildings3D: "3D buildings",
+  buildings3DNote: "Buildings with their height",
   shading: "Relief shading",
   shadingNote: "Light and shadow of the mountains",
   styles: [["auto", "Day and night"], ["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"]],
@@ -246,12 +250,13 @@ const km = (a, b) => {
 const fmtKm = (d) => (d < 1 ? `${Math.round(d * 100) * 10} m` : `${d.toFixed(d < 10 ? 1 : 0)} km`);
 
 // ------------------------------------------------------------------ the map style
-// The style of the map, 3D (terrain and buildings) and relief shading, kept in the browser. The
+// The style of the map, 3D terrain, 3D buildings and relief shading, kept in the browser. The
 // page is dark with the dark and black styles; the first style follows the theme of the site.
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const look = {
   style: T.styles.some(([k]) => k === store.get("hm-style")) ? store.get("hm-style") : "auto",
-  threeD: store.get("hm-3d") === "1",
+  threeD: store.get("hm-3d") === "1", // the terrain and the map tilted: the 2D/3D button on the map
+  buildings: (store.get("hm-buildings") ?? store.get("hm-3d")) === "1", // 3D buildings: the menu
   shading: store.get("hm-shading") === "1",
   traffic: store.get("hm-traffic") === "1", // off at first
   transit: store.get("hm-transit") === "1",
@@ -286,7 +291,7 @@ const styleURL = () => {
   const p = new URLSearchParams({ lang: ["de", "fr", "it"].includes(LANG) ? LANG : "en" });
   if (look.shading) p.set("hillshade", "1");
   if (look.threeD) p.set("terrain", "1");
-  if (look.threeD && shownStyle() !== "relief") p.set("buildings", "1");
+  if (look.buildings && shownStyle() !== "relief") p.set("buildings", "1");
   return `${root.dataset.tiles}/v1/${root.dataset.key}/maps/styles/${shownStyle().replace(/-night$/, "")}.json?${p}`;
 };
 
@@ -317,6 +322,16 @@ const input = el("input", "lm-input", { type: "search", role: "combobox", "aria-
 const clearBtn = el("button", "lm-clear", { type: "button", "aria-label": T.clear });
 clearBtn.innerHTML = svg(ICON.close, 16);
 clearBtn.hidden = true;
+// the hint of the empty box: examples of searches in turn, every 4 seconds, while nobody types there
+const hints = (T.hints || []).slice();
+let hintAt = Math.floor(Math.random() * Math.max(1, hints.length));
+const showHint = () => { if (hints.length) input.placeholder = hints[hintAt % hints.length]; };
+showHint();
+setInterval(() => {
+  if (document.hidden || document.activeElement === input || input.value) return;
+  hintAt++;
+  showHint();
+}, 4000);
 const goBtn = el("button", "lm-go", { type: "submit", "aria-label": T.search });
 goBtn.innerHTML = svg(ICON.search, 20);
 const list = el("ul", "lm-suggest", { id: "lm-list", role: "listbox" });
@@ -373,6 +388,7 @@ const showView = (v) => {
   root.classList.toggle("lm-planning", v === routeView); // directions have their own fields: no search bar above them
   showDirBtn();
   body.scrollTop = 0;
+  if (v === listView) setTimeout(foldIfEmpty); // after the caller has filled or cleared the list
 };
 const foot = el("div", "lm-foot", {}, [T.credit, root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" "));
 side.append(sheetBtn, top, form, status, body, foot);
@@ -404,7 +420,7 @@ compassBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hid
   '<path d="M12 3 15.5 12h-7z" fill="#d0312d"/><path d="M12 21 8.5 12h7z" fill="currentColor" opacity=".55"/></g></svg>';
 const locBtn = el("button", "lm-locate", { type: "button", title: T.myLocation, "aria-label": T.myLocation });
 locBtn.innerHTML = svg(ICON.locate, 22);
-// 2D or 3D, the button names the other: on the map the 3D of the menu; in navigation the map that
+// 2D or 3D, the button names the other: on the map the terrain and the tilt; in navigation the map that
 // follows, flat or tilted (hm-nav-2d)
 const dimBtn = el("button", "lm-dim", { type: "button" });
 function showDim() {
@@ -834,6 +850,18 @@ for (const [q, label, wide] of T.bubbles) {
   bubbles.append(b);
 }
 mapEl.append(bubbles);
+// viewKm2 is about the size of the map view; the search does not search views over 1,000 km² (a
+// phone at zoom 10): the searches of the bubbles go when the map is out further, Transit stays
+const viewKm2 = () => {
+  const b = map.getBounds(), lat = (b.getNorth() + b.getSouth()) / 2;
+  return (b.getEast() - b.getWest()) * 111.32 * Math.cos(lat * Math.PI / 180) * (b.getNorth() - b.getSouth()) * 110.57;
+};
+const MAX_VIEW_KM2 = 800;
+const farOut = () => viewKm2() > MAX_VIEW_KM2;
+const markFar = () => bubbles.classList.toggle("lm-far", farOut());
+map.on("moveend", markFar);
+map.on("resize", markFar);
+map.once("load", markFar);
 
 // ------------------------------------------------------------------ the menu
 // Closed at first; the burger in the top bar (on a phone, over the map) opens it.
@@ -872,11 +900,11 @@ const toggle = (label, note, on, set) => {
   row.append(text, box);
   return row;
 };
-// 3D: terrain, buildings and the map tilted; from the menu or the 2D/3D button on the map
+// 3D: the terrain and the map tilted, from the 2D/3D button on the map; 3D buildings are a
+// switch of the menu of their own (setBuildings)
 function setThreeD(on) {
   look.threeD = on;
   store.set("hm-3d", on ? "1" : "0");
-  threeDBox.checked = on;
   restyle();
   // the new style stops a camera move: tilt once it is there
   const tilt = () => {
@@ -887,7 +915,12 @@ function setThreeD(on) {
   map.once("style.load", tilt);
   showDim();
 }
-const threeDRow = toggle(T.threeD, T.threeDNote, look.threeD, setThreeD);
+function setBuildings(on) {
+  look.buildings = on;
+  store.set("hm-buildings", on ? "1" : "0");
+  restyle();
+}
+const buildingsRow = toggle(T.buildings3D, T.buildings3DNote, look.buildings, setBuildings);
 const forgetBtn = el("button", "lm-chip lm-forget", { type: "button" }, T.forgetRecent);
 forgetBtn.addEventListener("click", () => {
   saved.recent = [];
@@ -898,7 +931,6 @@ const trafficRow = toggle(T.traffic, T.trafficNote, look.traffic, setTraffic);
 const transitRow = toggle(T.transit, T.transitNote, look.transit, setTransit);
 transitBox = transitRow.querySelector("input");
 trafficBox = trafficRow.querySelector("input");
-const threeDBox = threeDRow.querySelector("input");
 // the language; a change loads the page again in it
 const langSel = el("select", "lm-lang-select", { "aria-label": T.language });
 for (const [k, name] of [["", T.automatic], ...languages]) {
@@ -915,7 +947,7 @@ const langText = el("span", "lm-toggle-text");
 langText.append(el("span", "", {}, T.language), el("span", "lm-toggle-note", {}, T.languageNote));
 langRow.append(langText, langSel);
 menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "lm-menu-title", {}, T.show),
-  threeDRow,
+  buildingsRow,
   toggle(T.shading, T.shadingNote, look.shading, (on) => {
     look.shading = on;
     store.set("hm-shading", on ? "1" : "0");
@@ -1528,6 +1560,12 @@ qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textCo
   setTimeout(() => { qCopy.textContent = T.copy; }, 1500);
 }));
 
+// an empty search box with nothing under it: the panel folds down to the box (a phone)
+function foldIfEmpty() {
+  if (listView.hidden || input.value || document.activeElement === input) return;
+  if (title.textContent || notes.textContent || results.childElementCount || !status.hidden) return;
+  setSheet("peek");
+}
 // the start: the map and the search box, nothing under it
 function intro() {
   clear();
@@ -1536,6 +1574,7 @@ function intro() {
   if (document.activeElement !== input) setSheet("peek"); // on a phone the map, and the search box at the bottom
 }
 function clear() {
+  state.answer = null; // no search: a card has no list to go back to
   placeActs.innerHTML = "";
   showDirBtn();
   placePic.hidden = true;
@@ -1614,7 +1653,7 @@ function fitBox(box, maxZoom) {
 map.on("webglcontextlost", () => say(T.mapLost, true));
 map.on("webglcontextrestored", () => { say(""); map.triggerRepaint(); });
 map.on("moveend", () => {
-  if (touched && Date.now() > quietUntil && state.searchable) areaBtn.hidden = false;
+  if (touched && Date.now() > quietUntil && state.searchable && !farOut()) areaBtn.hidden = false;
   touched = false;
 });
 areaBtn.addEventListener("click", () => {
@@ -1916,9 +1955,8 @@ function renderDetail(f) {
     if (state.from !== "here") writeURL(null, true);
   });
   detailView.append(back, closeX());
-  const fig = el("figure", "lm-pic");
+  const fig = el("figure", "lm-pic"); // under the buttons: a picture arriving late does not move them
   fig.hidden = true;
-  detailView.append(fig);
   if (hasPicture(t)) {
     picture(t, 500).then((pic) => {
       if (!pic || state.selected !== f) return;
@@ -1961,7 +1999,7 @@ function renderDetail(f) {
   const phone = (t.phone || t["contact:phone"] || "").split(";")[0].trim();
   if (phone) action(T.call, `tel:${phone.replace(/[^+\d]/g, "")}`, ICON.phone);
   if (/^(node|way|relation)\/\d+$/.test(p.id || "")) action(T.osm, `https://www.openstreetmap.org/${p.id}`, ICON.map);
-  detailView.append(actions);
+  detailView.append(actions, fig);
 
   const rows = el("ul", "lm-rows");
   const row = (icon, content) => {
@@ -2190,7 +2228,8 @@ async function here(ll, symbol, backToRoute = false) {
   if (PICTURES && /^relation\/\d+$/.test(rel || "")) {
     const fig = el("figure", "lm-pic lm-place-pic");
     fig.hidden = true;
-    (hereView.querySelector(".lm-here-actions") || note).before(fig);
+    const acts = hereView.querySelector(".lm-here-actions");
+    if (acts) acts.after(fig); else note.before(fig); // under the buttons: arriving late, it does not move them
     picture({}, 500, rel).then((pic) => {
       if (!pic || ctl.signal.aborted || hereView.hidden) return;
       fig.hidden = false;
@@ -3027,12 +3066,16 @@ function navUpdate(p, rawPos, off = false) {
 // The zoom of navigation follows the speed: the map shows the next 25 seconds of the way ahead of
 // the traveller (a common rule of navigation apps), 120 m at least (on foot) and 1 km at most (fast
 // on a motorway), and it changes gently. Ahead is the map above the traveller, which sits low; tilted
-// at 60 degrees the map shows about twice the ground of a flat one there.
+// at 60 degrees the map shows about twice the ground of a flat one there. By bike and on foot the
+// map is a zoom closer (the metres of a pixel are of tiles of 512 px there, 256 by car): streets and
+// paths, not the town.
 function navZoom(at) {
   const ms = Math.max(0, nav.sim ? (nav.speed || 0) / 3 : nav.speed || 0);
   const ahead = Math.min(1000, Math.max(120, ms * 25));
   const px = mapEl.clientHeight * 0.55 * (nav.flat ? 1 : 2);
-  const target = Math.min(18.6, Math.max(15, Math.log2((78271.5 * Math.cos((at[1] * Math.PI) / 180) * px) / ahead)));
+  const slow = route.mode !== "car";
+  const target = Math.min(slow ? 19.5 : 18.6, Math.max(slow ? 16 : 15,
+    Math.log2(((slow ? 156543 : 78271.5) * Math.cos((at[1] * Math.PI) / 180) * px) / ahead)));
   nav.zoom = nav.zoom == null ? target : nav.zoom + (target - nav.zoom) * 0.25;
   return nav.zoom;
 }

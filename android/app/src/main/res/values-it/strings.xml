@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="offline_title">Nessuna connessione</string>
-    <string name="offline_text">Non è stato possibile caricare hippomaps. La mappa si ricarica da sola appena il telefono torna online.</string>
+    <string name="offline_text">Non è stato possibile caricare HippoMaps. La mappa si ricarica da sola appena il telefono torna online.</string>
     <string name="retry">Riprova</string>
     <string name="nav_channel">Navigazione</string>
-    <string name="nav_running">Navigazione con hippomaps</string>
+    <string name="nav_running">Navigazione con HippoMaps</string>
     <string name="nav_stop">Termina</string>
+    <string name="link_unknown">Questo link non contiene un luogo che HippoMaps possa mostrare.</string>
 </resources>
