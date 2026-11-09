@@ -11,7 +11,8 @@ sentences of the server; the language changed while navigating (no new page); a 
 navigating (the point and the places around, the point as a stop); the traffic button; the map drawn at 2 pixels per point at most, our sources with tiles to zoom 14 only, the
 banner kept between updates of one turn, dark and light switched in place (our layers and the route kept, no new load of the map); a stop and the places along a
 route; navigation drawn at 30 frames a second at most, the camera following, tilted 50 degrees; arrival by bike with Start and fixes that stop short of the end (said once, navigation
-ends); the X clears everything; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
+ends); the X clears everything; the panel of a phone (empty: stays down; the suggestions scroll, a tap picks;
+directions at their top when the keyboard goes); a ride by bike with the location of the device (fixes at 5 m/s): each turn far
 enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
 twice (the voice answered with silence in the test); German texts after the language of the menu; and no
 errors of the page on the way. Needs chromium and websocket-client.
@@ -306,14 +307,14 @@ try:
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
     check(wait("!document.querySelector('.lm-dir-btn').hidden", 3), "the Directions button back after the X")
 
-    # a suggestion picked by a finger: the finger lifting lands on the map (the keyboard went) and opens nothing there
+    # a suggestion picked by a finger (down and up on it): the click after lands on the map (the keyboard went) and opens nothing there
     js("document.querySelector('.lm-input').focus()")
     call("Input.insertText", text="Bern")
     wait("[...document.querySelectorAll('.lm-suggest .lm-opt-place')].some(o => /^Bern/.test(o.textContent))", 20)
     spot = js("(() => { for (let y = 5; y < 400; y += 5) for (const x of [40, 120, 195, 270, 350]) { const e = document.elementFromPoint(x, y);"
               " if (e?.classList.contains('maplibregl-canvas')) return [x, y]; } return null; })()")
-    js("[...document.querySelectorAll('.lm-suggest .lm-opt-place')].find(o => /^Bern/.test(o.textContent))"
-       ".dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }))")
+    js("(() => { const o = [...document.querySelectorAll('.lm-suggest .lm-opt-place')].find(o => /^Bern/.test(o.textContent));"
+       " for (const t of ['pointerdown', 'pointerup']) o.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true })); })()")
     for t in ("mousePressed", "mouseReleased") if spot else ():
         call("Input.dispatchMouseEvent", type=t, x=spot[0], y=spot[1], button="left", clickCount=1)
     check(wait("/Bern/.test(document.querySelector('.lm-title')?.textContent || '')", 40) and not wait("!document.querySelector('.lm-here').hidden", 2),
@@ -513,6 +514,46 @@ try:
     else:
         check(False, "a route by bike for the ride")
     call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+
+    # the panel on a phone: empty, it stays down after a drag up; a finger moved on the suggestions
+    # neither picks one nor moves the map, a tap picks; the keyboard gone, directions back at their top
+    def drag(x, y0, y1, steps=8):
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y0}])
+        for i in range(1, steps + 1):
+            call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": x, "y": y0 + (y1 - y0) * i / steps}])
+            time.sleep(0.03)
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    call("Page.navigate", url=URL)
+    wait("window.hmMap?.loaded() && document.getElementById('app').dataset.sheet === 'peek'", 30)
+    time.sleep(1)
+    b = js("(() => { const r = document.querySelector('.lm-side').getBoundingClientRect(); return [r.left + r.width / 2, r.top + 10]; })()")
+    drag(b[0], b[1], b[1] - 300)
+    time.sleep(0.6)
+    check(js("document.getElementById('app').dataset.sheet === 'peek'"), "the empty panel stays down after a drag up")
+    js("(() => { const i = document.querySelector('.lm-input'); i.focus(); i.value = 'Bahnhofstrasse'; i.dispatchEvent(new Event('input', {bubbles: true})); })()")
+    if wait("document.querySelectorAll('.lm-suggest:not([hidden]) [role=option]').length > 0", 15):
+        L = js("(() => { const r = document.querySelector('.lm-suggest:not([hidden]) [role=option]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+        c0 = js("JSON.stringify(hmMap.getCenter())")
+        drag(L[0], L[1], L[1] - 60, 5)
+        time.sleep(0.6)
+        check(js(f"!!document.querySelector('.lm-suggest:not([hidden])') && document.querySelector('.lm-input').value === 'Bahnhofstrasse' && JSON.stringify(hmMap.getCenter()) === {json.dumps(c0)}"),
+              "a finger moved on the suggestions picks none and leaves the map")
+        tap(".lm-suggest:not([hidden]) [role=option]")
+        check(wait("document.querySelector('.lm-input').value !== 'Bahnhofstrasse' || !document.querySelector('.lm-suggest:not([hidden])')", 5), "a tap on a suggestion picks it")
+    else:
+        check(False, "suggestions for Bahnhofstrasse")
+    call("Page.navigate", url=URL + "/?to=47.36690,8.54500&tn=Bellevue&mode=car")
+    wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=480, deviceScaleFactor=2, mobile=True)  # the keyboard up
+    js("document.querySelector('.lm-end-to input').focus()")
+    time.sleep(0.4)
+    js("document.querySelector('.lm-end-to input').scrollIntoView({block: 'center'})")
+    time.sleep(0.5)
+    scrolled = js("document.querySelector('.lm-body').scrollTop > 20")
+    js("document.querySelector('.lm-end-to input').blur()")
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)  # the keyboard down
+    check(scrolled and wait("document.querySelector('.lm-body').scrollTop === 0 && document.querySelector('.lm-modes').getBoundingClientRect().top >= document.querySelector('.lm-body').getBoundingClientRect().top", 5),
+          "the keyboard gone: directions back at their top, car, bike and walk in view")
 
     # German
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")

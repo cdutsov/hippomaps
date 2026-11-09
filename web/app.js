@@ -1292,6 +1292,7 @@ const sheetHeights = () => ({
 });
 function setSheet(state) {
   if (!phone()) return;
+  if (state !== "peek" && emptyPanel()) state = "peek"; // nothing under the search box: it stays down
   sheet.state = state;
   root.dataset.sheet = state;
   side.style.height = `${sheetHeights()[state]}px`;
@@ -1344,6 +1345,7 @@ for (const zone of [sheetBtn, head]) {
 let swipe = null;
 side.addEventListener("touchstart", (e) => {
   if (!phone() || e.touches.length !== 1) return;
+  if (e.target.closest?.(".lm-suggest")) return void (swipe = null); // the suggestions scroll
   const t = e.touches[0];
   swipe = { x: t.clientX, y: t.clientY, h: side.offsetHeight, mode: "", inList: body.contains(e.target) && !head.contains(e.target) };
 }, { passive: true });
@@ -1500,6 +1502,21 @@ const swallowTap = () => {
   addEventListener("click", eat, true);
   setTimeout(() => removeEventListener("click", eat, true), 800);
 };
+// tapOption: an option of a list of suggestions chosen when the finger lifts where it went down; a
+// finger that moves scrolls the list. The box keeps its focus (no mousedown follows the
+// pointerdown), and the click after the lift does not reach what is under it.
+function tapOption(li, fn) {
+  let at = null;
+  li.addEventListener("pointerdown", (e) => { e.preventDefault(); at = [e.clientX, e.clientY]; });
+  li.addEventListener("pointermove", (e) => { if (at && Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 8) at = null; });
+  li.addEventListener("pointercancel", () => { at = null; }); // the browser scrolls the list
+  li.addEventListener("pointerup", (e) => {
+    if (!at || Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 8) return;
+    at = null;
+    swallowTap();
+    fn();
+  });
+}
 const placeOf = (s) => Object.fromEntries(placeKeys.filter((k) => s[k]).map((k) => [k, s[k]]));
 const renderList = (items) => {
   options = items;
@@ -1513,7 +1530,7 @@ const renderList = (items) => {
     txt.append(el("span", "lm-opt-label", {}, s.label));
     if (s.detail) txt.append(el("span", "lm-opt-detail", {}, s.detail));
     li.append(ic, txt);
-    li.addEventListener("pointerdown", (e) => { e.preventDefault(); swallowTap(); pick(i); }); // at once (a phone: before the box loses its focus)
+    tapOption(li, () => pick(i));
     list.append(li);
   });
   list.hidden = false;
@@ -1593,7 +1610,7 @@ input.addEventListener("focus", () => {
   setSheet("full");
   if (!input.value.trim()) renderList(savedItems());
 });
-input.addEventListener("blur", () => setTimeout(closeList, 120));
+input.addEventListener("blur", () => setTimeout(() => { closeList(); foldIfEmpty(); }, 120));
 // the X clears it all: the text, the results, the place shown, directions; back to the start
 clearBtn.addEventListener("click", () => {
   input.value = "";
@@ -1807,11 +1824,16 @@ qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textCo
   setTimeout(() => { qCopy.textContent = T.copy; }, 1500);
 }));
 
-// an empty search box with nothing under it: the panel folds down to the box (a phone)
+// an empty search box with nothing under it: the panel folds down to the box (a phone), and a
+// drag up does not keep it up
+function emptyPanel() {
+  if (listView.hidden || input.value || document.activeElement === input) return false;
+  try {
+    return !(title.textContent || notes.textContent || results.childElementCount || !status.hidden);
+  } catch { return false; } // the sheet set while the page is still built: not yet
+}
 function foldIfEmpty() {
-  if (listView.hidden || input.value || document.activeElement === input) return;
-  if (title.textContent || notes.textContent || results.childElementCount || !status.hidden) return;
-  setSheet("peek");
+  if (emptyPanel()) setSheet("peek");
 }
 // the start: the map and the search box, nothing under it
 function intro() {
@@ -2693,6 +2715,20 @@ function placeLabel(p) {
   return { label, detail: [kind, where].filter(Boolean).join(" · ") };
 }
 const MAX_STOPS = 8;
+// On a phone the browser scrolls the panel to keep a field above the keyboard; when the keyboard
+// goes (no field of directions in focus), the panel goes back to its top: the modes in view.
+function routeToTop(keyboardGone = false) {
+  if (!phone() || routeView.hidden || (!keyboardGone && document.activeElement?.closest?.(".lm-route-head"))) return;
+  body.scrollTo({ top: 0, behavior: "smooth" });
+}
+{
+  let vh = window.visualViewport?.height || innerHeight;
+  window.visualViewport?.addEventListener("resize", () => {
+    const h = visualViewport.height, grew = h > vh + 80;
+    vh = h;
+    if (grew) routeToTop(true); // the keyboard closed, also with the field still in focus
+  });
+}
 const endOf = (which) => (typeof which === "number" ? route.stops[which] : route[which]);
 function placeField(which) {
   const isStop = typeof which === "number";
@@ -2752,7 +2788,7 @@ function placeField(which) {
       txt.append(el("span", "lm-opt-label", {}, it.label));
       if (it.detail) txt.append(el("span", "lm-opt-detail", {}, it.detail));
       li.append(ic, txt);
-      li.addEventListener("pointerdown", (e) => { e.preventDefault(); swallowTap(); choose(i); }); // at once: on a phone the field loses its focus before a mousedown comes
+      tapOption(li, () => choose(i));
       opts.append(li);
     });
     opts.hidden = false;
@@ -2798,6 +2834,7 @@ function placeField(which) {
     field.placeholder = hint;
     const now = endOf(which);
     if (now && field.value !== now.label) field.value = now.label; // back to the place chosen
+    routeToTop();
   }, 150));
   field.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" && !opts.hidden) { e.preventDefault(); mark(Math.min(items.length - 1, active + 1)); }
