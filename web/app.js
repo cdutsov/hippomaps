@@ -187,7 +187,6 @@ const EN = {
   shading: "Relief shading",
   shadingNote: "Light and shadow of the mountains",
   styles: [["auto", "Day and night"], ["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"]],
-  credit: "Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons. Chains from the name-suggestion-index.",
   voiceCredit: "Voices by Piper; the French voice from the SIWIS database (CC BY 4.0).",
   language: "Language",
   languageNote: "Page, names on the map, directions and voice",
@@ -471,8 +470,10 @@ const showView = (v) => {
   body.scrollTop = 0;
   if (v === listView) setTimeout(foldIfEmpty); // after the caller has filled or cleared the list
 };
-const footText = () => [T.credit, root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" ");
+// the credits of the voices and the traffic; the map credits OpenStreetMap itself, each picture its source
+const footText = () => [root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" ");
 const foot = el("div", "lm-foot", {}, footText());
+foot.hidden = !foot.textContent;
 side.append(sheetBtn, top, form, status, body, foot);
 
 // ------------------------------------------------------------------ the map
@@ -490,8 +491,8 @@ const map = new maplibregl.Map({
   zoom: NEAR ? NEAR[2] : 13,
   hash: "map",
   maxPitch: 85,
-  // DB-IP asks for a link on the page that uses its data (CC BY 4.0)
-  attributionControl: { compact: true, ...(NEAR && { customAttribution: '<a href="https://db-ip.com" target="_blank" rel="noopener">IP Geolocation by DB-IP</a>' }) },
+  // DB-IP (the place of the IP address) is credited in the privacy policy, not on the map
+  attributionControl: { compact: true },
   // at most two pixels of the screen to one of the map: three or more draw a phone screen with more than twice the work
   pixelRatio: Math.min(devicePixelRatio, 2),
 });
@@ -1163,8 +1164,9 @@ langSel.addEventListener("change", () => {
   store.set("hm-lang", langSel.value);
   setLang(langSel.value);
 });
-const menuFootText = () => (TRAFFIC ? `${T.credit} ${T.trafficCredit}` : T.credit);
+const menuFootText = () => (TRAFFIC ? T.trafficCredit : "");
 const menuFoot = el("p", "lm-menu-foot", {}, menuFootText());
+menuFoot.hidden = !menuFoot.textContent;
 // the privacy policy, in German for German, else in English
 const privacyHref = () => root.dataset.privacy.replace(/\/privacy$/, UI === "de" ? "/de/privacy" : "/privacy");
 const privacyLink = el("a", "lm-menu-privacy", { href: privacyHref() }, T.privacy);

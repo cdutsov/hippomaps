@@ -127,4 +127,4 @@ the names of the iD presets (id-tagging-schema 7.2.0, ISC), built by `server/lab
 
 Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons under the licence each credit names. Traffic:
 Federal Roads Office (FEDRO) Traffic Data Platform (TDP). Places of IP addresses: IP Geolocation by DB-IP (CC BY 4.0, not in the
-repository; the map credits it with a link when it opens there).
+repository; the privacy policy credits it with a link).

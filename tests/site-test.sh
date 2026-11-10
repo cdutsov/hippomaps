@@ -64,10 +64,11 @@ code=$(get "$PAGE/robots.txt")
 [[ $code == 200 ]] && grep -q "^Sitemap: $PAGE/sitemap.xml" "$TMP/b" && grep -q "^Disallow: /api/" "$TMP/b" && ok "robots.txt with the sitemap" || ko "robots.txt: HTTP $code"
 code=$(get "$PAGE/sitemap.xml")
 [[ $code == 200 ]] && grep -qF "<loc>$PAGE/</loc>" "$TMP/b" && ok "sitemap.xml" || ko "sitemap.xml: HTTP $code"
-# the privacy policy (Google Play asks for its address; the menu of the app links it): English and German, in the sitemap
+# the privacy policy (Google Play asks for its address; the menu of the app links it): English and German, in the sitemap;
+# it credits DB-IP with a link (CC BY 4.0; the map does not)
 for pr in "privacy|Privacy policy" "de/privacy|Datenschutzerklärung"; do
 	code=$(get "$PAGE/${pr%%|*}")
-	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -q 'info@overpass.ch' "$TMP/b" && [[ -z $(hdr X-Robots-Tag) ]] && ok "the privacy policy /${pr%%|*}" || ko "/${pr%%|*}: HTTP $code"
+	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -q 'info@overpass.ch' "$TMP/b" && grep -qF '<a href="https://db-ip.com">IP Geolocation by DB-IP</a>' "$TMP/b" && [[ -z $(hdr X-Robots-Tag) ]] && ok "the privacy policy /${pr%%|*}, with the credit of DB-IP" || ko "/${pr%%|*}: HTTP $code"
 done
 code=$(get "$PAGE/sitemap.xml")
 grep -qF "<loc>$PAGE/de/privacy</loc>" "$TMP/b" && ok "the privacy policy in the sitemap" || ko "the sitemap does not list the privacy policy"

@@ -315,11 +315,21 @@ func TestGeoIPPage(t *testing.T) {
 	if w := get(testServer(t, nil), "/labs/maps", "X-Forwarded-For", "192.0.2.10"); strings.Contains(w.Body.String(), "data-near") {
 		t.Error("a place without a database")
 	}
-	// the page opens the map there, credits DB-IP (CC BY 4.0: a link on the page that uses it), and takes the sun from there
+	// the page opens the map there and takes the sun from there; the map does not credit DB-IP
 	app, _ := fs.ReadFile(web.Files, "app.js")
-	for _, want := range []string{"root.dataset.near", `href="https://db-ip.com"`, "IP Geolocation by DB-IP", "let meForSun = NEAR"} {
+	for _, want := range []string{"root.dataset.near", "let meForSun = NEAR"} {
 		if !strings.Contains(string(app), want) {
 			t.Errorf("app.js: no %s", want)
+		}
+	}
+	if strings.Contains(string(app), "db-ip.com") {
+		t.Error("app.js: the credit of DB-IP on the map")
+	}
+	// the privacy policy credits DB-IP with a link (CC BY 4.0), in English and German
+	for _, f := range []string{"privacy.html", "privacy-de.html"} {
+		b, _ := fs.ReadFile(web.Files, f)
+		if !strings.Contains(string(b), `<a href="https://db-ip.com">IP Geolocation by DB-IP</a>`) {
+			t.Errorf("%s: no credit of DB-IP", f)
 		}
 	}
 }

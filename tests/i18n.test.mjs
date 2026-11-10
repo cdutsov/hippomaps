@@ -21,6 +21,12 @@ for (const lang of ["de", "fr", "it"]) {
     assert.deepEqual(missing, [], `texts without ${lang}: ${missing.join(", ")}`);
   });
 }
+// the side panel and the menu credit only the voices and the traffic: the map credits OpenStreetMap, each picture
+// its source, and the chains are not credited
+test("no line of credits for the map data, the pictures and the chains", () => {
+  for (const [lang, t] of [["en", EN], ...["de", "fr", "it"].map((l) => [l, all[l]])]) assert.ok(!("credit" in t), `${lang} credit`);
+  assert.ok(!/name-suggestion-index|Map data ©/.test(src), "app.js");
+});
 test("the search in navigation in each language", () => {
   for (const lang of ["de", "fr", "it"]) for (const k of ["navFind", "navFindNone", "useAsTo", "useAsStop"]) assert.ok(all[lang][k] && all[lang][k] !== EN[k], `${lang} ${k}`);
 });
