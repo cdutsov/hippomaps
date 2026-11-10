@@ -33,12 +33,14 @@ echo "Page"
 code=$(get "$PAGE")
 [[ $code == 200 ]] && ok "the page answers" || ko "the page: HTTP $code"
 cp "$TMP/b" "$TMP/page"
-# the map opens near the visitor: the place of their IP address (here that of this machine) in the page, which no cache
-# shares; the database (GEOIP_DB) opens and is renewed monthly
+# the map opens near the visitor: the place of their IP address in the page, which no cache shares; the database
+# (GEOIP_DB) opens and is renewed monthly. This machine reaches its own server from a private address (through Docker):
+# the server is asked directly, as by a visitor at 81.62.0.1 (Swisscom)
+[[ $(hdr Cache-Control) == *private* ]] && ok "the page is kept by no shared cache" || ko "Cache-Control of the page: $(hdr Cache-Control)"
 if gdb=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' hippomaps 2>/dev/null | sed -n 's/^GEOIP_DB=//p') && [[ -n $gdb ]]; then
-	near=$(grep -o 'data-near="[^"]*"' "$TMP/page" | head -n1 | cut -d'"' -f2)
-	[[ $near =~ ^-?[0-9]{1,2}\.[0-9]{3},-?[0-9]{1,3}\.[0-9]{3},(5|11)$ && $(hdr Cache-Control) == *private* ]] &&
-		ok "the page has the place of the IP address ($near)" || ko "the place of the IP address: '$near', Cache-Control $(hdr Cache-Control)"
+	near=$(docker exec hippomaps wget -qO- --header 'X-Forwarded-For: 81.62.0.1' "http://127.0.0.1:8096$(sed -E 's#https?://[^/]*##' <<<"$PAGE")/" 2>&1 |
+		grep -o 'data-near="[^"]*"' | head -n1 | cut -d'"' -f2)
+	[[ $near =~ ^-?[0-9]{1,2}\.[0-9]{3},-?[0-9]{1,3}\.[0-9]{3},(5|11)$ ]] && ok "the page has the place of the IP address of a visitor ($near)" || ko "the place of the IP address of a visitor: '$near'"
 	found=$(docker exec hippomaps hippomaps geoip "$gdb" 8.8.8.8 2>&1)
 	[[ $found =~ ^8\.8\.8\.8\ -?[0-9.]+,-?[0-9.]+\ (5|11)$ ]] && ok "the database of IP addresses opens ($found)" || ko "the database of IP addresses: $found"
 	age=$(( ($(date +%s) - $(docker exec hippomaps stat -c %Y "$gdb" 2>/dev/null || echo 0)) / 86400 ))

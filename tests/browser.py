@@ -80,7 +80,7 @@ try:
         except Exception:
             time.sleep(0.2)
     ws = websocket.create_connection([t for t in tabs if t["type"] == "page"][0]["webSocketDebuggerUrl"], timeout=60)
-    n, errors, said_n = [0], [], [0]
+    n, errors, said_n, doc = [0], [], [0], [None]
 
     def call(method, **params):
         n[0] += 1
@@ -89,10 +89,14 @@ try:
             m = json.loads(ws.recv())
             if m.get("method") == "Runtime.exceptionThrown":
                 errors.append(m["params"]["exceptionDetails"].get("exception", {}).get("description", "")[:200])
-            if m.get("method") == "Fetch.requestPaused":  # the voice, answered here with a short silence (no load on Piper)
+            if m.get("method") == "Fetch.requestPaused":
+                if doc[0] and m["params"].get("resourceType") == "Document":  # the page as given in doc
+                    body, ctype = base64.b64encode(doc[0].encode()).decode(), "text/html; charset=utf-8"
+                else:  # the voice, answered here with a short silence (no load on Piper)
+                    body, ctype = SILENCE, "audio/wav"
+                    said_n[0] += 1
                 ws.send(json.dumps({"id": 10**7 + n[0], "method": "Fetch.fulfillRequest", "params": {"requestId": m["params"]["requestId"],
-                    "responseCode": 200, "responseHeaders": [{"name": "Content-Type", "value": "audio/wav"}], "body": SILENCE}}))
-                said_n[0] += 1
+                    "responseCode": 200, "responseHeaders": [{"name": "Content-Type", "value": ctype}], "body": body}}))
                 continue
             if m.get("method") == "Runtime.consoleAPICalled" and m["params"]["type"] == "error":
                 errors.append(" ".join(str(a.get("value", a.get("description", ""))) for a in m["params"]["args"])[:200])
@@ -127,15 +131,26 @@ try:
     call("Page.enable")
     call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
     call("Emulation.setTouchEmulationEnabled", enabled=True)
-    # a first visit, the location not given: the map opens at the place of the IP address (of this machine), with
-    # the credit of DB-IP; a server without the database opens it in Zurich
-    call("Page.navigate", url=URL)
-    wait("window.hmMap?.loaded()", 30)
-    near = js("document.getElementById('app')?.dataset.near || ''")
-    lat, lon, z = map(float, near.split(",")) if near else (47.37, 8.54, 13)
-    check(js(f"(() => {{ const c = hmMap.getCenter(); return Math.abs(c.lat - {lat}) < 0.001 && Math.abs(c.lng - {lon}) < 0.001 && Math.abs(hmMap.getZoom() - {z}) < 0.01; }})()"),
-          f"the location not given, the map opens at the place of the IP address ({near})" if near else "the location not given and no place of the IP address: the map opens in Zurich")
-    check(js("!!document.querySelector('.maplibregl-ctrl-attrib a[href=\"https://db-ip.com\"]')") == bool(near), "the credit of DB-IP with the place of the IP address")
+    # a first visit, the location not given: the map opens at the place of the IP address, with the credit of DB-IP;
+    # without a place (no database, or a private address) in Zurich, without the credit
+    def first_visit(what):
+        call("Page.navigate", url=URL)
+        wait("window.hmMap?.loaded()", 30)
+        near = js("document.getElementById('app')?.dataset.near || ''")
+        lat, lon, z = map(float, near.split(",")) if near else (47.37, 8.54, 13)
+        check(js(f"(() => {{ const c = hmMap.getCenter(); return Math.abs(c.lat - {lat}) < 0.001 && Math.abs(c.lng - {lon}) < 0.001 && Math.abs(hmMap.getZoom() - {z}) < 0.01; }})()"),
+              f"the location not given, the map opens at the place of the IP address ({what}{near})" if near else "the location not given and no place of the IP address: the map opens in Zurich")
+        check(js("!!document.querySelector('.maplibregl-ctrl-attrib a[href=\"https://db-ip.com\"]')") == bool(near), "the credit of DB-IP with the place of the IP address" if near else "no credit of DB-IP without a place")
+        return near
+    if not first_visit(""):
+        # this machine reaches its own server from a private address (through Docker): the page once more, as the
+        # server gives it to a visitor in Sydney
+        page = urllib.request.urlopen(URL + "/").read().decode()
+        doc[0] = page.replace('<div class="lm" id="app"', '<div class="lm" id="app" data-near="-33.869,151.209,11"', 1)
+        call("Fetch.enable", patterns=[{"urlPattern": URL + "/*", "resourceType": "Document"}])
+        first_visit("a visitor in Sydney: ")
+        call("Fetch.disable")
+        doc[0] = None
     call("Browser.grantPermissions", origin=URL.split("/labs")[0], permissions=["geolocation"])
     call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
     call("Page.navigate", url=URL)
