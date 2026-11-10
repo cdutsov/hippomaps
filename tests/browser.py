@@ -10,7 +10,7 @@ time; Preview navigates: the banner, the speed now, the speed limit, the travell
 sentences of the server; the language changed while navigating (no new page); a long press while
 navigating (the point and the places around, the point as a stop); the traffic button; the map drawn at 2 pixels per point at most, our sources with tiles to zoom 14 only, the
 banner kept between updates of one turn, dark and light switched in place (our layers and the route kept, no new load of the map); a stop and the places along a
-route; navigation drawn at 30 frames a second at most, the camera following, tilted 50 degrees; arrival by bike with Start and fixes that stop short of the end (said once, navigation
+route; navigation drawn at 30 frames a second at most, the camera following, tilted 50 degrees, the next turn right under the banner; arrival by bike with Start and fixes that stop short of the end (said once, navigation
 ends); the X clears everything; the panel of a phone (empty: stays down; the suggestions scroll, a tap picks;
 directions at their top when the keyboard goes; up and down in one movement when the keyboard comes and goes, a field of
 directions takes it to the top); a place searched in navigation as the destination; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
@@ -216,6 +216,17 @@ try:
     time.sleep(2)
     fps = js("(() => { hmMap.off('render', hmCount); return hmRenders * 1000 / (performance.now() - hmT0); })()")
     check(fps is not None and fps <= 33, f"the map draws at most 30 frames a second while navigating ({fps or 0:.1f})")
+    # the next turn ("then") hangs right under the banner, whatever its height: one and two lines of instruction, in
+    # one go (the next update sets them again)
+    gaps = js("""(() => { const i = document.querySelector('.lm-nav-instr'), t = document.querySelector('.lm-nav-then'),
+      b = document.querySelector('.lm-nav-banner'), was = [i.textContent, t.hidden, t.textContent], out = [];
+      t.hidden = false; t.textContent = 'Then';
+      for (const s of ['Turn right', 'Turn right onto Papiermühlestrasse toward Zürich, Basel and Biel/Bienne, then keep left']) {
+        i.textContent = s; out.push(Math.round(t.getBoundingClientRect().top - b.getBoundingClientRect().bottom), Math.round(b.getBoundingClientRect().height));
+      }
+      [i.textContent, t.hidden, t.textContent] = was; return out; })()""")
+    check(gaps and abs(gaps[0]) <= 1 and abs(gaps[2]) <= 1 and gaps[3] > gaps[1],
+          f"the next turn right under the banner, one and two lines (gap, height: {gaps})")
     # the menu while navigating: the map keeps following
     js("document.querySelector('.lm-map-burger').click()")
     time.sleep(0.5)

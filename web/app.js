@@ -3557,7 +3557,12 @@ navBottom.append(navMute, navEta, navAlongBtn, navOverview, navEnd);
 const navAlong = el("div", "lm-nav-along");
 navAlong.hidden = true;
 
-navBox.append(navBanner, navLanes, navSign, navThen, navLimit, navSpeed, navElev, navCenter, navAlong, navBottom);
+// the top in one column (.lm-nav-head): the banner; under it the lanes and the next turn on the left, the sign on the right
+const navHead = el("div", "lm-nav-head"), navUnder = el("div", "lm-nav-under"), navLeft = el("div", "lm-nav-left");
+navLeft.append(navLanes, navThen);
+navUnder.append(navLeft, navSign);
+navHead.append(navBanner, navUnder);
+navBox.append(navHead, navLimit, navSpeed, navElev, navCenter, navAlong, navBottom);
 mapEl.append(navBox);
 
 // distances on the earth, in metres, near a point: x east, y north
