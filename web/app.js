@@ -4463,6 +4463,15 @@ navOverview.addEventListener("click", () => {
   if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 140, bottom: 110, left: 40, right: 40 }, pitch: 0, bearing: 0, maxZoom: 16, duration: 700 });
 });
 navCenter.addEventListener("click", () => { nav.follow = true; navCenter.hidden = true; });
+// The visitor zooms out of tilted navigation: the camera turns from the tilt to looking straight down,
+// tilted at zoom 15 and above, flat at 12 and below; zoomed in again it tilts back. The zoom buttons,
+// the wheel and two fingers; not the camera that follows (no originalEvent), not the 2D map.
+const navPitchFor = (z) => NAV_PITCH * Math.min(1, Math.max(0, (z - 12) / 3));
+map.on("zoom", (e) => {
+  if (!e.originalEvent || !nav.on || nav.follow || nav.flat) return;
+  const p = navPitchFor(map.getZoom());
+  if (Math.abs(map.getPitch() - p) > 0.5) map.setPitch(p);
+});
 // the visitor moves the map: it stops following until Re-centre
 for (const ev of ["pointerdown", "wheel", "touchstart"]) {
   mapEl.addEventListener(ev, (e) => {
