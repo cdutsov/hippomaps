@@ -365,21 +365,23 @@ try:
           and not js("document.getElementById('app').classList.contains('lm-navigating')"),
           "a tapped point and the Directions button: the route to it, with Preview and Start")
     # the destination dragged with a finger (from 8 px beside it): the map does not pan, the point where it was let go,
-    # a new route; the release opens nothing
+    # a new route asked; the release opens nothing
     js("(() => { const f = hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to'); hmMap.jumpTo({ center: f.geometry.coordinates, padding: { bottom: 420 } }); })()")
     time.sleep(1)
     to_px = js("(() => { const f = hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to'); const p = hmMap.project(f.geometry.coordinates); return [p.x, p.y]; })()")
     if to_px:
         want = js(f"(() => {{ const l = hmMap.unproject([{to_px[0] - 60}, {to_px[1] + 40}]); return [l.lng, l.lat]; }})()")
-        line = "JSON.stringify(hmMap.getStyle().sources['lm-route'].data.features.find(f => f.geometry.type === 'LineString')?.geometry.coordinates.at(-1))"
-        c0, line0 = js("JSON.stringify(hmMap.getCenter())"), js(line)
+        # the routes the page asks for (the answer may also be a message: some streets of the old town close at night)
+        js("(() => { window.hmRouteAsks = 0; const f0 = window.fetch; window.fetch = function (u) { if (String(u).includes('/api/route')) hmRouteAsks++; return f0.apply(this, arguments); }; })()")
+        c0 = js("JSON.stringify(hmMap.getCenter())")
         call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": to_px[0] + 8, "y": to_px[1]}])
         for k in range(1, 9):
             call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": to_px[0] + 8 - 60 * k / 8, "y": to_px[1] + 40 * k / 8}])
             time.sleep(0.03)
         moved = js("JSON.stringify(hmMap.getCenter())") != c0  # before the new route fits the map to it
         call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
-        check(wait(f"{line} && {line} !== {json.dumps(line0)} && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30), "the destination dragged: a new route")
+        check(wait("hmRouteAsks > 0 && (document.querySelector('.lm-route-sum')?.textContent.includes('min') || /[^…]$/.test(document.querySelector('.lm-route-msg')?.textContent || ''))", 30),
+              "the destination dragged: a new route asked and answered")
         got = js("hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to')?.geometry.coordinates")
         check(not moved and got and abs(got[0] - want[0]) < 2e-4 and abs(got[1] - want[1]) < 2e-4,
               f"the destination where the finger let go, the map not panned ({got}, {want}, panned: {moved})")
