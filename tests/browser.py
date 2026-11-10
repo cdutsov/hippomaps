@@ -585,52 +585,6 @@ try:
     said = js("window.hmSaid || []")
     check(len([t for t in said if re.search(r"have arrived", t, re.I)]) == 1, f"the arrival said once ({said[-3:]})")
     call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
-    # navigation on a long route by car (Zurich to Winterthur, Preview), for what takes a while: pinches out of tilted
-    # navigation; the language of directions and voice apart from that of the page
-    js("window.hmOld = 1")
-    call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=47.50020,8.72380&tn=Winterthur&mode=car")
-    if wait("!window.hmOld && document.querySelector('.lm-nav-go .lm-chip') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40):
-        js("document.querySelector('.lm-nav-go .lm-chip').click()")
-        wait("document.getElementById('app').classList.contains('lm-navigating')", 5)
-        time.sleep(3)
-        # pinches out of tilted navigation, also below zoom 15 where the camera turns to look straight down: each pinch
-        # zooms as far as the fingers go (300 px to 100 px: 1.5 zoom levels) and the tilt follows after it (a change of
-        # the tilt during the gesture stopped it at every step); then Re-centre
-        def pinch(a=45, b=345, c=145, d=245, y=480):
-            call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": a, "y": y, "id": 1}, {"x": b, "y": y, "id": 2}])
-            for k in range(1, 13):
-                call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": a + (c - a) * k / 12, "y": y, "id": 1}, {"x": b + (d - b) * k / 12, "y": y, "id": 2}])
-                time.sleep(0.03)
-            call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
-        outs = []
-        for _ in range(4):
-            z0 = js("hmMap.getZoom()")
-            pinch()
-            time.sleep(1.2)
-            outs.append(round(z0 - js("hmMap.getZoom()"), 2))
-        zp = js("[hmMap.getZoom(), hmMap.getPitch()]") or [0, -9]
-        want = 50 * min(1, max(0, (zp[0] - 12) / 3))
-        check(min(outs) > 1.2 and abs(zp[1] - want) < 2,
-              f"pinches out of navigation: each zooms out as far as the fingers go, then the tilt of the zoom ({outs}, tilt {zp[1]:.1f} at zoom {zp[0]:.2f})")
-        js("document.querySelector('.lm-nav-center')?.click()")
-        wait("document.querySelector('.lm-nav-center').hidden && Math.abs(hmMap.getPitch() - 50) < 1", 10)
-        # the language of navigation apart from that of the page: Bulgarian while navigating; the page stays in English,
-        # the route and the voice are asked in Bulgarian; "Like the page" brings English back
-        res = "performance.getEntriesByType('resource')"
-        js("(() => { const s = document.querySelector('.lm-nav-lang-select'); s.value = 'bg'; s.dispatchEvent(new Event('change')) })()")
-        check(wait(f"{res}.some(e => e.name.includes('/api/route') && e.name.includes('lang=bg'))", 20)
-              and wait(f"{res}.some(e => e.name.includes('/api/say') && e.name.includes('lang=bg'))", 20)
-              and js("document.documentElement.lang === 'en' && /search/i.test(document.querySelector('.lm-input').getAttribute('aria-label')) && localStorage.getItem('hm-nav-lang') === 'bg'")
-              and js("document.getElementById('app').classList.contains('lm-navigating')"),
-              "Directions and voice in Bulgarian while navigating: the page in English, the route and the voice in Bulgarian")
-        en0 = js(f"{res}.filter(e => e.name.includes('/api/route') && e.name.includes('lang=en')).length")
-        js("(() => { const s = document.querySelector('.lm-nav-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })()")
-        check(wait(f"{res}.filter(e => e.name.includes('/api/route') && e.name.includes('lang=en')).length > {en0}", 20)
-              and js("localStorage.getItem('hm-nav-lang') === ''"), "Directions and voice like the page: the route in English again")
-        js("document.querySelector('.lm-nav-x')?.click()")
-        wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
-    else:
-        check(False, "a long route by car for Preview")
     # a stop on the way, and the places along the route
     call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&via=47.05020,8.30930&vn=Lucerne&to=46.94900,7.43910&tn=Bern&mode=car")
     check(wait("document.querySelectorAll('.lm-end-stop').length === 1 && document.querySelectorAll('.lm-step-stop').length === 1", 40),
@@ -864,6 +818,53 @@ try:
         check(False, "the Restaurants bubble in German: no results")
     js("localStorage.removeItem('hm-lang')")
 
+    # navigation on a long route by car (Zurich to Winterthur, Preview), for what takes a while: pinches out of tilted
+    # navigation; the language of directions and voice apart from that of the page. Last: before the panel on a phone
+    # it made a tap on a suggestion there miss now and then
+    js("window.hmOld = 1")
+    call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=47.50020,8.72380&tn=Winterthur&mode=car")
+    if wait("!window.hmOld && document.querySelector('.lm-nav-go .lm-chip') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40):
+        js("document.querySelector('.lm-nav-go .lm-chip').click()")
+        wait("document.getElementById('app').classList.contains('lm-navigating')", 5)
+        time.sleep(3)
+        # pinches out of tilted navigation, also below zoom 15 where the camera turns to look straight down: each pinch
+        # zooms as far as the fingers go (300 px to 100 px: 1.5 zoom levels) and the tilt follows after it (a change of
+        # the tilt during the gesture stopped it at every step); then Re-centre
+        def pinch(a=45, b=345, c=145, d=245, y=480):
+            call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": a, "y": y, "id": 1}, {"x": b, "y": y, "id": 2}])
+            for k in range(1, 13):
+                call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": a + (c - a) * k / 12, "y": y, "id": 1}, {"x": b + (d - b) * k / 12, "y": y, "id": 2}])
+                time.sleep(0.03)
+            call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        outs = []
+        for _ in range(4):
+            z0 = js("hmMap.getZoom()")
+            pinch()
+            time.sleep(1.2)
+            outs.append(round(z0 - js("hmMap.getZoom()"), 2))
+        zp = js("[hmMap.getZoom(), hmMap.getPitch()]") or [0, -9]
+        want = 50 * min(1, max(0, (zp[0] - 12) / 3))
+        check(min(outs) > 1.2 and abs(zp[1] - want) < 2,
+              f"pinches out of navigation: each zooms out as far as the fingers go, then the tilt of the zoom ({outs}, tilt {zp[1]:.1f} at zoom {zp[0]:.2f})")
+        js("document.querySelector('.lm-nav-center')?.click()")
+        wait("document.querySelector('.lm-nav-center').hidden && Math.abs(hmMap.getPitch() - 50) < 1", 10)
+        # the language of navigation apart from that of the page: Bulgarian while navigating; the page stays in English,
+        # the route and the voice are asked in Bulgarian; "Like the page" brings English back
+        res = "performance.getEntriesByType('resource')"
+        js("(() => { const s = document.querySelector('.lm-nav-lang-select'); s.value = 'bg'; s.dispatchEvent(new Event('change')) })()")
+        check(wait(f"{res}.some(e => e.name.includes('/api/route') && e.name.includes('lang=bg'))", 20)
+              and wait(f"{res}.some(e => e.name.includes('/api/say') && e.name.includes('lang=bg'))", 20)
+              and js("document.documentElement.lang === 'en' && /search/i.test(document.querySelector('.lm-input').getAttribute('aria-label')) && localStorage.getItem('hm-nav-lang') === 'bg'")
+              and js("document.getElementById('app').classList.contains('lm-navigating')"),
+              "Directions and voice in Bulgarian while navigating: the page in English, the route and the voice in Bulgarian")
+        en0 = js(f"{res}.filter(e => e.name.includes('/api/route') && e.name.includes('lang=en')).length")
+        js("(() => { const s = document.querySelector('.lm-nav-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })()")
+        check(wait(f"{res}.filter(e => e.name.includes('/api/route') && e.name.includes('lang=en')).length > {en0}", 20)
+              and js("localStorage.getItem('hm-nav-lang') === ''"), "Directions and voice like the page: the route in English again")
+        js("document.querySelector('.lm-nav-x')?.click()")
+        wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+    else:
+        check(False, "a long route by car for Preview")
     real = [e for e in errors if "Map cannot fit" not in e]
     check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
 finally:
