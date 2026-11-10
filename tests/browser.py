@@ -397,8 +397,14 @@ try:
 
     # the bubbles: a search of the map view; Transit switches its lines
     js("[...document.querySelectorAll('.lm-bubble')].find(b => /Restaurants/.test(b.textContent))?.click()")
-    check(wait("/\\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelector('.lm-input').value === 'restaurants'", 60),
+    check(wait("/\\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelector('.lm-input').value === 'Restaurants'", 60),
           "the Restaurants bubble searches the map view")
+    # in another language, a bubble searches the words it shows (Ristoranti, not restaurants)
+    js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'it'; s.dispatchEvent(new Event('change')) })()")
+    js("[...document.querySelectorAll('.lm-bubble')].find(b => b.textContent === 'Ristoranti')?.click()")
+    check(wait("/\\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelector('.lm-input').value === 'Ristoranti'", 60),
+          "in Italian the bubble searches Ristoranti, the word it shows")
+    js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })(); localStorage.removeItem('hm-lang')")
     if js("!!document.getElementById('app').dataset.transit"):
         js("document.querySelector('.lm-bubble-transit').click()")
         check(js("document.querySelector('.lm-bubble-transit').getAttribute('aria-pressed') === 'true'"), "the Transit bubble switches the lines on")

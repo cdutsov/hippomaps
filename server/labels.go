@@ -260,6 +260,11 @@ var (
 	named    = [3]string{" namens “", " nommé “", " chiamato “"}
 	withWord = [3]string{" mit ", " avec ", " con "}
 	starsTo  = [3]string{"$1 Sterne", "$1 étoiles", "$1 stelle"}
+	// a line by its number: "Bus line 31"
+	lineRe = regexp.MustCompile(`^(Bus|Trolleybus|Tram|Metro|Ferry|Train|Transit) line (\S+)$`)
+	lineTo = map[string][3]string{"Bus": {"Buslinie", "Ligne de bus", "Linea bus"}, "Trolleybus": {"Trolleybuslinie", "Ligne de trolleybus", "Linea filobus"},
+		"Tram": {"Tramlinie", "Ligne de tram", "Linea tram"}, "Metro": {"Metrolinie", "Ligne de métro", "Linea metropolitana"},
+		"Ferry": {"Schiffslinie", "Ligne de bateau", "Linea battello"}, "Train": {"Linie", "Ligne", "Linea"}, "Transit": {"Linie", "Ligne", "Linea"}}
 )
 
 // readingIn puts the reading of a search ("vegan: Restaurant · open now") in language i
@@ -287,6 +292,8 @@ func readingIn(s string, i int) string {
 	}
 	if m := quoteRe.FindStringSubmatch(what); m != nil {
 		what = quoteTo[m[1]][i-1] + " “" + m[2] + "”"
+	} else if m := lineRe.FindStringSubmatch(what); m != nil {
+		what = lineTo[m[1]][i-1] + " " + m[2]
 	} else {
 		tail := ""
 		for _, t := range []struct {

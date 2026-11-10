@@ -1032,7 +1032,8 @@ async function transitSearch(q, text) {
 }
 
 // ------------------------------------------------------------------ the bubbles
-// Over the map: searches of the map view in a tap (fewer on a phone), and Transit, which switches its lines
+// Over the map: searches of the map view in a tap (fewer on a phone), and Transit, which switches its lines.
+// A bubble searches the words it shows, in the language of the page (also after a change of it)
 const bubbles = el("div", "lm-bubbles");
 for (const [q, label, wide] of T.bubbles) {
   if (q === "transit" && !TRANSIT) continue;
@@ -1040,7 +1041,7 @@ for (const [q, label, wide] of T.bubbles) {
   if (q === "transit") {
     b.setAttribute("aria-pressed", String(look.transit));
     b.addEventListener("click", () => setTransit(!look.transit));
-  } else b.addEventListener("click", () => run(q, {}));
+  } else b.addEventListener("click", () => run(b.textContent.trim(), {}));
   bubbles.append(b);
 }
 mapEl.append(bubbles);

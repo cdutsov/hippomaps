@@ -24,6 +24,9 @@ func TestUnderstoodIn(t *testing.T) {
 		{"chain “Migros”, in 50 × 50 km around the view", "Kette “Migros”, in 50 × 50 km um den Kartenausschnitt", "chaîne “Migros”, dans 50 × 50 km autour de la vue de la carte", "catena “Migros”, in 50 × 50 km intorno alla vista della mappa"},
 		{"Cafés, Restaurant, in the view", "Cafés, Restaurant, im Kartenausschnitt", "Cafés, Restaurant, dans la vue de la carte", "Caffè, Ristorante, nella vista della mappa"},
 		{"Bern (Schweiz · city)", "Bern (Schweiz · Stadt)", "Bern (Schweiz · ville)", "Bern (Schweiz · città)"},
+		{"Bus line 31, in the view", "Buslinie 31, im Kartenausschnitt", "Ligne de bus 31, dans la vue de la carte", "Linea bus 31, nella vista della mappa"},
+		{"Train line S3, inside the boundary of Zürich", "Linie S3, in Zürich", "Ligne S3, dans les limites de Zürich", "Linea S3, entro i confini di Zürich"},
+		{"Cafe named “board game”, in the view", "Café namens “board game”, im Kartenausschnitt", "Café nommé “board game”, dans la vue de la carte", "Caffè chiamato “board game”, nella vista della mappa"},
 		{"something we do not know", "something we do not know", "something we do not know", "something we do not know"},
 	} {
 		for i, want := range []string{c.de, c.fr, c.it} {

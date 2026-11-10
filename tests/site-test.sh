@@ -163,6 +163,24 @@ if [[ -f $HERE/nav-announce.test.mjs && -f $HERE/../web/app.js ]] && command -v 
 	else
 		ko "the node tests of the source: $(grep -m1 -A2 '^✖' <<<"$out" | tr '\n' ' ')"
 	fi
+	# the bubbles over the map search the words they show: each, in each language, is a feature
+	# searched in the view. /query reads the sentence without Overpass; on the server the search
+	# container itself, so that the 32 requests do not count against the searches of this address
+	search="$PAGE/api/search"
+	ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' hippomaps-search 2>/dev/null)
+	[[ -n ${ip%% *} ]] && search="http://${ip%% *}:8095/labs"
+	labels=$(docker run --rm -v "$(cd "$HERE/.." && pwd)":/w:ro -w /w node:24.21.0-alpine3.23 node --input-type=module -e '
+import { texts } from "./web/i18n.js"; import { readFileSync } from "node:fs";
+const en = new Function(`return ${readFileSync("web/app.js", "utf8").match(/\n  bubbles: (\[\[[\s\S]*?\]\]),\n/)[1]}`)();
+const all = texts(String);
+for (const [l, b] of [["en", en], ...["de", "fr", "it"].map((l) => [l, all[l].bubbles])]) for (const [q, label] of b) if (q !== "transit") console.log(`${l}\t${label}`);' 2>&1)
+	bad=() n=0
+	while IFS=$'\t' read -r l label; do
+		n=$((n + 1))
+		get -G "$search/query" --data-urlencode "q=$label" --data-urlencode "lang=$l" --data-urlencode "bbox=8.50,47.36,8.56,47.39" >/dev/null
+		jq -e '(.query // "") | contains("(47.36000,8.50000,47.39000,8.56000)") and (contains("brand") | not)' "$TMP/b" >/dev/null 2>&1 || bad+=("$l $label")
+	done <<<"$labels"
+	((n >= 32 && ${#bad[@]} == 0)) && ok "the bubbles search what they show, in the view ($n labels in 4 languages)" || ko "bubbles not searched in the view ($n labels): ${bad[*]:-none read}"
 fi
 
 # the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about two minutes
