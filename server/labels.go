@@ -375,6 +375,8 @@ var notes = phrases(
 		"$1 Ergebnisse; diese Antwort enthält $2 davon. Die Abfrage hat keine Grenze.",
 		"$1 résultats ; cette réponse en contient $2. La requête n’a pas de limite.",
 		"$1 risultati; questa risposta ne contiene $2. La query non ha limiti."},
+	[4]string{`Only the first ([\d']+) of ([\d']+) were tested\.`,
+		"Nur die ersten $1 von $2 wurden geprüft.", "Seuls les $1 premiers sur $2 ont été vérifiés.", "Solo i primi $1 su $2 sono stati controllati."},
 	[4]string{`OpenStreetMap has nothing for “(.+)”: the search leaves it out\.`,
 		"OpenStreetMap hat nichts für “$1”: die Suche lässt es weg.",
 		"OpenStreetMap n’a rien pour “$1” : la recherche l’ignore.",

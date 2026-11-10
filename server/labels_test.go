@@ -129,12 +129,14 @@ func TestSearchInLanguage(t *testing.T) {
 	}
 }
 
-// the notes of a line found by its number with letters beside it, and of a name left out
+// the notes of a line found by its number with letters beside it, of a name left out, and of a search
+// of more places than Overpass gives
 func TestLineNotesIn(t *testing.T) {
 	for _, c := range []struct{ en, de string }{
 		{"No line is named 28 exactly: the search shows those with letters beside the number (28E, M3).",
 			"Keine Linie heisst genau 28: die Suche zeigt jene mit Buchstaben neben der Nummer (28E, M3)."},
 		{"Nothing named “jazz” was found: the search leaves out the name.", "Nichts mit dem Namen “jazz” gefunden: die Suche lässt den Namen weg."},
+		{"Only the first 25'000 of 31'200 were tested.", "Nur die ersten 25'000 von 31'200 wurden geprüft."},
 	} {
 		if got := noteIn(c.en, 1); got != c.de {
 			t.Errorf("%q: %q, want %q", c.en, got, c.de)

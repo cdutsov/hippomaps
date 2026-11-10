@@ -280,6 +280,13 @@ const center = (f) => {
   const b = extent(f.geometry);
   return b ? [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2] : null;
 };
+// bandWidth is the width in pixels of a band of "radius" metres on each side of a line, at a latitude
+// (512 pixels for the world at zoom 0, twice as many each zoom)
+let bandLat = 47;
+const bandWidth = (lat) => {
+  const k = 2 * 512 / (40075016.686 * Math.cos(lat * Math.PI / 180));
+  return ["interpolate", ["exponential", 2], ["zoom"], 0, ["*", ["get", "radius"], k], 24, ["*", ["get", "radius"], k * 2 ** 24]];
+};
 function extent(g) {
   let w = 180, s = 90, e = -180, n = -90;
   const walk = (c) => {
@@ -766,6 +773,11 @@ map.on("style.load", () => {
   const polys = ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]];
   add({ id: "lm-night", type: "fill", source: "lm-night", maxzoom: 7,
     paint: { "fill-color": "#0b1626", "fill-antialias": false, "fill-opacity": ["interpolate", ["linear"], ["zoom"], 3, 0.11, 6.5, 0] } }, below);
+  // the reach of a search along a road, a river or the edge of a forest: a band of its radius on each side, one
+  // even tint under the water, the streets and the buildings (opaque: the bands of many ways do not add up)
+  add({ id: "lm-band", type: "line", source: "lm-lines", filter: ["has", "radius"], layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": theme() === "dark" ? "#1c3150" : "#d5e3f7", "line-width": bandWidth(bandLat),
+      ...(map.getLayer("water") ? {} : { "line-opacity": 0.3 }) } }, map.getLayer("water") ? "water" : below);
   add({ id: "lm-drawn-dashed", type: "line", source: "lm-lines", filter: dashed,
     paint: { "line-color": "#1f5fbf", "line-width": ["match", ["get", "kind"], "circle", 1.2, 2], "line-dasharray": [3, 2], "line-opacity": 0.8 } }, below);
   add({ id: "lm-drawn", type: "line", source: "lm-lines", filter: ["!", dashed], layout: { "line-cap": "round", "line-join": "round" },
@@ -773,7 +785,13 @@ map.on("style.load", () => {
   add({ id: "lm-fill", type: "fill", source: "lm-results", filter: polys, paint: { "fill-color": ACCENT, "fill-opacity": 0.15 } }, below);
   add({ id: "lm-line", type: "line", source: "lm-results", filter: ["!", pts], layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ACCENT, "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.5, 16, 4] } }, below);
-  add({ id: "lm-point", type: "circle", source: "lm-results", filter: pts, paint: {
+  // the places the results are near or far from (a bus stop, a wind turbine), in the blue of their circles
+  add({ id: "lm-target", type: "circle", source: "lm-lines", filter: ["all", pts, ["==", ["get", "kind"], "target"]], paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 2.5, 15, 5.5], "circle-color": "#1f5fbf", "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
+  // an area found (a church, a park) is a dot too until it is large enough to see (zoom 16)
+  add({ id: "lm-dot", type: "circle", source: "lm-results", maxzoom: 16, filter: ["all", pts, ["has", "dot"]], paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 15, 7], "circle-color": ACCENT, "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
+  add({ id: "lm-point", type: "circle", source: "lm-results", filter: ["all", pts, ["!", ["has", "dot"]]], paint: {
     "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, ["case", ["boolean", ["get", "place"], false], 8, 3], 15, ["case", ["boolean", ["get", "place"], false], 10, 7]],
     "circle-color": ["case", ["boolean", ["get", "place"], false], "#1f5fbf", ACCENT],
     "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
@@ -839,13 +857,16 @@ map.on("style.load", () => {
       "text-max-width": 10, "text-optional": true },
     paint: { ...textPaint("lm-label"), "text-halo-width": 1.5 } });
 });
+// dots adds a point in the middle of each area of the results (lm-dot)
+const dots = (d) => ({ ...d, features: d.features.concat(d.features.filter((f) => /Polygon$/.test(f.geometry?.type)).map((f) =>
+  ({ type: "Feature", geometry: { type: "Point", coordinates: center(f) }, properties: { id: f.properties.id, dot: true } }))) });
 const setSource = (name, d) => {
-  sources[name] = d || empty;
+  sources[name] = name === "results" && d ? dots(d) : d || empty;
   map.getSource(`lm-${name}`)?.setData(sources[name]);
 };
 setInterval(() => setSource("night", nightSide()), 5 * 60e3); // the night moves 1.25° in five minutes
 const one = (f) => ({ type: "FeatureCollection", features: f ? [f] : [] });
-for (const layer of ["lm-point", "lm-line", "lm-fill"]) {
+for (const layer of ["lm-point", "lm-dot", "lm-line", "lm-fill"]) {
   map.on("mouseenter", layer, (e) => {
     map.getCanvas().style.cursor = "pointer";
     const f = state.byId.get(e.features[0].properties.id);
@@ -2043,6 +2064,11 @@ function show(d, sel) {
   state.country = d.open?.country || "";
   ohCache.clear();
   setSource("results", d.results);
+  const bb = d.results?.bbox;
+  if (bb && d.lines?.features.some((f) => f.properties.radius)) {
+    bandLat = (bb[1] + bb[3]) / 2;
+    if (map.getLayer("lm-band")) map.setPaintProperty("lm-band", "line-width", bandWidth(bandLat));
+  }
   setSource("lines", d.lines);
   const place = found.length === 1 && found[0].properties.place ? found[0] : null;
   title.textContent = place ? place.properties.name || d.text : d.understood;
@@ -2476,7 +2502,7 @@ function keepInView(ll) {
 // on a phone (24 px) or of a pointer (12 px); null when none is that near
 function resultAt(pt) {
   const r = phone() ? 24 : 12;
-  const layers = ["lm-point", "lm-line", "lm-fill"].filter((l) => map.getLayer(l));
+  const layers = ["lm-point", "lm-dot", "lm-line", "lm-fill"].filter((l) => map.getLayer(l));
   let best = null, bestD = Infinity;
   for (const f of map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers })) {
     const full = state.byId.get(f.properties.id);

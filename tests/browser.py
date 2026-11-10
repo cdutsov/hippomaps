@@ -355,6 +355,25 @@ try:
     js("(() => { const i = document.querySelector('.lm-input'); i.value = 'hotels along the Limmat in Zurich'; document.querySelector('.lm-form').requestSubmit() })()")
     check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && /\/47\.3[6-9]/.test(location.hash)", 60),
           "a search far away moves the map to its results")
+    # along a river: the band of the radius along it, in metres (wider zoomed in)
+    check(wait("!hmMap.isMoving() && hmMap.queryRenderedFeatures({ layers: ['lm-band'] }).some((f) => f.properties.radius > 0)", 20),
+          "along the Limmat: the band of the radius along the river")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+
+    # near a kind of place: the results, the places they are near (each stop a point) and the circle of the radius around each
+    js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Migros near a bus stop in Zurich'; document.querySelector('.lm-form').requestSubmit() })()")
+    check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '')", 60)
+          and wait("!hmMap.isMoving() && hmMap.queryRenderedFeatures({ layers: ['lm-target'] }).length > 0"
+                   " && hmMap.queryRenderedFeatures({ layers: ['lm-drawn-dashed'] }).some((f) => f.properties.kind === 'circle')"
+                   " && hmMap.queryRenderedFeatures({ layers: ['lm-point'] }).length > 0", 20),
+          "Migros near a bus stop: the shops, the stops near them and a circle of 300 m around each stop")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+
+    # areas found are dots until they are large enough to see (zoom 16); a tap on a dot opens the area
+    js("(() => { const i = document.querySelector('.lm-input'); i.value = 'church buildings in Zurich'; document.querySelector('.lm-form').requestSubmit() })()")
+    check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '')", 60)
+          and wait("!hmMap.isMoving() && hmMap.getZoom() < 16 && hmMap.queryRenderedFeatures({ layers: ['lm-dot'] }).length > 0", 20),
+          "church buildings in Zurich: a dot for each building at the zoom of the city")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
 
     # a town: its photo, and no second Directions beside the search
