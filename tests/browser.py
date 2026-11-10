@@ -165,13 +165,15 @@ try:
 
     # directions: the button, a typed destination, the route by car
     # a double tap zooms the map and opens nothing
-    wait("!hmMap.isMoving() && hmMap.loaded()", 10)  # (the flight to the location and its tiles)
+    # (the flight to the location and its tiles: from the place of the IP address, which can be hundreds of km away)
+    wait("!hmMap.isMoving() && hmMap.loaded()", 20)
     box = js("(() => { const r = document.querySelector('.lm-map').getBoundingClientRect(); return [r.left + r.width / 2, r.top + 150]; })()")
     z0 = js("+location.hash.split('/')[0].slice(5)")
     call("Input.synthesizeTapGesture", x=box[0], y=box[1], tapCount=2, gestureSourceType="touch")  # (two touches 80 ms apart came too late on a busy page)
-    time.sleep(1.5)
+    zoomed = wait(f"+location.hash.split('/')[0].slice(5) > {z0}", 8)  # a busy page (after a deploy) zooms late
+    time.sleep(1.0)  # what a tap would open has come by now
     dt = js("JSON.stringify([location.hash, document.querySelector('.lm-here').hidden, document.querySelector('.lm-detail').hidden])")
-    check(js("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden") and js(f"+location.hash.split('/')[0].slice(5) > {z0}"),
+    check(zoomed and js("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden"),
           f"a double tap zooms in and opens nothing (zoom {z0}, after: {dt})")
     js("document.querySelector('.lm-dir-btn').click()")
     check(wait("!document.querySelector('.lm-route').hidden", 5), "the Directions button opens start and destination")
