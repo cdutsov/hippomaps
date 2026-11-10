@@ -95,6 +95,8 @@ const EN = {
   addStop: "Add stop",
   removeStop: "Remove this stop",
   useAsStop: "Add as stop",
+  navFind: "Search for a place or address",
+  navFindNone: "No place or address found.",
   along: "Along the route",
   alongCats: { fuel: "Fuel", charging: "Charging", rest: "Rest areas", food: "Food", cafe: "Cafés", groceries: "Groceries",
     toilets: "Toilets", water: "Drinking water", hotel: "Hotels", bike: "Bike shops", pharmacy: "Pharmacies" },
@@ -240,9 +242,10 @@ const ICON = {
 };
 const human = (v) => (v ? v.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
 const tagsOf = (p) => (typeof p.tags === "string" ? JSON.parse(p.tags) : p.tags) || {};
+// the kind of a place: its name in the language of the page when the server knows it (kind), else its tag
 const kindOf = (p) => {
   const [k, v] = (p.type || "").split("=");
-  return { key: k || "", label: v && v !== "yes" ? human(v) : human(k) };
+  return { key: k || "", label: p.kind || (v && v !== "yes" ? human(v) : human(k)) };
 };
 const KEY_COLOURS = { amenity: "#e8590c", shop: "#7048e8", tourism: "#1c7ed6", leisure: "#2f9e44", historic: "#a05a2c", natural: "#2b8a3e",
   highway: "#495057", railway: "#495057", public_transport: "#1971c2", office: "#4c6ef5", craft: "#b7791f", healthcare: "#e03131", building: "#868e96" };
@@ -1381,7 +1384,22 @@ const swipeEnd = () => {
 };
 side.addEventListener("touchend", swipeEnd);
 side.addEventListener("touchcancel", swipeEnd);
-addEventListener("resize", () => setSheet(sheet.state));
+// The keyboard of a phone comes and goes as a change of the height of the page (the app: adjustResize).
+// The sheet keeps its top where it is on the screen at that moment and moves on from there to its
+// height in the new page: one movement, not a jump with the keyboard and back.
+let pageH = innerHeight;
+addEventListener("resize", () => {
+  const dh = innerHeight - pageH;
+  pageH = innerHeight;
+  if (phone() && dh && !side.classList.contains("lm-dragging")) {
+    const h = side.getBoundingClientRect().height; // (before the transition stops: then it is at its end)
+    side.style.transition = "none";
+    side.style.height = `${Math.max(0, h + dh)}px`;
+    void side.offsetHeight; // that height at once, then the transition from it
+    side.style.transition = "";
+  }
+  setSheet(sheet.state);
+});
 // the sheet covers the lower part of the map: its height lifts the controls
 new ResizeObserver(() => root.style.setProperty("--sheet", `${side.offsetHeight}px`)).observe(side);
 
@@ -2139,7 +2157,7 @@ const hoursOf = (f) => {
 const hm = (d) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 const dayHm = (d) => {
   const today = new Date();
-  return d.toDateString() === today.toDateString() ? hm(d) : `${d.toLocaleDateString("en-GB", { weekday: "short" })} ${hm(d)}`;
+  return d.toDateString() === today.toDateString() ? hm(d) : `${d.toLocaleDateString(UI, { weekday: "short" })} ${hm(d)}`; // the day in the language of the page
 };
 // stateText is "Open · closes 18:00", for the list and the page of a place
 function stateText(oh) {
@@ -2475,7 +2493,7 @@ async function here(ll, symbol, backToRoute = false) {
   setSheet("half");
   let d;
   try {
-    const r = await fetch(`${API}/here?${new URLSearchParams({ lat, lon, zoom: String(Math.round(map.getZoom())) })}`, { signal: ctl.signal });
+    const r = await fetch(`${API}/here?${new URLSearchParams({ lat, lon, zoom: String(Math.round(map.getZoom())), lang: LANG })}`, { signal: ctl.signal });
     d = await r.json().catch(() => ({}));
     if (!r.ok) {
       note.textContent = problem(d);
@@ -2718,6 +2736,16 @@ function placeLabel(p) {
   const kind = p.osm_value && p.osm_value !== "yes" && p.type !== "house" ? human(p.osm_value) : "";
   return { label, detail: [kind, where].filter(Boolean).join(" · ") };
 }
+// geoFind: the places and addresses for a text from the geocoder, near the map view: {label, detail, ll}
+async function geoFind(q, signal) {
+  const c = map.getCenter();
+  const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q, limit: "6", lang: geoLang(),
+    lat: c.lat.toFixed(4), lon: c.lng.toFixed(4) })}`, { signal });
+  const d = await r.json();
+  const seen = new Set();
+  return (d.features || []).map((f) => ({ ...placeLabel(f.properties || {}), ll: f.geometry.coordinates }))
+    .filter((it) => it.label && !seen.has(`${it.label}\n${it.detail}`) && seen.add(`${it.label}\n${it.detail}`));
+}
 const MAX_STOPS = 8;
 // On a phone the browser scrolls the panel to keep a field above the keyboard; when the keyboard
 // goes (no field of directions in focus), the panel goes back to its top: the modes in view.
@@ -2732,6 +2760,19 @@ function routeToTop(keyboardGone = false) {
     vh = h;
     if (grew) routeToTop(true); // the keyboard closed, also with the field still in focus
   });
+}
+// A field of directions in focus on a phone: the sheet up to the top, with the suggestions above
+// the keyboard; when no field has the focus (a place chosen, a tap away), back to where it was.
+let routeSheet = "";
+function routeFieldIn() {
+  if (!phone()) return;
+  if (sheet.state !== "full" && !routeSheet) routeSheet = sheet.state;
+  setSheet("full");
+}
+function routeFieldOut() {
+  const was = routeSheet;
+  routeSheet = "";
+  if (was && phone() && !routeView.hidden && sheet.state === "full") setSheet(was);
 }
 const endOf = (which) => (typeof which === "number" ? route.stops[which] : route[which]);
 function placeField(which) {
@@ -2769,6 +2810,7 @@ function placeField(which) {
     const it = items[i];
     if (!it) return;
     close();
+    routeFieldOut(); // down at once, while the keyboard goes: one movement
     let place = it;
     if (it.me) {
       const me = await locate();
@@ -2806,15 +2848,10 @@ function placeField(which) {
     ctl?.abort();
     if (q.length < 2) return show(meItem);
     ctl = new AbortController();
-    const c = map.getCenter();
     try {
-      const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q, limit: "6", lang: geoLang(),
-        lat: c.lat.toFixed(4), lon: c.lng.toFixed(4) })}`, { signal: ctl.signal });
-      const d = await r.json();
+      const found = await geoFind(q, ctl.signal);
       if (!field.isConnected || field.value.trim() !== q) return; // typed on meanwhile, or gone
-      const seen = new Set();
-      show((d.features || []).map((f) => ({ ...placeLabel(f.properties || {}), ll: f.geometry.coordinates }))
-        .filter((it) => it.label && !seen.has(`${it.label}\n${it.detail}`) && seen.add(`${it.label}\n${it.detail}`)));
+      show(found);
     } catch {}
   };
   field.addEventListener("input", () => {
@@ -2832,7 +2869,10 @@ function placeField(which) {
       field.value = "";
     }
     show(meItem);
+    routeFieldIn();
   });
+  // a tap away: down with the keyboard (not to another field: it stays up)
+  field.addEventListener("focusout", (e) => { if (!e.relatedTarget?.matches?.(".lm-end-input")) routeFieldOut(); });
   field.addEventListener("blur", () => setTimeout(() => {
     close();
     field.placeholder = hint;
@@ -2992,7 +3032,7 @@ async function alongFetch(d, cat) {
   const end = d.line[d.line.length - 1];
   if (last !== end) line.push([+end[0].toFixed(5), +end[1].toFixed(5)]);
   const r = await fetch(ALONG, { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ line, cat, mode: route.mode }), signal: ctl.signal });
+    body: JSON.stringify({ line, cat, mode: route.mode, lang: LANG }), signal: ctl.signal });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error?.message || T.failed);
   const fs = j.features || [];
@@ -3001,8 +3041,9 @@ async function alongFetch(d, cat) {
   return (d.along[cat] = fs);
 }
 const alongName = (f) => f.properties.name || kindOf(f.properties).label || T.noName;
-// a place along the route: its name, kind, where on the route, hours; a button adds it as a stop
-function alongItem(f, { ahead = null, onAdd } = {}) {
+// a place along the route: its name, kind, where on the route, hours; a button adds it as a stop,
+// another (onDest) makes it the destination
+function alongItem(f, { ahead = null, onAdd, onDest } = {}) {
   const p = f.properties, t = tagsOf(p), k = kindOf(p);
   const li = el("li", "lm-along-item");
   const b = el("button", "lm-card", { type: "button", "data-id": p.id });
@@ -3026,6 +3067,12 @@ function alongItem(f, { ahead = null, onAdd } = {}) {
   add.innerHTML = svg(ICON.plus, 20);
   add.addEventListener("click", () => onAdd({ ll: f.geometry.coordinates, label: alongName(f) }));
   li.append(b, add);
+  if (onDest) {
+    const dest = el("button", "lm-icon-btn lm-along-dest", { type: "button", title: T.useAsTo, "aria-label": `${T.useAsTo}: ${alongName(f)}` });
+    dest.innerHTML = svg(ICON.pin, 20);
+    dest.addEventListener("click", () => onDest({ ll: f.geometry.coordinates, label: alongName(f) }));
+    li.append(dest);
+  }
   return li;
 }
 // the chips of the kinds, the state and the list, for a route answer
@@ -4132,15 +4179,65 @@ function navAlongOpen() {
   x.innerHTML = svg(ICON.close, 18);
   x.addEventListener("click", navAlongClose);
   head.append(x);
-  navAlong.append(head, alongPanel(nav.d, {
+  const cats = alongPanel(nav.d, {
     ahead: () => (nav.along || 0) / 1000,
     chosen: navAlongCat,
     onChoose: (cat) => { navAlongCat = cat; },
     onAdd: navAddStop,
-  }));
+  });
+  navAlong.append(head, navFind(cats), cats);
   navAlong.dataset.kind = "along";
   navAlong.hidden = false;
   root.classList.add("lm-nav-along-on");
+}
+// navFind: a field to search a place or address in navigation (the geocoder of directions); each
+// place found can be a stop or the new destination. While it has text, its places stand in for
+// the kinds along the route (cats).
+function navFind(cats) {
+  const box = el("div", "lm-nav-find");
+  const field = el("input", "lm-nav-find-input", { type: "search", placeholder: T.navFind, "aria-label": T.navFind,
+    autocomplete: "off", spellcheck: "false", enterkeyhint: "search", maxlength: "160" });
+  const msg = el("p", "lm-notes lm-along-msg", { role: "status", "aria-live": "polite" });
+  const ol = el("ol", "lm-results lm-along-list lm-nav-find-list");
+  box.append(field, msg, ol);
+  let timer = 0, ctl = null;
+  const ask = async () => {
+    const q = field.value.trim();
+    ctl?.abort();
+    ol.innerHTML = "";
+    msg.textContent = "";
+    cats.hidden = q.length >= 2;
+    if (q.length < 2) return;
+    ctl = new AbortController();
+    let found;
+    try { found = await geoFind(q, ctl.signal); } catch (err) {
+      if (err.name !== "AbortError") msg.textContent = T.failed;
+      return;
+    }
+    if (!box.isConnected || field.value.trim() !== q) return;
+    msg.textContent = found.length ? "" : T.navFindNone;
+    setSource("along", { type: "FeatureCollection", features: [] });
+    found.forEach((it, i) => {
+      const f = { type: "Feature", geometry: { type: "Point", coordinates: it.ll }, properties: { id: `find/${i}`, name: it.label, kind: it.detail } };
+      ol.append(alongItem(f, { onAdd: navAddStop, onDest: navNewTo }));
+    });
+  };
+  field.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(ask, 250);
+  });
+  field.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); ask(); field.blur(); } }); // the keyboard goes, the list stays
+  return box;
+}
+// a new destination in navigation: a new route from here to it, through the stops still ahead
+function navNewTo(p) {
+  if (!nav.at || nav.routing) return;
+  route.to = { ll: p.ll, label: p.label };
+  route.changed = true; // directions show the new route after navigation
+  navAlongClose();
+  const at = [...nav.at];
+  at.heading = nav.sim ? null : nav.heading;
+  reroute(at);
 }
 // a stop added in navigation: a new route from here, through the stops ahead with the new one where
 // it falls on the route
@@ -4201,7 +4298,7 @@ async function navPointOpen(ll, symbol) {
   root.classList.add("lm-nav-along-on");
   let d;
   try {
-    const r = await fetch(`${API}/here?${new URLSearchParams({ lat, lon, zoom: String(Math.max(16, Math.round(map.getZoom()))) })}`, { signal: ctl.signal });
+    const r = await fetch(`${API}/here?${new URLSearchParams({ lat, lon, zoom: String(Math.max(16, Math.round(map.getZoom()))), lang: LANG })}`, { signal: ctl.signal });
     d = await r.json().catch(() => ({}));
     if (!r.ok) { note.textContent = problem(d); return; }
   } catch (err) {

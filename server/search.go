@@ -14,6 +14,7 @@ import (
 //
 // Each visitor gets SearchesPerIP searches (search, query) in RouteWindow and three times as many
 // taps on the map (here); completions while typing are not counted. Other paths are not relayed.
+// With lang=de, fr or it the English words of the answer are put in that language (labels.go).
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	var lim *window
 	switch r.PathValue("rest") {
@@ -60,6 +61,17 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		if v := resp.Header.Get(h); v != "" {
 			w.Header().Set(h, v)
 		}
+	}
+	// the words of overpass-search in the language of the page (labels.go)
+	if lang := r.URL.Query().Get("lang"); resp.StatusCode == http.StatusOK && langs[lang] != 0 {
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+		if err != nil {
+			http.Error(w, `{"error":{"code":"failed","message":"The search failed. Please try again."}}`, http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(resp.StatusCode)
+		w.Write(translate(body, r.PathValue("rest"), lang))
+		return
 	}
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, io.LimitReader(resp.Body, 32<<20))

@@ -18,7 +18,7 @@ import (
 //
 //	POST {base}/api/along   {"line":[[lon,lat],…],"cat":"fuel","mode":"car"}
 //
-// answers GeoJSON points in the order of the route, at most alongMax: properties id, name, type
+// answers GeoJSON points in the order of the route, at most alongMax: properties id, name, type (and kind: the name of the type in lang, de, fr or it)
 // (key=value), tags, opening_hours, at (km from the start of the line) and off (metres from the
 // line); total, the places found. With more than alongMax, those kept are spread over the route
 // (alongBins stretches, the nearest to the line of each first), not the first towns only. 400 bad_request, 429 too_many, 503 busy, 502 failed, as {"error":{"code","message"}}.
@@ -70,6 +70,7 @@ func (s *Server) along(w http.ResponseWriter, r *http.Request) {
 		Line [][2]float64 `json:"line"`
 		Cat  string       `json:"cat"`
 		Mode string       `json:"mode"`
+		Lang string       `json:"lang"` // the kind of each place in this language (labels.go)
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 3<<20)).Decode(&req); err != nil {
 		routeError(w, http.StatusBadRequest, "bad_request", "A JSON body: line, cat and mode.")
@@ -109,6 +110,15 @@ func (s *Server) along(w http.ResponseWriter, r *http.Request) {
 		}
 		routeError(w, http.StatusBadGateway, "failed", "The search failed. Please try again.")
 		return
+	}
+	if i := langs[req.Lang]; i != 0 {
+		for _, p := range places {
+			if t, _ := p.Properties["type"].(string); t != "" {
+				if n := presetName(strings.Replace(t, "=", "/", 1), i); n != "" {
+					p.Properties["kind"] = n
+				}
+			}
+		}
 	}
 	w.Header().Set("Content-Type", "application/geo+json")
 	w.Header().Set("Cache-Control", "no-store")

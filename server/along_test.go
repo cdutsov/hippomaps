@@ -135,6 +135,13 @@ func TestAlong(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"opening_hours":"24/7"`) {
 		t.Errorf("no opening_hours: %s", w.Body)
 	}
+	// the kind of each place in the language of the page; none in English
+	if strings.Contains(w.Body.String(), `"kind"`) {
+		t.Errorf("a kind in English: %s", w.Body)
+	}
+	if w := post(s, "/labs/maps/api/along", `{"line":[[8,47],[8.05,47],[8.1,47]],"cat":"fuel","mode":"car","lang":"de"}`); !strings.Contains(w.Body.String(), `"kind":"Tankstelle"`) {
+		t.Errorf("the kind in German: %s", w.Body)
+	}
 	for _, body := range []string{`{"line":[[8,47]],"cat":"fuel","mode":"car"}`, `{"line":[[8,47],[8.1,47]],"cat":"bombs","mode":"car"}`,
 		`{"line":[[8,47],[8.1,47]],"cat":"fuel","mode":"plane"}`, `{"line":[[8,97],[8.1,47]],"cat":"fuel","mode":"car"}`, `nope`} {
 		if w := post(s, "/labs/maps/api/along", body); w.Code != 400 {

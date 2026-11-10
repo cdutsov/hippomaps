@@ -82,11 +82,11 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 |---|---|
 | `GET picture?wikidata=Q…&brand=Q…&commons=File:…&w=120` | thumbnail of the place photo, else the chain logo, with credit headers |
 | `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=` | line, steps, stops, speed limits, lanes, traffic, tunnels, height profile |
-| `POST along` `{"line","cat","mode"}` | places of a kind near a route, in route order |
+| `POST along` `{"line","cat","mode","lang"}` | places of a kind near a route, in route order |
 | `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |
 | `GET say?lang=&text=` | spoken sentence (audio/mpeg) |
 | `GET traffic` | traffic incidents |
-| `GET search/{search,query,complete,here}` | relayed overpass-search |
+| `GET search/{search,query,complete,here}` | relayed overpass-search; with `lang=de`, `fr` or `it` its English words (the reading, other readings, notes, kinds of places) in that language (`server/labels.go`) |
 
 `GET /privacy` and `/de/privacy` serve the privacy policy (`web/privacy*.html`), linked from the menu.
 
@@ -120,7 +120,8 @@ tests/           tests of a running site
 ## Licence
 
 GPL-3.0-or-later (`LICENSE`). `web/vendor/` holds maplibre-gl 6.13.0 (BSD-3-Clause), three.js 0.170.0 (MIT),
-opening_hours 3.15.0 (LGPL-3.0-only) and suncalc 2.0.1 (BSD-2-Clause), each with its licence.
+opening_hours 3.15.0 (LGPL-3.0-only) and suncalc 2.0.1 (BSD-2-Clause), each with its licence. `server/labels/presets.json` holds
+the names of the iD presets (id-tagging-schema 7.2.0, ISC), built by `server/labels/gen.py`.
 
 Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons under the licence each credit names. Traffic:
 Federal Roads Office (FEDRO) Traffic Data Platform (TDP).

@@ -12,9 +12,11 @@ navigating (the point and the places around, the point as a stop); the traffic b
 banner kept between updates of one turn, dark and light switched in place (our layers and the route kept, no new load of the map); a stop and the places along a
 route; navigation drawn at 30 frames a second at most, the camera following, tilted 50 degrees; arrival by bike with Start and fixes that stop short of the end (said once, navigation
 ends); the X clears everything; the panel of a phone (empty: stays down; the suggestions scroll, a tap picks;
-directions at their top when the keyboard goes); a ride by bike with the location of the device (fixes at 5 m/s): each turn far
+directions at their top when the keyboard goes; up and down in one movement when the keyboard comes and goes, a field of
+directions takes it to the top); a place searched in navigation as the destination; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
 enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
-twice (the voice answered with silence in the test); German texts after the language of the menu; and no
+twice (the voice answered with silence in the test); German texts after the language of the menu, also the words of
+the search; and no
 errors of the page on the way. Needs chromium and websocket-client.
 """
 import base64
@@ -246,6 +248,23 @@ try:
     check(wait("document.querySelector('.lm-nav-along').hidden && performance.getEntriesByType('resource').some((e, i, a) => e.name.includes('/api/route') && e.name.includes('via=') && a.filter(x => x.name.includes('/api/route')).length > window.hmRoutes)", 30)
           and js("document.getElementById('app').classList.contains('lm-navigating')"),
           "the point pressed as a stop: a new route through it, navigation goes on")
+    # the magnifying glass in navigation: a field for a place or address above the kinds along the route; a
+    # place found as the new destination
+    time.sleep(1)
+    js("[...document.querySelectorAll('.lm-nav-bottom button')].find(b => b.querySelector('svg path')?.getAttribute('d')?.startsWith('M10.5 17'))?.click()")
+    check(wait("!document.querySelector('.lm-nav-along').hidden && !!document.querySelector('.lm-nav-along .lm-nav-find-input') && !!document.querySelector('.lm-nav-along .lm-along-cats')", 5),
+          "the search in navigation: a field for a place and the kinds along the route")
+    js("document.querySelector('.lm-nav-find-input').focus()")
+    call("Input.insertText", text="Kunsthaus Zürich")
+    js("(() => { const f = document.querySelector('.lm-nav-find-input'); if (document.activeElement !== f) f.dispatchEvent(new Event('input')); })()")
+    check(wait("document.querySelectorAll('.lm-nav-find-list .lm-along-item .lm-along-dest').length > 0 && document.querySelector('.lm-nav-along .lm-along-body').hidden", 20),
+          "a place typed in navigation: places found, each a stop or the destination")
+    js("window.hmRoutes = performance.getEntriesByType('resource').filter(e => e.name.includes('/api/route')).length; document.querySelector('.lm-nav-find-list .lm-along-dest').click()")
+    check(wait("document.querySelector('.lm-nav-along').hidden && performance.getEntriesByType('resource').filter(e => e.name.includes('/api/route')).length > window.hmRoutes", 30)
+          and wait("(() => { const r = performance.getEntriesByType('resource').filter(e => e.name.includes('/api/route')).pop(); const to = new URL(r.name).searchParams.get('to').split(',').map(Number);"
+                   " return Math.abs(to[0] - 47.370) < 0.01 && Math.abs(to[1] - 8.548) < 0.01; })()", 5)
+          and js("document.getElementById('app').classList.contains('lm-navigating')"),
+          "a place found in navigation as the destination: a new route to it, navigation goes on")
     js("document.querySelector('.lm-nav-x').click()")
     check(wait("!document.getElementById('app').classList.contains('lm-navigating')", 5), "navigation ends")
     check(js("!Object.hasOwn(hmMap, 'triggerRepaint') && hmMap.triggerRepaint === Object.getPrototypeOf(hmMap).triggerRepaint"),
@@ -551,7 +570,7 @@ try:
     call("Emulation.setDeviceMetricsOverride", width=390, height=480, deviceScaleFactor=2, mobile=True)  # the keyboard up
     js("document.querySelector('.lm-end-to input').focus()")
     time.sleep(0.4)
-    js("document.querySelector('.lm-end-to input').scrollIntoView({block: 'center'})")
+    js("document.querySelector('.lm-end-to input').scrollIntoView({block: 'start'})")  # (the field at the top of the full panel: scrolled to the top of it)
     time.sleep(0.5)
     scrolled = js("document.querySelector('.lm-body').scrollTop > 20")
     js("document.querySelector('.lm-end-to input').blur()")
@@ -559,10 +578,104 @@ try:
     check(scrolled and wait("document.querySelector('.lm-body').scrollTop === 0 && document.querySelector('.lm-modes').getBoundingClientRect().top >= document.querySelector('.lm-body').getBoundingClientRect().top", 5),
           "the keyboard gone: directions back at their top, car, bike and walk in view")
 
+    # the panel moves in one direction when the keyboard comes or goes (the app resizes the page,
+    # as here): its top in each frame of the page, never back. The keyboard comes just after the
+    # focus, and goes just after the field loses it.
+    def tops(ms):  # the top of the panel in each frame from now, in window.hmTops
+        js("(() => { const s = document.querySelector('.lm-side'), t0 = performance.now(); window.hmTops = [];"
+           f" (function f() {{ hmTops.push(Math.round(s.getBoundingClientRect().top)); if (performance.now() - t0 < {ms}) requestAnimationFrame(f); }})(); }})()")
+
+    def keyboard(up):
+        call("Emulation.setDeviceMetricsOverride", width=390, height=544 if up else 844, deviceScaleFactor=2, mobile=True)
+
+    def keyboard_goes(field):  # once the field lost the focus
+        wait(f"document.activeElement !== document.querySelector({json.dumps(field)})", 2)
+        time.sleep(0.08)
+        keyboard(False)
+
+    def one_way(up):  # the tops of the frames: up only, or down only (a pixel of rounding)
+        t = js("window.hmTops") or []
+        ok = len(t) > 3 and all((b <= a + 1) if up else (b >= a - 1) for a, b in zip(t, t[1:]))
+        return ok, t[::max(1, len(t) // 12)]
+
+    sheet = lambda: js("document.getElementById('app').dataset.sheet")
+    call("Page.navigate", url=URL)
+    wait("window.hmMap?.loaded() && document.getElementById('app').dataset.sheet === 'peek'", 30)
+    time.sleep(1)
+    tops(1500)
+    tap(".lm-input")
+    time.sleep(0.1)
+    keyboard(True)
+    time.sleep(1.7)
+    ok, t = one_way(True)
+    check(ok and sheet() == "full" and abs(js("document.querySelector('.lm-side').getBoundingClientRect().top") - 56) <= 2,
+          f"the search box tapped, the keyboard comes: the panel up to the top in one movement ({t})")
+    call("Input.insertText", text="Bern")
+    js("(() => { const i = document.querySelector('.lm-input'); if (document.activeElement !== i) { i.focus(); i.dispatchEvent(new Event('input')); } })()")
+    if wait("[...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-place')].some(o => /^Bern/.test(o.textContent))", 20):
+        time.sleep(0.3)
+        # the answer a second later, as on a slow network: the keyboard goes first
+        js("(() => { const f0 = window.fetch; window.fetch = function (u) { const p = f0.apply(this, arguments);"
+           " return /\\/api\\/search\\/(query|search)/.test(String(u)) ? p.then((r) => new Promise((ok) => setTimeout(() => ok(r), 1000))) : p; }; })()")
+        tops(3500)
+        tap(".lm-suggest:not([hidden]) .lm-opt-place")
+        keyboard_goes(".lm-input")
+        time.sleep(3.6)
+        ok, t = one_way(False)
+        check(ok and wait("/Bern/.test(document.querySelector('.lm-title')?.textContent || '')", 30),
+              f"a suggestion picked, the keyboard goes: the panel down in one movement ({t})")
+    else:
+        check(False, "suggestions for Bern")
+    call("Page.navigate", url=URL + "/?to=47.36690,8.54500&tn=Bellevue&mode=car")
+    wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40)
+    time.sleep(1)
+    tops(1500)
+    tap(".lm-end-to input")
+    time.sleep(0.1)
+    keyboard(True)
+    time.sleep(1.7)
+    ok, t = one_way(True)
+    check(ok and sheet() == "full" and abs(js("document.querySelector('.lm-side').getBoundingClientRect().top") - 56) <= 2,
+          f"a field of directions tapped: the panel up to the top in one movement ({t})")
+    call("Input.insertText", text="Paradeplatz Zürich")
+    js("(() => { const f = document.querySelector('.lm-end-to input'); if (document.activeElement !== f) { f.focus(); f.dispatchEvent(new Event('input')); } })()")
+    if wait("[...document.querySelectorAll('.lm-end-list:not([hidden]) .lm-opt-label')].some(e => /Paradeplatz/.test(e.textContent))", 20):
+        time.sleep(0.3)
+        tops(2500)
+        tap(".lm-end-list:not([hidden]) .lm-opt")
+        keyboard_goes(".lm-end-to input")
+        time.sleep(2.6)
+        ok, t = one_way(False)
+        check(ok and sheet() == "half" and wait("/Paradeplatz/.test(document.querySelector('.lm-end-to input').value)", 5),
+              f"a place picked in directions, the keyboard goes: the panel down to half in one movement ({t})")
+    else:
+        check(False, "suggestions for Paradeplatz in directions")
+    tap(".lm-end-from input")
+    time.sleep(0.1)
+    keyboard(True)
+    time.sleep(1)
+    tops(2000)
+    tap(".lm-route-sum")
+    keyboard_goes(".lm-end-from input")
+    time.sleep(2.1)
+    ok, t = one_way(False)
+    check(ok and sheet() == "half", f"a tap away from a field of directions: the panel down in one movement ({t})")
+    keyboard(False)
+
     # German
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)
     check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 30), "the page in German")
+    # the words of the search in German too: what it understood, the other readings, the kinds and days of the places
+    js("location.hash = '#map=16/47.3720/8.5390'")
+    time.sleep(1.5)
+    js("document.querySelector('.lm-input').blur(); [...document.querySelectorAll('.lm-bubble')].find(b => /Restaurants/.test(b.textContent))?.click()")
+    if wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelectorAll('.lm-chiprow .lm-chip').length > 0", 60):
+        side = js("document.querySelector('.lm-title').textContent + ' | ' + [...document.querySelectorAll('.lm-chiprow, .lm-results .lm-card-sub, .lm-results [data-hours]')].map(e => e.textContent).join(' | ')")
+        english = re.findall(r"in the view|Or search for|Sushi Fast Food|Outdoor Seating|Food Court|\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d", side)
+        check("Kartenausschnitt" in side and "Schnellimbiss" in side and not english, f"the Restaurants bubble in German: German words ({english or side[:120]})")
+    else:
+        check(False, "the Restaurants bubble in German: no results")
     js("localStorage.removeItem('hm-lang')")
 
     real = [e for e in errors if "Map cannot fit" not in e]
