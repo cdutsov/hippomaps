@@ -121,7 +121,7 @@ tests/           tests of a running site
 
 GPL-3.0-or-later (`LICENSE`). `web/vendor/` holds maplibre-gl 6.13.0 (BSD-3-Clause), three.js 0.170.0 (MIT),
 opening_hours 3.15.0 (LGPL-3.0-only) and suncalc 2.0.1 (BSD-2-Clause), each with its licence. `server/labels/presets.json` holds
-the names of the iD presets (id-tagging-schema 7.2.0, ISC), built by `server/labels/gen.py`.
+the names of the iD presets (id-tagging-schema 7.2.0, ISC), built by `server/labels/gen.py`, licence in `server/labels/LICENSE-id-tagging-schema.md`.
 
 Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons under the licence each credit names. Traffic:
 Federal Roads Office (FEDRO) Traffic Data Platform (TDP).

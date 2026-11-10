@@ -7,7 +7,7 @@ the page. Run it by hand when overpass-search takes another version:
 
     python3 -I server/labels/gen.py server/labels/presets.json
 
-Source: @openstreetmap/id-tagging-schema (ISC licence), from cdn.jsdelivr.net.
+Source: @openstreetmap/id-tagging-schema (ISC licence, LICENSE-id-tagging-schema.md beside it), from cdn.jsdelivr.net.
 """
 import json
 import sys
