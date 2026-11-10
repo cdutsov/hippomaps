@@ -261,10 +261,11 @@ var (
 	withWord = [3]string{" mit ", " avec ", " con "}
 	starsTo  = [3]string{"$1 Sterne", "$1 étoiles", "$1 stelle"}
 	// a line by its number: "Bus line 31"
-	lineRe = regexp.MustCompile(`^(Bus|Trolleybus|Tram|Metro|Ferry|Train|Transit) line (\S+)$`)
+	lineRe = regexp.MustCompile(`^(Bus|Trolleybus|Tram|Metro|Ferry|Train|Minibus|Transit) line (\S+)$`)
 	lineTo = map[string][3]string{"Bus": {"Buslinie", "Ligne de bus", "Linea bus"}, "Trolleybus": {"Trolleybuslinie", "Ligne de trolleybus", "Linea filobus"},
 		"Tram": {"Tramlinie", "Ligne de tram", "Linea tram"}, "Metro": {"Metrolinie", "Ligne de métro", "Linea metropolitana"},
-		"Ferry": {"Schiffslinie", "Ligne de bateau", "Linea battello"}, "Train": {"Linie", "Ligne", "Linea"}, "Transit": {"Linie", "Ligne", "Linea"}}
+		"Ferry": {"Schiffslinie", "Ligne de bateau", "Linea battello"}, "Train": {"Linie", "Ligne", "Linea"}, "Transit": {"Linie", "Ligne", "Linea"},
+		"Minibus": {"Minibuslinie", "Ligne de minibus", "Linea minibus"}}
 )
 
 // readingIn puts the reading of a search ("vegan: Restaurant · open now") in language i
@@ -379,6 +380,14 @@ var notes = phrases(
 		"OpenStreetMap n’a rien pour “$1” : la recherche l’ignore.",
 		"OpenStreetMap non ha nulla per “$1”: la ricerca lo ignora."},
 	[4]string{`Not used: “(.+)”\.`, "Nicht verwendet: “$1”.", "Pas utilisé : “$1”.", "Non usato: “$1”."},
+	[4]string{`Nothing named “(.+)” was found: the search leaves out the name\.`,
+		"Nichts mit dem Namen “$1” gefunden: die Suche lässt den Namen weg.",
+		"Rien de nommé “$1” : la recherche ignore le nom.",
+		"Niente con il nome “$1”: la ricerca ignora il nome."},
+	[4]string{`No line is named (\S+) exactly: the search shows those with letters beside the number \(28E, M3\)\.`,
+		"Keine Linie heisst genau $1: die Suche zeigt jene mit Buchstaben neben der Nummer (28E, M3).",
+		"Aucune ligne ne s’appelle exactement $1 : la recherche montre celles avec des lettres à côté du numéro (28E, M3).",
+		"Nessuna linea si chiama esattamente $1: la ricerca mostra quelle con lettere accanto al numero (28E, M3)."},
 )
 
 func noteIn(s string, i int) string {
