@@ -12,12 +12,14 @@ OpenStreetMap data. Live at https://hippomaps.ch.
 - **What is here**: a tap on the map shows the address and the named places around it
 - **Directions** by car, bike and on foot, with up to 8 stops, places along the route (fuel, charging, rest areas, food,
   drinking water…), lanes, junction signs and speed limits, and a height profile by bike and on foot
-- **Navigation** turn by turn, spoken in four languages, with re-routing, a 3D traveller and a preview mode
+- **Navigation** turn by turn, spoken in 18 languages (Bulgarian, Dutch, English, Estonian, Finnish, French, German, Greek,
+  Hungarian, Italian, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Ukrainian; chosen apart from the
+  language of the page), with arrows at the turns, re-routing, a 3D traveller and a preview mode
 - **Live traffic** in Switzerland: closures, queues and roadworks on the map and in the route time
 - **Transit lines** (metro, light rail, tram) in their colours
 - **Map**: opens near the visitor (the town of their IP address) until the device tells where they are; a globe with the night side when zoomed out; nine styles, the default day map in the colours of Swiss
   topographic maps, day and night by the sun, 3D terrain and buildings, relief shading; starred places as stars
-- **Languages**: English, German, French, Italian
+- **Languages**: the page in English, German, French and Italian; directions and voice in the 18 languages of navigation
 - **Privacy**: settings, starred places and recent searches stay in the browser
 - **Shareable links** for places, searches and routes
 - **Android app** (`android/`): the site in a WebView with native location, background navigation, and links from other
@@ -35,7 +37,7 @@ to other services:
 | [Valhalla](https://github.com/valhalla/valhalla) | directions, lanes, speed limits | `ROUTING_URL` |
 | Overpass API | transit lines, places along a route | `OVERPASS_URL`, or overpass.ch with `ELEVATION_KEY` |
 | overpass.ch elevation API | height profiles | `ELEVATION_URL`, `ELEVATION_KEY` |
-| [Piper](https://github.com/rhasspy/piper) behind `/say?lang=&text=` | spoken navigation (else the voices of the browser) | `TTS_URL` |
+| [Piper](https://github.com/OHF-Voice/piper1-gpl) 1.5 or later behind `/say?lang=&text=`, a voice for each language of `sayLangs` (`server/say.go`) | spoken navigation (else the voices of the browser) | `TTS_URL` |
 | A traffic service with `/incidents.json` | live traffic | `TRAFFIC_URL` |
 | Wikidata and Wikimedia Commons | photos and logos | `PICTURES` |
 | [DB-IP City Lite](https://db-ip.com/db/download/ip-to-city-lite) (MMDB file, monthly, CC BY 4.0) | the map opens at the town of the IP address of the visitor | `GEOIP_DB` |
@@ -127,4 +129,7 @@ the names of the iD presets (id-tagging-schema 7.2.0, ISC), built by `server/lab
 
 Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons under the licence each credit names. Traffic:
 Federal Roads Office (FEDRO) Traffic Data Platform (TDP). Places of IP addresses: IP Geolocation by DB-IP (CC BY 4.0, not in the
-repository; the privacy policy credits it with a link).
+repository; the privacy policy credits it with a link). Voices (Piper, not in the repository): under CC BY the French from the SIWIS
+database and Hi-Fi TTS, the Italian from serena-synthetic-it-27h (Marco Baccarani), the Estonian from the speech corpus of Estonian
+news sentences and LibriTTS-R; the others CC0 or public domain; the page credits them (voiceCredit). None from the research-only
+lessac voice.

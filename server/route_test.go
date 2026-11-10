@@ -144,6 +144,13 @@ func TestRoute(t *testing.T) {
 	if last["costing"] != "pedestrian" || last["language"] != "en-US" {
 		t.Errorf("walk: %v", last)
 	}
+	// the steps in the language of navigation: Bulgarian; Norwegian as no and as nb
+	for lang, want := range map[string]string{"bg": "bg-BG", "no": "nb-NO", "nb": "nb-NO", "uk": "uk-UA"} {
+		get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=car&lang="+lang)
+		if last["language"] != want {
+			t.Errorf("lang %s: %v", lang, last["language"])
+		}
+	}
 	w = get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk")
 	if strings.Contains(w.Body.String(), `"limits"`) {
 		t.Errorf("limits on foot: %s", w.Body)
@@ -252,5 +259,47 @@ func TestContinueDistance(t *testing.T) {
 	}
 	if s := a.Steps[2]; s.Pre != "Turn left." || s.Post != "Continue for 1 kilometer." {
 		t.Errorf("turn: %+v", s)
+	}
+}
+
+// The phrases of Valhalla mended: a name glued to the word before it gets its space (Bulgarian, Hungarian,
+// Swedish), not inside a word or after a capital; the Bulgarian lengths without a number get the length of the step.
+func TestPhrasesMended(t *testing.T) {
+	names := []string{"Aarestrasse", "6", "Zürich", "Bern"}
+	for in, want := range map[string]string{
+		"Влезте по Guisanplatz и вземете 3-тия изход поAarestrasse/6.": "Влезте по Guisanplatz и вземете 3-тия изход по Aarestrasse/6.",
+		"Forduljon jobbra a(z)Aarestrasse utcára.":                     "Forduljon jobbra a(z) Aarestrasse utcára.",
+		"Håll höger motZürich.":                                        "Håll höger mot Zürich.",
+		"Rechts auf Aarestrasse/6 abbiegen.":                           "Rechts auf Aarestrasse/6 abbiegen.",
+		"Oberbern, A6, Bern.":                                          "Oberbern, A6, Bern.",
+	} {
+		if got := unglue(in, names); got != want {
+			t.Errorf("unglue %q: %q", in, got)
+		}
+	}
+	for _, c := range []struct {
+		in   string
+		km   float64
+		want string
+	}{
+		{"Продължете метра.", 0.08, "Продължете 80 метра."},
+		{"Продължете метра.", 0.22, "Продължете 200 метра."},
+		{"Продължете по Aarestrasse за километри.", 2.46, "Продължете по Aarestrasse за 2,5 километра."},
+		{"Продължете метра.", 0.97, "Продължете 1 километър."},
+		{"Продължете метра.", 0.005, "Продължете по-малко от 10 метра."},
+		{"Продължете 80 метра.", 0.08, "Продължете 80 метра."},
+	} {
+		if got := bgLengths(c.in, c.km); got != c.want {
+			t.Errorf("bgLengths %q %v: %q", c.in, c.km, got)
+		}
+	}
+	a := routeAnswer{Line: routeLine, lang: "bg-BG"}
+	a.addSteps([]maneuver{
+		{Instruction: "Тръгнете на север.", Type: 1, Post: "Продължете метра.", Length: 0.31, Begin: 0},
+		{Instruction: "Влезте и вземете 3-тия изход поAarestrasse.", Type: 26, Pre: "Влезте и вземете 3-тия изход поAarestrasse.", Begin: 1},
+		{Instruction: "Излезте по Aarestrasse.", Type: 27, Streets: []string{"Aarestrasse"}, Begin: 2},
+	}, 0, false, 0)
+	if a.Steps[0].Post != "Продължете 300 метра." || a.Steps[1].Text != "Влезте и вземете 3-тия изход по Aarestrasse." || a.Steps[1].Pre != a.Steps[1].Text {
+		t.Errorf("bg steps: %+v", a.Steps[:2])
 	}
 }

@@ -8,10 +8,11 @@ in Zurich (a granted location) on a phone screen. Checks: without the location t
 address (of the machine of the test), without a credit of DB-IP on the map; the map starts at the location; the
 Directions button opens start and destination, a typed destination gives a route by car with its
 time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
-sentences of the server; the language changed while navigating (no new page); a long press while
+sentences of the server; the language changed while navigating (no new page); the language of directions and voice apart from
+that of the page (Bulgarian); a long press while
 navigating (the point and the places around, the point as a stop); the destination of a route dragged with a finger; the traffic button; the map drawn at 2 pixels per point at most, our sources with tiles to zoom 14 only, the
 banner kept between updates of one turn, many lanes in the width of the top with the sign under them, the arrows of the turns ahead
-over the line, dark and light switched in place (our layers and the route kept, no new load of the map); a stop and the places along a
+over the line, pinches out of tilted navigation (the tilt after the gesture), dark and light switched in place (our layers and the route kept, no new load of the map); a stop and the places along a
 route; navigation drawn at 30 frames a second at most, the camera following, tilted 50 degrees, the next turn right under the banner; arrival by bike with Start and fixes that stop short of the end (said once, navigation
 ends); the X clears everything; the panel of a phone (empty: stays down; the suggestions scroll, a tap picks;
 directions at their top when the keyboard goes; up and down in one movement when the keyboard comes and goes, a field of
@@ -370,14 +371,15 @@ try:
     to_px = js("(() => { const f = hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to'); const p = hmMap.project(f.geometry.coordinates); return [p.x, p.y]; })()")
     if to_px:
         want = js(f"(() => {{ const l = hmMap.unproject([{to_px[0] - 60}, {to_px[1] + 40}]); return [l.lng, l.lat]; }})()")
-        c0, routes0 = js("JSON.stringify(hmMap.getCenter())"), js("performance.getEntriesByType('resource').filter(e => e.name.includes('/api/route')).length")
+        line = "JSON.stringify(hmMap.getStyle().sources['lm-route'].data.features.find(f => f.geometry.type === 'LineString')?.geometry.coordinates.at(-1))"
+        c0, line0 = js("JSON.stringify(hmMap.getCenter())"), js(line)
         call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": to_px[0] + 8, "y": to_px[1]}])
         for k in range(1, 9):
             call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": to_px[0] + 8 - 60 * k / 8, "y": to_px[1] + 40 * k / 8}])
             time.sleep(0.03)
         moved = js("JSON.stringify(hmMap.getCenter())") != c0  # before the new route fits the map to it
         call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
-        check(wait(f"performance.getEntriesByType('resource').filter(e => e.name.includes('/api/route')).length > {routes0} && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30), "the destination dragged: a new route")
+        check(wait(f"{line} && {line} !== {json.dumps(line0)} && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30), "the destination dragged: a new route")
         got = js("hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to')?.geometry.coordinates")
         check(not moved and got and abs(got[0] - want[0]) < 2e-4 and abs(got[1] - want[1]) < 2e-4,
               f"the destination where the finger let go, the map not panned ({got}, {want}, panned: {moved})")
@@ -581,6 +583,52 @@ try:
     said = js("window.hmSaid || []")
     check(len([t for t in said if re.search(r"have arrived", t, re.I)]) == 1, f"the arrival said once ({said[-3:]})")
     call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+    # navigation on a long route by car (Zurich to Winterthur, Preview), for what takes a while: pinches out of tilted
+    # navigation; the language of directions and voice apart from that of the page
+    js("window.hmOld = 1")
+    call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=47.50020,8.72380&tn=Winterthur&mode=car")
+    if wait("!window.hmOld && document.querySelector('.lm-nav-go .lm-chip') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40):
+        js("document.querySelector('.lm-nav-go .lm-chip').click()")
+        wait("document.getElementById('app').classList.contains('lm-navigating')", 5)
+        time.sleep(3)
+        # pinches out of tilted navigation, also below zoom 15 where the camera turns to look straight down: each pinch
+        # zooms as far as the fingers go (300 px to 100 px: 1.5 zoom levels) and the tilt follows after it (a change of
+        # the tilt during the gesture stopped it at every step); then Re-centre
+        def pinch(a=45, b=345, c=145, d=245, y=480):
+            call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": a, "y": y, "id": 1}, {"x": b, "y": y, "id": 2}])
+            for k in range(1, 13):
+                call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": a + (c - a) * k / 12, "y": y, "id": 1}, {"x": b + (d - b) * k / 12, "y": y, "id": 2}])
+                time.sleep(0.03)
+            call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        outs = []
+        for _ in range(4):
+            z0 = js("hmMap.getZoom()")
+            pinch()
+            time.sleep(1.2)
+            outs.append(round(z0 - js("hmMap.getZoom()"), 2))
+        zp = js("[hmMap.getZoom(), hmMap.getPitch()]") or [0, -9]
+        want = 50 * min(1, max(0, (zp[0] - 12) / 3))
+        check(min(outs) > 1.2 and abs(zp[1] - want) < 2,
+              f"pinches out of navigation: each zooms out as far as the fingers go, then the tilt of the zoom ({outs}, tilt {zp[1]:.1f} at zoom {zp[0]:.2f})")
+        js("document.querySelector('.lm-nav-center')?.click()")
+        wait("document.querySelector('.lm-nav-center').hidden && Math.abs(hmMap.getPitch() - 50) < 1", 10)
+        # the language of navigation apart from that of the page: Bulgarian while navigating; the page stays in English,
+        # the route and the voice are asked in Bulgarian; "Like the page" brings English back
+        res = "performance.getEntriesByType('resource')"
+        js("(() => { const s = document.querySelector('.lm-nav-lang-select'); s.value = 'bg'; s.dispatchEvent(new Event('change')) })()")
+        check(wait(f"{res}.some(e => e.name.includes('/api/route') && e.name.includes('lang=bg'))", 20)
+              and wait(f"{res}.some(e => e.name.includes('/api/say') && e.name.includes('lang=bg'))", 20)
+              and js("document.documentElement.lang === 'en' && /search/i.test(document.querySelector('.lm-input').getAttribute('aria-label')) && localStorage.getItem('hm-nav-lang') === 'bg'")
+              and js("document.getElementById('app').classList.contains('lm-navigating')"),
+              "Directions and voice in Bulgarian while navigating: the page in English, the route and the voice in Bulgarian")
+        en0 = js(f"{res}.filter(e => e.name.includes('/api/route') && e.name.includes('lang=en')).length")
+        js("(() => { const s = document.querySelector('.lm-nav-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })()")
+        check(wait(f"{res}.filter(e => e.name.includes('/api/route') && e.name.includes('lang=en')).length > {en0}", 20)
+              and js("localStorage.getItem('hm-nav-lang') === ''"), "Directions and voice like the page: the route in English again")
+        js("document.querySelector('.lm-nav-x')?.click()")
+        wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+    else:
+        check(False, "a long route by car for Preview")
     # a stop on the way, and the places along the route
     call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&via=47.05020,8.30930&vn=Lucerne&to=46.94900,7.43910&tn=Bern&mode=car")
     check(wait("document.querySelectorAll('.lm-end-stop').length === 1 && document.querySelectorAll('.lm-step-stop').length === 1", 40),

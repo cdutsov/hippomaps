@@ -8,9 +8,12 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Directions from Valhalla (RoutingURL). The browser asks this server only:
@@ -45,8 +48,11 @@ var modes = map[string]struct {
 // maxStops is the most stops between start and destination.
 const maxStops = 8
 
-// languages of the steps, by the language of the browser
-var languages = map[string]string{"en": "en-US", "de": "de-DE", "fr": "fr-FR", "it": "it-IT", "es": "es-ES", "nl": "nl-NL", "pt": "pt-PT"}
+// the languages of the steps (and of the voice, sayLangs): the language of navigation chosen in the page, else
+// that of the page; Norwegian also as no (browsers) and nn
+var languages = map[string]string{"en": "en-US", "de": "de-DE", "fr": "fr-FR", "it": "it-IT", "es": "es-ES", "nl": "nl-NL", "pt": "pt-PT",
+	"bg": "bg-BG", "el": "el-GR", "et": "et-EE", "fi": "fi-FI", "hu": "hu-HU", "nb": "nb-NO", "no": "nb-NO", "nn": "nb-NO", "pl": "pl-PL",
+	"ro": "ro-RO", "ru": "ru-RU", "sv": "sv-SE", "uk": "uk-UA"}
 
 type routeStep struct {
 	Text       string     `json:"text"`
@@ -91,6 +97,7 @@ type routeAnswer struct {
 	Delay   float64      `json:"delay,omitempty"`   // by car: seconds that traffic adds
 	Tunnels [][3]int     `json:"tunnels,omitempty"` // by car: [from, to, metres] in indexes of line
 	Elev    *routeElev   `json:"elev,omitempty"`
+	lang    string       // the language of the steps (bg-BG): fixes of its phrases in addSteps
 }
 
 // routeElev is the height profile of a route by bike or on foot, from the elevation API of
@@ -281,7 +288,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		routeError(w, status, code, msg)
 		return
 	}
-	a := routeAnswer{Km: round(v.Trip.Summary.Length, 3), S: math.Round(v.Trip.Summary.Time), Steps: []routeStep{}, Line: [][2]float64{}}
+	a := routeAnswer{Km: round(v.Trip.Summary.Length, 3), S: math.Round(v.Trip.Summary.Time), Steps: []routeStep{}, Line: [][2]float64{}, lang: lang}
 	for n, leg := range v.Trip.Legs {
 		// the legs joined: each starts at the point where the one before ends
 		off := 0
@@ -343,7 +350,12 @@ type maneuver = struct {
 // addSteps adds the maneuvers of a leg whose line starts at index off of a.Line; toStop: the leg
 // ends at stop number stop, not at the destination.
 func (a *routeAnswer) addSteps(ms []maneuver, off int, toStop bool, stop int) {
+	names := legNames(ms)
 	for k, m := range ms {
+		m.Instruction, m.Alert, m.Pre, m.Post = unglue(m.Instruction, names), unglue(m.Alert, names), unglue(m.Pre, names), unglue(m.Post, names)
+		if a.lang == "bg-BG" {
+			m.Post = bgLengths(m.Post, m.Length)
+		}
 		st := routeStep{Text: m.Instruction, Km: round(m.Length, 3), S: math.Round(m.Time), Type: m.Type, I: m.Begin + off, End: m.End + off,
 			Alert: m.Alert, Pre: m.Pre, Post: m.Post, Street: strings.Join(m.Streets, " / "), Highway: m.Highway, Roundabout: m.Roundabout,
 			Exit: strings.Join(texts(m.Sign.Number), " "), ExitName: strings.Join(texts(m.Sign.Name), " / "),
@@ -488,6 +500,72 @@ func encodePolyline(pts [][2]float64, precision float64) string {
 		plat, plon = lat, lon
 	}
 	return b.String()
+}
+
+// legNames: the names of the streets and signs of the maneuvers of a leg (a name of a roundabout exit is the
+// street of the maneuver after it)
+func legNames(ms []maneuver) []string {
+	var names []string
+	for _, m := range ms {
+		names = append(names, m.Streets...)
+		for _, es := range [][]signElement{m.Sign.Number, m.Sign.Branch, m.Sign.Toward, m.Sign.Name} {
+			names = append(names, texts(es)...)
+		}
+	}
+	return names
+}
+
+// unglue puts back the space a phrase of Valhalla leaves out before a name in some languages ("изход
+// поAarestrasse" in Bulgarian, "a(z)Aarestrasse" in Hungarian, "motZürich" in Swedish): before a name of the leg
+// that starts with a capital letter or a digit, right after a small letter or ")".
+func unglue(s string, names []string) string {
+	for _, n := range names {
+		r, _ := utf8.DecodeRuneInString(n)
+		if n == "" || !(unicode.IsUpper(r) || unicode.IsDigit(r)) || (len(n) < 2 && !unicode.IsDigit(r)) {
+			continue
+		}
+		for from := 0; ; {
+			i := strings.Index(s[from:], n)
+			if i < 0 {
+				break
+			}
+			i += from
+			if p, _ := utf8.DecodeLastRuneInString(s[:i]); i > 0 && (unicode.IsLower(p) || p == ')') {
+				s = s[:i] + " " + s[i:]
+				i++
+			}
+			from = i + len(n)
+		}
+	}
+	return s
+}
+
+// bgRe: a length without its number in the Bulgarian of Valhalla 3.9 (its words for lengths have no
+// <METERS> and <KILOMETERS>: "Продължете метра.")
+var bgRe = regexp.MustCompile(`(\p{L}) (метра|километри)(\P{L}|$)`)
+
+// bgLengths puts the length of the step (km) into its Bulgarian sentence, rounded as Valhalla rounds it in
+// the other languages: tens of metres up to 94 m, hundreds up to 949 m, tenths of kilometres beyond.
+func bgLengths(s string, km float64) string {
+	if !bgRe.MatchString(s) {
+		return s
+	}
+	m, say := math.Round(km*1000), ""
+	switch {
+	case m > 949:
+		if k := math.Round(km*10) / 10; k == 1 {
+			say = "1 километър"
+		} else {
+			say = strings.Replace(strconv.FormatFloat(k, 'f', -1, 64), ".", ",", 1) + " километра"
+		}
+	case m > 94:
+		say = strconv.Itoa(int(math.Round(m/100)*100)) + " метра"
+	case m > 9:
+		say = strconv.Itoa(int(math.Round(m/10)*10)) + " метра"
+	default:
+		say = "по-малко от 10 метра"
+	}
+	return bgRe.ReplaceAllString(s, "$1 "+say+"$3")
 }
 
 func texts(es []signElement) []string {

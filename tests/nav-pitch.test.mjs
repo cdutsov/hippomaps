@@ -19,8 +19,13 @@ test("tilted at zoom 15 and closer, flat at 12 and farther, in between by the zo
   for (let z = 10; z < 17; z += 0.25) assert.ok(f(z) <= f(z + 0.25), `no more tilt farther out (${z})`);
 });
 
-test("the handler leaves the camera that follows and the 2D map alone", () => {
+test("the tilt waits for the end of the gesture: no camera change while the visitor zooms", () => {
   const i = src.indexOf("const navPitchFor");
-  const h = src.slice(i, src.indexOf("});", i));
-  assert.match(h, /!e\.originalEvent \|\| !nav\.on \|\| nav\.follow \|\| nav\.flat/);
+  const h = src.slice(i, src.indexOf("// the visitor moves the map", i));
+  // during a gesture (zoom events) nothing moves the camera: jumpTo and setPitch stop the handlers of MapLibre
+  assert.doesNotMatch(h, /map\.on\("zoom",/);
+  assert.doesNotMatch(h, /setPitch|jumpTo/);
+  // a zoom of the visitor (originalEvent) in navigation, not following, not 2D; the tilt after it, eased
+  assert.match(h, /map\.on\("zoomstart", \(e\) => \{ if \(e\.originalEvent && nav\.on && !nav\.follow && !nav\.flat\)/);
+  assert.match(h, /map\.on\("moveend",[\s\S]*map\.isMoving\(\)[\s\S]*map\.easeTo\(\{ pitch: p/);
 });

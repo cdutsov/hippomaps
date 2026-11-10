@@ -245,7 +245,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}

@@ -20,12 +20,27 @@ const ALONG = (ROUTE && root.dataset.along) || ""; // places along a route (Over
 // latitude, longitude and zoom. The map opens there until the device tells where the visitor is
 const NEAR = ((v) => (v.length === 3 && v.every(Number.isFinite) ? v : null))((root.dataset.near || "").split(",").map(Number));
 // the language: chosen in the menu (hm-lang), else that of the browser. It sets the texts of the page
-// (en, de, fr, it), the names on the map, the steps of directions and the voice.
-// A change in the menu applies at once, without loading the page again (setLang).
+// (en, de, fr, it) and the names on the map; the steps of directions and the voice too, unless a language
+// of navigation is chosen (hm-nav-lang, STEP_LANG).
+// A change in the menu applies at once, without loading the page again (setLang, setNavLang).
 const chosenLang = (() => { try { return localStorage.getItem("hm-lang") || ""; } catch { return ""; } })();
 const langOf = (chosen) => chosen || (navigator.language || "en").slice(0, 2).toLowerCase();
 let LANG = langOf(chosenLang);
 let UI = languages.some(([k]) => k === LANG) ? LANG : "en";
+// The languages of navigation: those of the steps of Valhalla that have a voice on the server (Piper, data-voices),
+// with the locale of the voices of the browser (else, or when ours is late) and their own name.
+const LOCALES = { bg: "bg-BG", de: "de-DE", el: "el-GR", en: "en-US", es: "es-ES", et: "et-EE", fi: "fi-FI", fr: "fr-FR", hu: "hu-HU",
+  it: "it-IT", nb: "nb-NO", nl: "nl-NL", pl: "pl-PL", pt: "pt-PT", ro: "ro-RO", ru: "ru-RU", sv: "sv-SE", uk: "uk-UA" };
+const NAV_NAMES = { bg: "Български", de: "Deutsch", el: "Ελληνικά", en: "English", es: "Español", et: "Eesti", fi: "Suomi", fr: "Français",
+  hu: "Magyar", it: "Italiano", nb: "Norsk", nl: "Nederlands", pl: "Polski", pt: "Português", ro: "Română", ru: "Русский", sv: "Svenska",
+  uk: "Українська" };
+let chosenNavLang = (() => { try { return localStorage.getItem("hm-nav-lang") || ""; } catch { return ""; } })();
+// the language of the steps and the voice: the one chosen, else that of the page (Norwegian of the browser as no or nn)
+const navLangOf = () => {
+  const l = chosenNavLang || ({ no: "nb", nn: "nb" })[LANG] || LANG;
+  return LOCALES[l] ? l : "en";
+};
+let STEP_LANG = navLangOf();
 document.documentElement.lang = UI;
 const num = (n) => n.toLocaleString(UI);
 const placeKeys = ["place", "place2", "region"];
@@ -187,9 +202,12 @@ const EN = {
   shading: "Relief shading",
   shadingNote: "Light and shadow of the mountains",
   styles: [["auto", "Day and night"], ["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"]],
-  voiceCredit: "Voices by Piper; the French voice from the SIWIS database (CC BY 4.0).",
+  voiceCredit: "Voices by Piper; under CC BY: the French voice from the SIWIS database and Hi-Fi TTS, the Italian from serena-synthetic-it-27h (Marco Baccarani), the Estonian from the speech corpus of Estonian news sentences and LibriTTS-R.",
   language: "Language",
-  languageNote: "Page, names on the map, directions and voice",
+  languageNote: "Page and names on the map",
+  navLanguage: "Directions and voice",
+  navLanguageNote: "The steps of a route and the spoken navigation",
+  likePage: "Like the page",
   automatic: "Automatic",
   poweredBy: "Powered by",
   privacy: "Privacy",
@@ -1197,6 +1215,21 @@ const langRow = el("label", "lm-toggle lm-lang");
 const langText = el("span", "lm-toggle-text");
 langText.append(el("span", "", {}, T.language), el("span", "lm-toggle-note", {}, T.languageNote));
 langRow.append(langText, langSel);
+// the language of navigation: the steps of directions and the voice; a change applies at once (setNavLang)
+const navLangSel = el("select", "lm-lang-select lm-nav-lang-select", { "aria-label": T.navLanguage });
+for (const [k, name] of [["", T.likePage], ...Object.keys(LOCALES).map((k) => [k, NAV_NAMES[k]])]) {
+  const o = el("option", "", { value: k }, name);
+  if (k === chosenNavLang) o.selected = true;
+  navLangSel.append(o);
+}
+navLangSel.addEventListener("change", () => {
+  store.set("hm-nav-lang", navLangSel.value);
+  setNavLang(navLangSel.value);
+});
+const navLangRow = el("label", "lm-toggle lm-lang");
+const navLangText = el("span", "lm-toggle-text");
+navLangText.append(el("span", "", {}, T.navLanguage), el("span", "lm-toggle-note", {}, T.navLanguageNote));
+navLangRow.append(navLangText, navLangSel);
 menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "lm-menu-title", {}, T.show),
   buildingsRow,
   toggle(T.shading, T.shadingNote, look.shading, (on) => {
@@ -1207,6 +1240,7 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
   ...(TRAFFIC ? [trafficRow] : []),
   ...(TRANSIT ? [transitRow] : []),
   langRow,
+  ...(ROUTE ? [navLangRow] : []),
   forgetBtn,
   poweredLink, menuFoot, privacyLink);
 root.append(backdrop, menu);
@@ -3121,7 +3155,7 @@ async function findRoute({ quiet = false } = {}) {
   let d;
   try {
     const stops = route.stops.filter(Boolean);
-    const q = new URLSearchParams({ from: ll(route.from), to: ll(route.to), mode: route.mode, lang: LANG });
+    const q = new URLSearchParams({ from: ll(route.from), to: ll(route.to), mode: route.mode, lang: STEP_LANG });
     for (const x of stops) q.append("via", ll(x));
     const r = await fetch(`${ROUTE}?${q}`, { signal: ctl.signal });
     d = await r.json().catch(() => ({}));
@@ -3553,6 +3587,42 @@ const SAY_IN = {
   es: (d, km) => `En ${d} ${km ? (d === "1" ? "kilómetro" : "kilómetros") : "metros"}, `,
   nl: (d, km) => `Over ${d} ${km ? "kilometer" : "meter"}, `,
   pt: (d, km) => `Em ${d} ${km ? (d === "1" ? "quilómetro" : "quilómetros") : "metros"}, `,
+  // the metres are always round (10s, 50s, 100s): the plural of a number ending in 0 (Slavic languages)
+  bg: (d, km) => `След ${d} ${km ? (d === "1" ? "километър" : "километра") : "метра"}, `,
+  el: (d, km) => `Σε ${d} ${km ? (d === "1" ? "χιλιόμετρο" : "χιλιόμετρα") : "μέτρα"}, `,
+  et: (d, km) => `${d} ${km ? "kilomeetri" : "meetri"} pärast `,
+  fi: (d, km) => `${d} ${km ? "kilometrin" : "metrin"} päästä `,
+  hu: (d, km) => `${d} ${km ? "kilométer" : "méter"} múlva `,
+  nb: (d, km) => `Om ${d} ${km ? "kilometer" : "meter"}, `,
+  pl: (d, km) => `Za ${d} ${km ? (d === "1" ? "kilometr" : "kilometra") : "metrów"} `,
+  ro: (d, km) => (km ? `Peste ${d === "1" ? "un kilometru" : `${d} kilometri`}, ` : `Peste ${d} ${+d % 100 === 0 || +d % 100 >= 20 ? "de " : ""}metri, `),
+  ru: (d, km) => `Через ${d} ${km ? (d === "1" ? "километр" : "километра") : "метров"} `,
+  sv: (d, km) => `Om ${d} ${km ? "kilometer" : "meter"}, `,
+  uk: (d, km) => `Через ${d} ${km ? (d === "1" ? "кілометр" : "кілометра") : "метрів"} `,
+};
+// What the app itself says in the language of navigation (the rest is said by Valhalla): de, en, fr and it are
+// the texts of the page; the others here.
+const SPOKEN = {
+  bg: { rerouted: "Маршрутът е преизчислен.", gpsLost: "Няма GPS сигнал.", arrived: "Пристигнахте.", stopReached: "Достигнахте междинната точка." },
+  el: { rerouted: "Η διαδρομή υπολογίστηκε ξανά.", gpsLost: "Χάθηκε το σήμα GPS.", arrived: "Φτάσατε.", stopReached: "Φτάσατε στην ενδιάμεση στάση." },
+  es: { rerouted: "Ruta recalculada.", gpsLost: "Señal GPS perdida.", arrived: "Ha llegado.", stopReached: "Ha llegado a la parada intermedia." },
+  et: { rerouted: "Marsruut arvutati ümber.", gpsLost: "GPS-signaal kadus.", arrived: "Olete kohale jõudnud.", stopReached: "Jõudsite vahepeatuseni." },
+  fi: { rerouted: "Reitti laskettu uudelleen.", gpsLost: "GPS-signaali katosi.", arrived: "Olet perillä.", stopReached: "Olet saavuttanut välipisteen." },
+  hu: { rerouted: "Útvonal újratervezve.", gpsLost: "Megszűnt a GPS-jel.", arrived: "Megérkezett.", stopReached: "Elérte az útpontot." },
+  nb: { rerouted: "Ruten er beregnet på nytt.", gpsLost: "GPS-signalet er borte.", arrived: "Du er fremme.", stopReached: "Du har nådd stoppet." },
+  nl: { rerouted: "Route opnieuw berekend.", gpsLost: "GPS-signaal verloren.", arrived: "Je bent aangekomen.", stopReached: "Je hebt de tussenstop bereikt." },
+  pl: { rerouted: "Wyznaczono nową trasę.", gpsLost: "Utracono sygnał GPS.", arrived: "Jesteś na miejscu.", stopReached: "Osiągnięto punkt pośredni." },
+  pt: { rerouted: "Rota recalculada.", gpsLost: "Sinal de GPS perdido.", arrived: "Chegou.", stopReached: "Chegou à paragem." },
+  ro: { rerouted: "Traseu recalculat.", gpsLost: "Semnal GPS pierdut.", arrived: "Ai ajuns.", stopReached: "Ai ajuns la punctul intermediar." },
+  ru: { rerouted: "Маршрут перестроен.", gpsLost: "Сигнал GPS потерян.", arrived: "Вы прибыли.", stopReached: "Вы достигли промежуточной точки." },
+  sv: { rerouted: "Rutten har beräknats om.", gpsLost: "GPS-signalen förlorad.", arrived: "Du är framme.", stopReached: "Du har nått delmålet." },
+  uk: { rerouted: "Маршрут перебудовано.", gpsLost: "Сигнал GPS втрачено.", arrived: "Ви прибули.", stopReached: "Ви досягли проміжної точки." },
+};
+// own: a sentence of the app (rerouted, gpsLost, arrived, stopReached) to say, [text, language], in the language
+// of navigation (in English when it has none)
+const own = (k) => {
+  const t = SPOKEN[STEP_LANG]?.[k] || (STEP_LANG === "en" ? EN[k] : texts(num)[STEP_LANG]?.[k]);
+  return t ? [t, STEP_LANG] : [EN[k], "en"];
 };
 // a distance in metres rounded down to one that is said: 10s up to 100 m, 50s up to 300 m, 100s up
 // to 1 km, then half kilometres
@@ -3743,13 +3813,11 @@ function snap(p, wide) {
 // the point at a distance along the line (Preview)
 const pointAt = (along) => pointOn(nav.d.line, nav.cum, along, nav.idx);
 // ------------------------------------------------------------------ the voice
-// The instructions are spoken by the voices of this server (data-say: Piper, in German, English,
-// French and Italian), fetched up to three turns ahead; else, or when one is late, by the best voice
-// the browser has for the language.
+// The instructions are spoken in the language of navigation (STEP_LANG) by the voices of this server
+// (data-say: Piper, a voice for each language of data-voices), fetched up to three turns ahead; else, or
+// when one is late, by the best voice the browser has for the language.
 const SAY = root.dataset.say || "";
-const LOCALES = { en: "en-US", de: "de-DE", fr: "fr-FR", it: "it-IT", es: "es-ES", nl: "nl-NL", pt: "pt-PT" };
-let STEP_LANG = LOCALES[LANG] ? LANG : "en"; // the language of the texts of Valhalla
-const OUR_VOICES = ["de", "en", "fr", "it"];
+const OUR_VOICES = (root.dataset.voices || "de,en,fr,it").split(",");
 const hasSpeech = "speechSynthesis" in window;
 let browserVoices = [];
 if (hasSpeech) {
@@ -3764,7 +3832,7 @@ function bestVoice(lang) {
   let best = null, top = -Infinity;
   for (const v of browserVoices) {
     const vl = v.lang.toLowerCase().replace("_", "-");
-    if (vl.slice(0, 2) !== lang) continue;
+    if (vl.slice(0, 2) !== lang && !(lang === "nb" && /^(no|nn)\b/.test(vl))) continue;
     let sc = 0;
     if (/natural|neural|online/i.test(v.name)) sc += 6;
     if (/premium|enhanced|siri/i.test(v.name)) sc += 5;
@@ -3842,7 +3910,7 @@ function sentencesOf(all, st) {
 let sayQueue = [], sayQueueRunning = 0;
 function preSayAll(steps) {
   sayQueue = steps.flatMap((st) => sentencesOf(steps, st));
-  sayKeep = new Set([...sayQueue, T.gpsLost, T.rerouted]);
+  sayKeep = new Set([...sayQueue, own("gpsLost")[0], own("rerouted")[0]]);
   const next = () => {
     while (sayQueueRunning < 2 && sayQueue.length) {
       const p = fetchSay(sayQueue.shift());
@@ -4082,7 +4150,7 @@ function reachStop(p, ll) {
   x.done = true;
   const steps = nav.d.steps, k = steps.findIndex((st) => st.stop === j + 1), on = k >= 0 ? steps[k + 1] : null;
   if (on) nav.spoken.add(`${k}p`).add(`${k}a`).add(`${k + 1}p`).add(`${k + 1}a`);
-  speak([[T.stopReached, UI], on && (on.pre || on.text)]);
+  speak([own("stopReached"), on && (on.pre || on.text)]);
   return true;
 }
 // Arrived, with real fixes (5 to 20 m off, one a second): the traveller stops a little before the end,
@@ -4214,7 +4282,7 @@ function navArrive() {
   if (!nav.spoken.has("end")) {
     nav.spoken.add("end");
     if (last?.pre) say1(last.pre);
-    else say1(T.arrived, UI);
+    else say1(...own("arrived"));
   }
   // navigation ends when the sentence is said, 4 s after it (6 s at least, 20 s at most)
   const trip = nav.trip, wait = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -4242,7 +4310,7 @@ function gpsLost(on) {
   if (!on) return;
   navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.gpsLost);
   navSign.hidden = navThen.hidden = navLanes.hidden = true;
-  say1(T.gpsLost, UI);
+  say1(...own("gpsLost"));
 }
 function checkFix() {
   if (!nav.on || nav.sim || nav.arrived || nav.fixT == null || document.visibilityState !== "visible") return;
@@ -4295,7 +4363,7 @@ async function reroute(ll, stops = null, { quiet = false } = {}) {
   if (!quiet) navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
   const via = stops || nav.stops.filter((x) => x.i > nav.idx && x.ll && !x.done).map(({ ll, label }) => ({ ll, label }));
   try {
-    const q = new URLSearchParams({ from: `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`, to: `${route.to.ll[1].toFixed(5)},${route.to.ll[0].toFixed(5)}`, mode: route.mode, lang: LANG });
+    const q = new URLSearchParams({ from: `${ll[1].toFixed(5)},${ll[0].toFixed(5)}`, to: `${route.to.ll[1].toFixed(5)},${route.to.ll[0].toFixed(5)}`, mode: route.mode, lang: STEP_LANG });
     for (const x of via) q.append("via", `${x.ll[1].toFixed(5)},${x.ll[0].toFixed(5)}`);
     // the way the traveller is going: no new route that starts with turning round (by car)
     if (ll.heading != null) q.set("heading", String(Math.round((ll.heading + 360) % 360)));
@@ -4308,7 +4376,7 @@ async function reroute(ll, stops = null, { quiet = false } = {}) {
       nav.first = true;
       // "Route recalculated", then the first instruction of the new route
       nav.spoken.add("0");
-      if (!quiet) speak([[T.rerouted, UI], d.steps[0]?.pre || d.steps[0]?.text]);
+      if (!quiet) speak([own("rerouted"), d.steps[0]?.pre || d.steps[0]?.text]);
       if (nav.lastFix) onFix(nav.lastFix); // the banner at once, not at the next fix
     }
   } catch {}
@@ -4320,8 +4388,8 @@ async function navStart(sim) {
   if (!nav.muted) unlockSound();
   preSay(route.answer.steps.slice(0, 2), route.answer.steps);
   preSayAll(route.answer.steps);
-  fetchSay(T.gpsLost, UI);
-  fetchSay(T.rerouted, UI);
+  fetchSay(...own("gpsLost"));
+  fetchSay(...own("rerouted"));
   // the styles of day and night by car (tunnels) and the one to come back to, before they are needed
   const styles = route.mode === "car" ? [shownStyle(), "driving", "driving-night"] : [shownStyle()];
   for (const k of styles) styleJSON(styleURL(k), k.endsWith("-night")).catch(() => {});
@@ -4654,11 +4722,17 @@ navCenter.addEventListener("click", () => { nav.follow = true; navCenter.hidden 
 // The visitor zooms out of tilted navigation: the camera turns from the tilt to looking straight down,
 // tilted at zoom 15 and above, flat at 12 and below; zoomed in again it tilts back. The zoom buttons,
 // the wheel and two fingers; not the camera that follows (no originalEvent), not the 2D map.
+// The tilt changes once the gesture is over, in a short ease: a change of the camera during a gesture
+// stops it (jumpTo resets the handlers of MapLibre), and a pinch would stall at every step of its zoom.
 const navPitchFor = (z) => NAV_PITCH * Math.min(1, Math.max(0, (z - 12) / 3));
-map.on("zoom", (e) => {
-  if (!e.originalEvent || !nav.on || nav.follow || nav.flat) return;
+let navZoomedBy = false; // a zoom of the visitor in navigation, its tilt still to come
+map.on("zoomstart", (e) => { if (e.originalEvent && nav.on && !nav.follow && !nav.flat) navZoomedBy = true; });
+map.on("moveend", () => {
+  if (!navZoomedBy || map.isMoving()) return;
+  navZoomedBy = false;
+  if (!nav.on || nav.follow || nav.flat) return;
   const p = navPitchFor(map.getZoom());
-  if (Math.abs(map.getPitch() - p) > 0.5) map.setPitch(p);
+  if (Math.abs(map.getPitch() - p) > 0.5) map.easeTo({ pitch: p, duration: 400 });
 });
 // the visitor moves the map: it stops following until Re-centre
 for (const ev of ["pointerdown", "wheel", "touchstart"]) {
@@ -4678,7 +4752,7 @@ function setLang(chosen) {
   const old = JSON.parse(JSON.stringify(T)); // the strings; functions drop out
   LANG = langOf(chosen);
   UI = languages.some(([k]) => k === LANG) ? LANG : "en";
-  STEP_LANG = LOCALES[LANG] ? LANG : "en";
+  STEP_LANG = navLangOf();
   document.documentElement.lang = UI;
   loadTexts();
   const swap = new Map();
@@ -4707,12 +4781,23 @@ function setLang(chosen) {
   for (const end of [route.from, route.to]) if (end?.me) end.label = T.myPlace;
   for (const f of routeView.querySelectorAll("input")) { const to = swap.get(f.value); if (to) f.value = to; }
   restyle(); // the names on the map
+  stepsAgain();
+  if (!detailView.hidden && state.selected) renderDetail(state.selected);
+}
+// A new language of navigation: the steps of the route and the voice, at once (navigation goes on from where it is)
+function setNavLang(chosen) {
+  chosenNavLang = chosen;
+  const was = STEP_LANG;
+  STEP_LANG = navLangOf();
+  if (STEP_LANG !== was) stepsAgain();
+}
+// the route again, for its steps in the language of navigation: in navigation from where the traveller is
+function stepsAgain() {
   if (nav.on && !nav.arrived && nav.at) {
     const at = [...nav.at];
     at.heading = nav.heading;
     reroute(at, null, { quiet: true });
   } else if (route.from && route.to && !routeView.hidden) findRoute({ quiet: true });
-  if (!detailView.hidden && state.selected) renderDetail(state.selected);
 }
 // ------------------------------------------------------------------ start
 // the intro at once (before the map loads, a visitor may already open directions); a search of the

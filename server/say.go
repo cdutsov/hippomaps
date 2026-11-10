@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -14,12 +15,23 @@ import (
 //
 //	GET {base}/api/say?lang=de&text=…[&format=wav]   audio/mpeg, or audio/wav for browsers without MP3
 //
-// lang is de, en, fr or it, the text at most 400 characters (the instructions of Valhalla). The
+// lang is one of sayLangs (a voice of Piper each), the text at most 400 characters (the instructions of Valhalla). The
 // browser keeps each answer a week; this server keeps the latest in memory, as navigation says
 // the same sentences again and again. 400 for a bad request, 429 too many, 503 busy, 502 failed;
 // the page then speaks with the voices of the browser.
 
-var sayLangs = map[string]bool{"de": true, "en": true, "fr": true, "it": true}
+var sayLangs = map[string]bool{"bg": true, "de": true, "el": true, "en": true, "es": true, "et": true, "fi": true, "fr": true, "hu": true,
+	"it": true, "nb": true, "nl": true, "pl": true, "pt": true, "ro": true, "ru": true, "sv": true, "uk": true}
+
+// voiceList: the languages of sayLangs, for the page (data-voices)
+func voiceList() string {
+	l := make([]string, 0, len(sayLangs))
+	for k := range sayLangs {
+		l = append(l, k)
+	}
+	sort.Strings(l)
+	return strings.Join(l, ",")
+}
 
 const maxSay = 400
 
@@ -30,7 +42,7 @@ func (s *Server) say(w http.ResponseWriter, r *http.Request) {
 		format = "mp3"
 	}
 	if !sayLangs[lang] || text == "" || utf8.RuneCountInString(text) > maxSay || (format != "mp3" && format != "wav") {
-		http.Error(w, "lang de, en, fr or it, a text of at most 400 characters, format mp3 or wav", http.StatusBadRequest)
+		http.Error(w, "lang one of "+voiceList()+", a text of at most 400 characters, format mp3 or wav", http.StatusBadRequest)
 		return
 	}
 	key := "say\n" + format + "\n" + lang + "\n" + text

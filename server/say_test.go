@@ -37,8 +37,8 @@ func TestSay(t *testing.T) {
 	var calls atomic.Int32
 	tts := fakeTTS(t, &calls)
 	s := testServer(t, nil, func(c *Config) { c.TTSURL = tts.URL + "/"; c.SaysPerIP = 3 })
-	if !strings.Contains(get(s, "/labs/maps").Body.String(), `data-say="/labs/maps/api/say"`) {
-		t.Fatalf("page has no data-say")
+	if !strings.Contains(get(s, "/labs/maps").Body.String(), `data-say="/labs/maps/api/say" data-voices="bg,de,el,en,es,et,fi,fr,hu,it,nb,nl,pl,pt,ro,ru,sv,uk"`) {
+		t.Fatalf("page has no data-say with the voices")
 	}
 	w := get(s, "/labs/maps/api/say?lang=de&text=Rechts+%20abbiegen.")
 	if w.Code != 200 || w.Body.String() != "ID3 de Rechts abbiegen." || w.Header().Get("Content-Type") != "audio/mpeg" || !strings.Contains(w.Header().Get("Cache-Control"), "max-age") {
@@ -63,7 +63,7 @@ func TestSay(t *testing.T) {
 		t.Errorf("third new sentence: %d", w.Code)
 	}
 	n := calls.Load()
-	for _, u := range []string{"/labs/maps/api/say?lang=es&text=Hola", "/labs/maps/api/say?lang=de&text=Hallo&format=ogg", "/labs/maps/api/say?lang=de&text=", "/labs/maps/api/say?lang=de&text=" + strings.Repeat("a", 401)} {
+	for _, u := range []string{"/labs/maps/api/say?lang=tr&text=Merhaba", "/labs/maps/api/say?lang=de&text=Hallo&format=ogg", "/labs/maps/api/say?lang=de&text=", "/labs/maps/api/say?lang=de&text=" + strings.Repeat("a", 401)} {
 		if w := get(s, u); w.Code != 400 {
 			t.Errorf("%.60s: %d", u, w.Code)
 		}
@@ -80,5 +80,21 @@ func TestSayOff(t *testing.T) {
 	}
 	if strings.Contains(get(s, "/labs/maps").Body.String(), "data-say") {
 		t.Errorf("page has data-say without TTSURL")
+	}
+}
+
+// Each language of a voice is a language of the steps (the voice says them), and a voice of Bulgarian is asked
+// for in Bulgarian.
+func TestSayLanguages(t *testing.T) {
+	for l := range sayLangs {
+		if languages[l] == "" {
+			t.Errorf("voice %s: no language of the steps", l)
+		}
+	}
+	var calls atomic.Int32
+	tts := fakeTTS(t, &calls)
+	s := testServer(t, nil, func(c *Config) { c.TTSURL = tts.URL })
+	if w := get(s, "/labs/maps/api/say?lang=bg&text=%D0%97%D0%B0%D0%B2%D0%B8%D0%B9%D1%82%D0%B5+%D0%BD%D0%B0%D0%B4%D1%8F%D1%81%D0%BD%D0%BE."); w.Code != 200 || w.Body.String() != "ID3 bg Завийте надясно." {
+		t.Errorf("bg: %d %q", w.Code, w.Body)
 	}
 }
