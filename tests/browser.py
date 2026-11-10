@@ -143,8 +143,8 @@ try:
         check(js("!!document.querySelector('.maplibregl-ctrl-attrib a[href=\"https://db-ip.com\"]')") == bool(near), "the credit of DB-IP with the place of the IP address" if near else "no credit of DB-IP without a place")
         return near
     if not first_visit(""):
-        # this machine reaches its own server from a private address (through Docker): the page once more, as the
-        # server gives it to a visitor in Sydney
+        # no place for this machine (a server without the database, or reached from a private address through
+        # docker-proxy): the page once more, as the server gives it to a visitor in Sydney
         page = urllib.request.urlopen(URL + "/").read().decode()
         doc[0] = page.replace('<div class="lm" id="app"', '<div class="lm" id="app" data-near="-33.869,151.209,11"', 1)
         call("Fetch.enable", patterns=[{"urlPattern": URL + "/*", "resourceType": "Document"}])

@@ -34,8 +34,8 @@ code=$(get "$PAGE")
 [[ $code == 200 ]] && ok "the page answers" || ko "the page: HTTP $code"
 cp "$TMP/b" "$TMP/page"
 # the map opens near the visitor: the place of their IP address in the page, which no cache shares; the database
-# (GEOIP_DB) opens and is renewed monthly. This machine reaches its own server from a private address (through Docker):
-# the server is asked directly, as by a visitor at 81.62.0.1 (Swisscom)
+# (GEOIP_DB) opens and is renewed monthly. The server is asked directly too, as by a visitor at 81.62.0.1 (Swisscom): a
+# machine can reach its own server from a private address (docker-proxy)
 [[ $(hdr Cache-Control) == *private* ]] && ok "the page is kept by no shared cache" || ko "Cache-Control of the page: $(hdr Cache-Control)"
 if gdb=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' hippomaps 2>/dev/null | sed -n 's/^GEOIP_DB=//p') && [[ -n $gdb ]]; then
 	near=$(docker exec hippomaps wget -qO- --header 'X-Forwarded-For: 81.62.0.1' "http://127.0.0.1:8096$(sed -E 's#https?://[^/]*##' <<<"$PAGE")/" 2>&1 |
@@ -43,6 +43,14 @@ if gdb=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' hippomaps
 	[[ $near =~ ^-?[0-9]{1,2}\.[0-9]{3},-?[0-9]{1,3}\.[0-9]{3},(5|11)$ ]] && ok "the page has the place of the IP address of a visitor ($near)" || ko "the place of the IP address of a visitor: '$near'"
 	found=$(docker exec hippomaps hippomaps geoip "$gdb" 8.8.8.8 2>&1)
 	[[ $found =~ ^8\.8\.8\.8\ -?[0-9.]+,-?[0-9.]+\ (5|11)$ ]] && ok "the database of IP addresses opens ($found)" || ko "the database of IP addresses: $found"
+	# visitors over IPv4 and IPv6 reach the server with their own address: Caddy on a network with IPv6 (overpass1,
+	# 2026-11-10); before, docker-proxy handed every IPv6 visitor over from the Docker gateway, one address for all
+	for f in 4 6; do
+		code=$(curl -s -"$f" -m 15 -o "$TMP/b" -w '%{http_code}' "$PAGE/")
+		[[ $code == 000 ]] && continue # no way over IPv$f from here, or no address of the site
+		p=$(grep -o 'data-near="[^"]*"' "$TMP/b" | head -n1 | cut -d'"' -f2)
+		[[ -n $p ]] && ok "a visitor over IPv$f reaches the server with their address ($p)" || ko "over IPv$f the server sees no public address of the visitor (HTTP $code)"
+	done
 	age=$(( ($(date +%s) - $(docker exec hippomaps stat -c %Y "$gdb" 2>/dev/null || echo 0)) / 86400 ))
 	((age <= 40)) && ok "the database of IP addresses is $age days old" || ko "the database of IP addresses is $age days old (monthly update)"
 fi
