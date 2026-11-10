@@ -56,7 +56,10 @@ type Config struct {
 	SearchesPerIP int           // searches (search, query) a visitor gets in RouteWindow; taps on the map (here) three times as many
 	TrafficURL    string        // the traffic service next to Valhalla (incidents.json); empty: no traffic
 	RouteWindow   time.Duration //
-	Log           *slog.Logger
+	// GeoIPDB: a MaxMind DB file with a location per network (DB-IP City Lite): the map opens at the
+	// place of the IP address of the visitor until the device tells where it is; empty: at its default place
+	GeoIPDB string
+	Log     *slog.Logger
 }
 
 // DefaultConfig is the configuration without the environment.
@@ -110,6 +113,8 @@ type Server struct {
 	searchClient  *http.Client
 	searchesPerIP *window // search and query: they run on Overpass
 	herePerIP     *window // taps on the map
+
+	geo *geoIP // nil without GeoIPDB
 }
 
 // New makes the server.
@@ -131,6 +136,9 @@ func New(cfg Config) *Server {
 	s.cfg.RoutingURL = strings.TrimRight(cfg.RoutingURL, "/")
 	if s.log == nil {
 		s.log = slog.Default()
+	}
+	if cfg.GeoIPDB != "" {
+		s.geo = newGeoIP(cfg.GeoIPDB, s.log)
 	}
 	fs.WalkDir(web.Files, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -238,6 +246,9 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
 		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
+	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
+		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
+	}
 	if err := s.page.Execute(&buf, data); err != nil {
 		s.log.Error("page", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -245,7 +256,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("Cache-Control", "no-cache")
+	h.Set("Cache-Control", "private, no-cache") // the place of the visitor in it
 	h.Set("Content-Security-Policy", s.csp())
 	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=()")
 	h.Set("Referrer-Policy", "strict-origin-when-cross-origin") // the tiles key holds for the site only

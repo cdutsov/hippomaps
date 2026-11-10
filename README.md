@@ -15,7 +15,7 @@ OpenStreetMap data. Live at https://hippomaps.ch.
 - **Navigation** turn by turn, spoken in four languages, with re-routing, a 3D traveller and a preview mode
 - **Live traffic** in Switzerland: closures, queues and roadworks on the map and in the route time
 - **Transit lines** (metro, light rail, tram) in their colours
-- **Map**: a globe with the night side when zoomed out; nine styles, the default day map in the colours of Swiss
+- **Map**: opens near the visitor (the town of their IP address) until the device tells where they are; a globe with the night side when zoomed out; nine styles, the default day map in the colours of Swiss
   topographic maps, day and night by the sun, 3D terrain and buildings, relief shading; starred places as stars
 - **Languages**: English, German, French, Italian
 - **Privacy**: settings, starred places and recent searches stay in the browser
@@ -38,6 +38,7 @@ to other services:
 | [Piper](https://github.com/rhasspy/piper) behind `/say?lang=&text=` | spoken navigation (else the voices of the browser) | `TTS_URL` |
 | A traffic service with `/incidents.json` | live traffic | `TRAFFIC_URL` |
 | Wikidata and Wikimedia Commons | photos and logos | `PICTURES` |
+| [DB-IP City Lite](https://db-ip.com/db/download/ip-to-city-lite) (MMDB file, monthly, CC BY 4.0) | the map opens at the town of the IP address of the visitor | `GEOIP_DB` |
 
 Except for the tiles, each service is optional: without its setting the feature is left out of the page.
 
@@ -67,6 +68,7 @@ The Docker build runs `go vet` and the tests.
 | `ELEVATION_KEY` | | overpass.ch key for elevation (and Overpass without `OVERPASS_URL`), server side only |
 | `TTS_URL` | | Piper server |
 | `TRAFFIC_URL` | | traffic service |
+| `GEOIP_DB` | | a MaxMind DB file with a location per network (DB-IP City Lite; GeoLite2 City has the same fields): the map opens at the place of the IP address of the visitor, else in Zurich. A new file renamed over it is opened within a minute. `hippomaps geoip FILE ADDRESS…` looks addresses up in a file |
 | `PICTURES` | `true` | photos and logos from Wikimedia |
 | `PICTURE_CACHE_MB` | `64` | memory for Wikimedia answers and thumbnails |
 | `PICTURES_PER_IP`, `ROUTES_PER_IP`, `SAYS_PER_IP`, `SEARCHES_PER_IP` | `600`, `120`, `600`, `100` | per visitor in 10 minutes (map taps: three times the searches) |
@@ -124,4 +126,5 @@ opening_hours 3.15.0 (LGPL-3.0-only) and suncalc 2.0.1 (BSD-2-Clause), each with
 the names of the iD presets (id-tagging-schema 7.2.0, ISC), built by `server/labels/gen.py`, licence in `server/labels/LICENSE-id-tagging-schema.md`.
 
 Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons under the licence each credit names. Traffic:
-Federal Roads Office (FEDRO) Traffic Data Platform (TDP).
+Federal Roads Office (FEDRO) Traffic Data Platform (TDP). Places of IP addresses: IP Geolocation by DB-IP (CC BY 4.0, not in the
+repository; the map credits it with a link when it opens there).

@@ -16,6 +16,9 @@ const API = root.dataset.api.replace(/\/$/, "");
 const PICTURES = root.dataset.pictures || "";
 const ROUTE = root.dataset.route || "";
 const ALONG = (ROUTE && root.dataset.along) || ""; // places along a route (Overpass, through this server)
+// the place of the IP address of the visitor (looked up by the server in a database of its own, DB-IP):
+// latitude, longitude and zoom. The map opens there until the device tells where the visitor is
+const NEAR = ((v) => (v.length === 3 && v.every(Number.isFinite) ? v : null))((root.dataset.near || "").split(",").map(Number));
 // the language: chosen in the menu (hm-lang), else that of the browser. It sets the texts of the page
 // (en, de, fr, it), the names on the map, the steps of directions and the voice.
 // A change in the menu applies at once, without loading the page again (setLang).
@@ -352,9 +355,10 @@ const followsSun = () => look.style === "auto" || look.style === "driving";
 const shownStyle = () => navLook || (look.style === "auto" ? (autoDark ? "dark" : "light")
   : look.style === "driving" && autoDark ? "driving-night" : look.style);
 const isNight = (lon, lat) => sunHeight(lon, lat) < -0.833; // the sun below the horizon
-// day or night where the visitor is, by their clock: the sun at their location once known, else the
-// hours of the device (day 07–19); not where the map is (looking at America from Europe at night stays night)
-let meForSun = null;
+// day or night where the visitor is, by their clock: the sun at their location once known (first the
+// place of their IP address), else the hours of the device (day 07–19); not where the map is (looking at
+// America from Europe at night stays night)
+let meForSun = NEAR ? [NEAR[1], NEAR[0]] : null;
 const nightNow = () => (meForSun ? isNight(meForSun[0], meForSun[1]) : ((h) => h < 7 || h >= 19)(new Date().getHours()));
 autoDark = nightNow();
 const theme = () => (["dark", "black", "driving-night"].includes(shownStyle()) ? "dark" : "light");
@@ -466,7 +470,8 @@ side.append(sheetBtn, top, form, status, body, foot);
 
 // ------------------------------------------------------------------ the map
 // a link with a place on the map (#map=) opens there; otherwise, and when the place is just the
-// last view of this browser (a reload, a return), the map starts where the visitor is
+// last view of this browser (a reload, a return), the map starts where the visitor is: at the place of
+// their IP address (NEAR, else Zurich), then at the location of the device once it answers
 const lastView = (() => { try { return localStorage.getItem("hm-last-view"); } catch { return null; } })();
 const linkedView = /(^|&)map=/.test(location.hash.slice(1)) && location.hash !== lastView;
 // the tilt of the map in navigation: 50 degrees shows the way ahead; more draws many far tiles
@@ -474,11 +479,12 @@ const NAV_PITCH = 50;
 const map = new maplibregl.Map({
   container: mapEl,
   style: styleURL(),
-  center: [8.54, 47.37],
-  zoom: 13,
+  center: NEAR ? [NEAR[1], NEAR[0]] : [8.54, 47.37],
+  zoom: NEAR ? NEAR[2] : 13,
   hash: "map",
   maxPitch: 85,
-  attributionControl: { compact: true },
+  // DB-IP asks for a link on the page that uses its data (CC BY 4.0)
+  attributionControl: { compact: true, ...(NEAR && { customAttribution: '<a href="https://db-ip.com" target="_blank" rel="noopener">IP Geolocation by DB-IP</a>' }) },
   // at most two pixels of the screen to one of the map: three or more draw a phone screen with more than twice the work
   pixelRatio: Math.min(devicePixelRatio, 2),
 });

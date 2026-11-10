@@ -33,6 +33,17 @@ echo "Page"
 code=$(get "$PAGE")
 [[ $code == 200 ]] && ok "the page answers" || ko "the page: HTTP $code"
 cp "$TMP/b" "$TMP/page"
+# the map opens near the visitor: the place of their IP address (here that of this machine) in the page, which no cache
+# shares; the database (GEOIP_DB) opens and is renewed monthly
+if gdb=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' hippomaps 2>/dev/null | sed -n 's/^GEOIP_DB=//p') && [[ -n $gdb ]]; then
+	near=$(grep -o 'data-near="[^"]*"' "$TMP/page" | head -n1 | cut -d'"' -f2)
+	[[ $near =~ ^-?[0-9]{1,2}\.[0-9]{3},-?[0-9]{1,3}\.[0-9]{3},(5|11)$ && $(hdr Cache-Control) == *private* ]] &&
+		ok "the page has the place of the IP address ($near)" || ko "the place of the IP address: '$near', Cache-Control $(hdr Cache-Control)"
+	found=$(docker exec hippomaps hippomaps geoip "$gdb" 8.8.8.8 2>&1)
+	[[ $found =~ ^8\.8\.8\.8\ -?[0-9.]+,-?[0-9.]+\ (5|11)$ ]] && ok "the database of IP addresses opens ($found)" || ko "the database of IP addresses: $found"
+	age=$(( ($(date +%s) - $(docker exec hippomaps stat -c %Y "$gdb" 2>/dev/null || echo 0)) / 86400 ))
+	((age <= 40)) && ok "the database of IP addresses is $age days old" || ko "the database of IP addresses is $age days old (monthly update)"
+fi
 # its own site is for search engines: no noindex, a canonical link, robots.txt with the sitemap
 ! grep -q noindex "$TMP/page" && [[ -z $(hdr X-Robots-Tag) ]] && ok "the page is for search engines" || ko "noindex: $(hdr X-Robots-Tag)"
 grep -qF '<link rel="canonical" href="'"$PAGE"'/">' "$TMP/page" && ok "a canonical link" || ko "no canonical link to $PAGE/"

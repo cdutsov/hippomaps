@@ -4,7 +4,8 @@
     python3 tests/browser.py https://hippomaps.ch
 
 Prints "ok <what>" per check and "FAIL <what>" per failure; exits 1 on a failure. The browser is
-in Zurich (a granted location) on a phone screen. Checks: the map starts at the location; the
+in Zurich (a granted location) on a phone screen. Checks: without the location the map opens at the place of the IP
+address (of the machine of the test), with the credit of DB-IP; the map starts at the location; the
 Directions button opens start and destination, a typed destination gives a route by car with its
 time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
 sentences of the server; the language changed while navigating (no new page); a long press while
@@ -126,6 +127,15 @@ try:
     call("Page.enable")
     call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
     call("Emulation.setTouchEmulationEnabled", enabled=True)
+    # a first visit, the location not given: the map opens at the place of the IP address (of this machine), with
+    # the credit of DB-IP; a server without the database opens it in Zurich
+    call("Page.navigate", url=URL)
+    wait("window.hmMap?.loaded()", 30)
+    near = js("document.getElementById('app')?.dataset.near || ''")
+    lat, lon, z = map(float, near.split(",")) if near else (47.37, 8.54, 13)
+    check(js(f"(() => {{ const c = hmMap.getCenter(); return Math.abs(c.lat - {lat}) < 0.001 && Math.abs(c.lng - {lon}) < 0.001 && Math.abs(hmMap.getZoom() - {z}) < 0.01; }})()"),
+          f"the location not given, the map opens at the place of the IP address ({near})" if near else "the location not given and no place of the IP address: the map opens in Zurich")
+    check(js("!!document.querySelector('.maplibregl-ctrl-attrib a[href=\"https://db-ip.com\"]')") == bool(near), "the credit of DB-IP with the place of the IP address")
     call("Browser.grantPermissions", origin=URL.split("/labs")[0], permissions=["geolocation"])
     call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
     call("Page.navigate", url=URL)

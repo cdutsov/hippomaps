@@ -1,8 +1,9 @@
 // hippomaps is a map app: a search with its results beside a map. All settings
 // come from the environment; see README.md.
 //
-//	hippomaps [serve]       listen on LISTEN, default :8096
-//	hippomaps healthcheck   the server answers
+//	hippomaps [serve]                listen on LISTEN, default :8096
+//	hippomaps healthcheck            the server answers
+//	hippomaps geoip FILE ADDRESS...  the place of each address in a database file (GEOIP_DB)
 package main
 
 import (
@@ -35,8 +36,10 @@ func main() {
 		err = serve()
 	case "healthcheck":
 		err = healthcheck()
+	case "geoip":
+		err = geoip(os.Args[2:])
 	default:
-		err = fmt.Errorf("unknown command %q (serve | healthcheck)", cmd)
+		err = fmt.Errorf("unknown command %q (serve | healthcheck | geoip)", cmd)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hippomaps:", err)
@@ -87,6 +90,7 @@ func config() (server.Config, error) {
 	cfg.TrafficURL = env("TRAFFIC_URL", "")
 	cfg.SaysPerIP = num("SAYS_PER_IP", cfg.SaysPerIP)
 	cfg.SearchesPerIP = num("SEARCHES_PER_IP", cfg.SearchesPerIP)
+	cfg.GeoIPDB = env("GEOIP_DB", "")
 	if !strings.HasPrefix(cfg.Base, "/") {
 		err = errors.Join(err, fmt.Errorf("BASE_PATH: must start with /: %q", cfg.Base))
 	}
@@ -108,7 +112,7 @@ func serve() error {
 		defer cancel()
 		srv.Shutdown(c)
 	}()
-	cfg.Log.Info("listening", "addr", srv.Addr, "version", Version, "base", cfg.Base, "pictures", cfg.Pictures, "routes", cfg.RoutingURL != "", "heights", cfg.ElevationKey != "", "voice", cfg.TTSURL != "", "traffic", cfg.TrafficURL != "", "key", cfg.MapsKey != "")
+	cfg.Log.Info("listening", "addr", srv.Addr, "version", Version, "base", cfg.Base, "pictures", cfg.Pictures, "routes", cfg.RoutingURL != "", "heights", cfg.ElevationKey != "", "voice", cfg.TTSURL != "", "traffic", cfg.TrafficURL != "", "geoip", cfg.GeoIPDB != "", "key", cfg.MapsKey != "")
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -129,6 +133,26 @@ func healthcheck() error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("healthz: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// geoip prints the place of each address in a database file: latitude, longitude and zoom of the map, or
+// "none"; it fails when the file is not a database (a check of a new file before it replaces the old one).
+func geoip(args []string) error {
+	if len(args) < 2 {
+		return errors.New("usage: hippomaps geoip FILE ADDRESS...")
+	}
+	for _, ip := range args[1:] {
+		n, ok, err := server.LookupNear(args[0], ip)
+		if err != nil {
+			return fmt.Errorf("%s: %w", ip, err)
+		}
+		if !ok {
+			fmt.Println(ip, "none")
+			continue
+		}
+		fmt.Printf("%s %.3f,%.3f %d\n", ip, n.Lat, n.Lon, n.Zoom())
 	}
 	return nil
 }
