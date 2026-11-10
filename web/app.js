@@ -537,7 +537,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty, along: empty };
+const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty };
 const ACCENT = "#e8590c"; // the warm complement of the hippo blue (--warm)
 const STOP_COLOUR = "#e8590c"; // stops on a route, and the places along it
 // POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
@@ -750,6 +750,17 @@ const addIcons = () => {
     g.beginPath(); g.arc(16, 16, 4.5, 0, 2 * Math.PI); g.fillStyle = "#fff"; g.fill();
   });
 };
+// the head of a turn arrow in navigation (lm-turn-head): white with the casing of the route, open at its base where the
+// white of the arrow line comes in; it points up (north), turned with the map by its rotate
+const TURN_CASE = "#0b3d91";
+const addTurnHead = () => drawIcon("lm-turn-head", 22, 18, (g) => {
+  g.beginPath();
+  g.moveTo(11, 1.5); g.lineTo(20.5, 17); g.lineTo(1.5, 17);
+  g.closePath();
+  g.lineJoin = "round"; g.lineWidth = 2; g.strokeStyle = TURN_CASE; g.stroke();
+  g.fillStyle = "#fff"; g.fill();
+  g.fillRect(11 - 2.75, 15, 5.5, 3); // the white of the line into the head (5.5 px: the line at the size of the head)
+});
 const pinLayer = (id, source, filter) => ({ id, type: "symbol", source, ...(filter ? { filter } : {}),
   layout: { "icon-image": "lm-pin-icon", "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true } });
 
@@ -759,6 +770,7 @@ const textPaint = (id) => ({ "text-color": TEXT_COLOUR[id][theme() === "dark" ? 
 map.on("style.load", () => {
   if (shownStyle() === "light") pastel();
   addIcons();
+  addTurnHead();
   // a globe when zoomed out; MapLibre turns it into the flat map from about zoom 12 (a new style resets it)
   map.setProjection({ type: "globe" });
   // 3D buildings see-through, so the map and the route behind them stay in view
@@ -839,6 +851,14 @@ map.on("style.load", () => {
     paint: { "line-color": "#1a73e8", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
   add({ id: "lm-route-traffic", type: "line", source: "lm-routetraffic", layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "level"], 2, "#d93025", "#f29900"], "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
+  // the turns ahead in navigation: a white arrow on the line, with the casing of the route (turnArrows)
+  add({ id: "lm-turn-case", type: "line", source: "lm-turns", minzoom: 12, filter: line, layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": TURN_CASE, "line-width": ["interpolate", ["linear"], ["zoom"], 12, 6, 16, 10] } }, below);
+  add({ id: "lm-turn-line", type: "line", source: "lm-turns", minzoom: 12, filter: line, layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#fff", "line-width": ["interpolate", ["linear"], ["zoom"], 12, 3.5, 16, 6] } }, below);
+  add({ id: "lm-turn-head", type: "symbol", source: "lm-turns", minzoom: 12, filter: ["!", line], layout: { "icon-image": "lm-turn-head",
+    "icon-anchor": "bottom", "icon-rotate": ["get", "rotate"], "icon-rotation-alignment": "map", "icon-pitch-alignment": "map",
+    "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.64, 16, 1.1], "icon-allow-overlap": true, "icon-ignore-placement": true } }, below);
   // places along the route (search along the route): orange, their name when near
   add({ id: "lm-along", type: "circle", source: "lm-along", paint: {
     "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 4, 15, 8], "circle-color": STOP_COLOUR, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
@@ -2704,6 +2724,68 @@ function drawEnds(line) {
   if (route.to) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } });
   setSource("route", { type: "FeatureCollection", features: fs });
 }
+// In directions the start, the stops and the destination are dragged on the map, with the mouse or one finger
+// (within 12 or 24 px of the point): the point moves with it, and where it is let go is the new one (named as a
+// tap names a point), with a new route. A press without a move is a tap.
+{
+  let drag = null, grab = false;
+  const can = () => !nav.on && !routeView.hidden;
+  const endNear = (pt, r) => {
+    let best = null;
+    for (const f of sources.route.features) {
+      if (f.geometry.type !== "Point" || !f.properties.end) continue;
+      const q = map.project(f.geometry.coordinates), d = Math.hypot(q.x - pt.x, q.y - pt.y);
+      if (d <= r) { best = f; r = d; }
+    }
+    return best;
+  };
+  const move = (e) => {
+    if (!drag || (!drag.moved && Math.hypot(e.point.x - drag.from.x, e.point.y - drag.from.y) < 4)) return;
+    drag.moved = true;
+    drag.pt = { x: e.point.x + drag.dx, y: e.point.y + drag.dy }; // where the point is: as far from the finger as at the start
+    const ll = map.unproject([drag.pt.x, drag.pt.y]);
+    drag.f.geometry.coordinates = [ll.lng, ll.lat];
+    setSource("route", { ...sources.route });
+  };
+  const up = () => {
+    map.off("mousemove", move);
+    map.off("touchmove", move);
+    const d = drag;
+    drag = null;
+    map.getCanvas().style.cursor = "";
+    grab = false;
+    if (!d?.moved || !can()) return;
+    ghostUntil = Date.now() + 700; // the click of the release does nothing
+    const [lng, lat] = d.f.geometry.coordinates;
+    const end = { ll: [+lng.toFixed(5), +lat.toFixed(5)], label: symbolAt(d.pt) || T.mapPoint };
+    const { end: kind, n } = d.f.properties;
+    if (kind === "stop") route.stops[n - 1] = end; else route[kind] = end;
+    renderRoute();
+    findRoute();
+  };
+  const down = (e, touch) => {
+    if (drag || !can() || (touch && e.points.length !== 1)) return;
+    const f = endNear(e.point, touch ? 24 : 12);
+    if (!f) return;
+    e.preventDefault(); // the map does not pan
+    const at = map.project(f.geometry.coordinates);
+    drag = { f, from: e.point, pt: at, dx: at.x - e.point.x, dy: at.y - e.point.y, moved: false };
+    map.getCanvas().style.cursor = "grabbing";
+    map.on(touch ? "touchmove" : "mousemove", move);
+    map.once(touch ? "touchend" : "mouseup", up);
+  };
+  map.on("mousedown", (e) => { if (e.originalEvent.button === 0) down(e, false); });
+  map.on("touchstart", (e) => down(e, true));
+  map.on("touchcancel", up);
+  // the hand over a point that can be dragged
+  map.on("mousemove", (e) => {
+    if (drag) return;
+    const over = can() && !!endNear(e.point, 12);
+    if (over === grab) return;
+    grab = over;
+    map.getCanvas().style.cursor = over ? "grab" : "";
+  });
+}
 // go: start navigation once the route from the location is there
 async function directions(to, go = false) {
   route.back = [listView, hereView, detailView].find((v) => !v.hidden) || listView;
@@ -3568,6 +3650,15 @@ function renderLanes(st, toNext) {
     if (!any) box.append(el("span", "lm-lane-arrow", {}, "·"));
     navLanes.append(box);
   }
+  fitLanes();
+}
+// All the lanes in the width of the top: smaller (CSS zoom) when there are more than fit. Read once for each new
+// set of lanes and after a resize.
+function fitLanes() {
+  if (navLanes.hidden || navBox.hidden) return;
+  navLanes.style.zoom = "";
+  const room = navUnder.clientWidth, need = navLanes.scrollWidth;
+  if (room > 0 && need > room) navLanes.style.zoom = String(Math.floor((room / need) * 100) / 100);
 }
 const navLimit = el("div", "lm-nav-limit");
 const navSpeed = el("div", "lm-nav-speed"); // the speed now, by car and by bike
@@ -3598,6 +3689,8 @@ navAlong.hidden = true;
 // the top in one column (.lm-nav-head): the banner; under it the lanes and the next turn on the left, the sign on the right
 const navHead = el("div", "lm-nav-head"), navUnder = el("div", "lm-nav-under"), navLeft = el("div", "lm-nav-left");
 navLeft.append(navLanes, navThen);
+map.on("resize", fitLanes);
+window.hmLanes = (lanes) => renderLanes({ lanes }, 0); // for tests/browser.py: lanes as given, by car
 navUnder.append(navLeft, navSign);
 navHead.append(navBanner, navUnder);
 navBox.append(navHead, navLimit, navSpeed, navElev, navCenter, navAlong, navBottom);
@@ -4045,12 +4138,62 @@ const navPad = () => {
   const h = mapH();
   return { top: Math.round(h * 0.42), bottom: nav.elev ? 140 : 90, left: 20, right: 20 };
 };
+// Arrows over the line at the turns ahead (types of Valhalla: the turns, ramps, exits, keep left or right, and
+// roundabouts from before them to after their exit; not straight on, merges and the arrival): from `before` px of
+// the map ahead of the turn to `after` px past it, the same size at every zoom (mpp: metres of a pixel), but no
+// further than half the way to the turn before or after (or all of it when that one has no arrow). The part
+// behind the traveller (along, in metres) is left out; at most 4 arrows within 3 km. Each arrow is a line and a
+// point at its end with the bearing of its last metres (rotate).
+const TURN_TYPES = new Set([9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 23, 24, 26]);
+function turnArrows(steps, line, cum, along, mpp, before = 60, after = 45) {
+  const last = cum.length - 1, at = (st) => cum[Math.min(st.i, last)];
+  const turn = (n) => n > 0 && steps[n] && TURN_TYPES.has(steps[n].type);
+  // the exit of a roundabout is in the arrow of the roundabout
+  const drawn = (n) => turn(n) || (steps[n]?.type === 27 && steps[n - 1]?.type === 26);
+  const fs = [];
+  for (let n = 1; n < steps.length && fs.length < 8; n++) {
+    if (!turn(n)) continue;
+    const st = steps[n];
+    // a roundabout: to its exit (the step after it, 27), and the way on from there
+    const exit = st.type === 26 && steps[n + 1]?.type === 27 ? n + 1 : n;
+    const turnAt = at(st), endAt = st.type === 26 ? cum[Math.min(st.end, last)] : turnAt;
+    const prevAt = at(steps[n - 1]), nextAt = steps[exit + 1] ? at(steps[exit + 1]) : cum[last];
+    const a = turnAt - Math.min(before * mpp, (turnAt - prevAt) * (drawn(n - 1) ? 0.5 : 1));
+    let b = endAt + Math.min(after * mpp, (nextAt - endAt) * (drawn(exit + 1) ? 0.5 : 1));
+    b = Math.min(b, cum[last]);
+    if (a > along + 3000) break;
+    const from = Math.max(a, along);
+    if (b - from < 1) continue;
+    let i = 0;
+    while (i < last && cum[i + 1] <= from) i++;
+    const pts = [pointOn(line, cum, from, i)];
+    for (let j = i + 1; j <= last && cum[j] < b; j++) pts.push(line[j]);
+    const tip = pointOn(line, cum, b, i);
+    pts.push(tip);
+    const back = pointOn(line, cum, b - Math.min((b - from) / 2, Math.max(1, 8 * mpp)), i);
+    fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: pts }, properties: { n } },
+      { type: "Feature", geometry: { type: "Point", coordinates: tip }, properties: { n, rotate: Math.round(bearingOf(back, tip)) } });
+  }
+  return fs;
+}
+// the arrows of the turns ahead, again when the traveller moved or the zoom changed by a quarter
+function drawTurnArrows(along) {
+  const z = Math.round((nav.follow ? nav.zoom ?? map.getZoom() : map.getZoom()) * 4) / 4;
+  const at = nav.at || nav.d.line[0], mpp = (78271.5 * Math.cos((at[1] * Math.PI) / 180)) / 2 ** z;
+  const fs = turnArrows(nav.d.steps, nav.d.line, nav.cum, along, mpp);
+  const key = JSON.stringify(fs.map((f) => f.geometry.coordinates));
+  if (key === nav.turnsKey && nav.turnsOf === nav.d) return;
+  nav.turnsKey = key;
+  nav.turnsOf = nav.d;
+  setSource("turns", { type: "FeatureCollection", features: fs });
+}
 function drawNavLine(p) {
   const key = `${p.i} ${p.ll}`;
   if (nav.lineAt === key && nav.lineOf === nav.d) return; // standing still: the same line
   nav.lineAt = key;
   nav.lineOf = nav.d;
   drawRouteTraffic(nav.d, p.i, p.ll);
+  drawTurnArrows(p.along);
   const rest = [p.ll, ...nav.d.line.slice(p.i + 1)];
   setSource("route", { type: "FeatureCollection", features: [
     { type: "Feature", geometry: { type: "LineString", coordinates: rest }, properties: {} },
@@ -4262,6 +4405,8 @@ document.addEventListener("visibilitychange", keepAwake);
 function navStop() {
   nav.on = false;
   fpsCap(false);
+  setSource("turns", empty);
+  nav.turnsKey = null;
   navAlongClose();
   if (navLook) { // back to the style of the menu
     navLook = null;

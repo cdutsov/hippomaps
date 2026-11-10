@@ -324,7 +324,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-nav-head { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; max-width: 460px; display: flex;
   flex-direction: column; align-items: stretch; pointer-events: none; }
 .lm-nav-head > *, .lm-nav-under > * { pointer-events: auto; }
-.lm-nav-under { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; pointer-events: none; }
+.lm-nav-under { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; column-gap: 8px; pointer-events: none; }
 .lm-nav-left { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; pointer-events: none; }
 .lm-nav-banner { display: flex; gap: .8rem; position: relative; z-index: 1;
   align-items: center; background: #0284c7; color: #fff; border-radius: 14px; padding: .7rem 1rem; box-shadow: 0 4px 18px rgba(0, 0, 0, .3); }
@@ -446,10 +446,11 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 
 /* the menu while navigating: a round button above the traffic button */
 .lm-navigating .lm-map-burger { display: grid; place-items: center; position: absolute; top: auto; left: auto; right: 10px; z-index: 5; border-radius: 50%; border: 0; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); cursor: pointer; }
-/* the lanes before a turn, under the banner: the lanes to take light, the others dim */
+/* the lanes before a turn, under the banner: the lanes to take light, the others dim; the sign goes under them when
+   both do not fit side by side, and many lanes are made smaller to fit (fitLanes in app.js) */
 .lm-nav-lanes { margin-top: 3px; display: flex; gap: 2px; padding: 4px;
-  border-radius: 10px; background: #01699f; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); max-width: calc(100% - 20px); overflow: hidden; }
-.lm-lane { display: flex; align-items: center; justify-content: center; min-width: 34px; height: 40px; padding: 0 3px; border-radius: 6px; color: rgba(255, 255, 255, .38); }
+  border-radius: 10px; background: #01699f; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); max-width: 100%; overflow: hidden; }
+.lm-lane { flex: none; display: flex; align-items: center; justify-content: center; min-width: 34px; height: 40px; padding: 0 3px; border-radius: 6px; color: rgba(255, 255, 255, .38); }
 .lm-lane + .lm-lane { border-left: 2px dashed rgba(255, 255, 255, .35); border-radius: 0; }
 .lm-lane-arrow { display: grid; margin: 0 -5px; }
 .lm-lane-arrow.lm-lane-on { color: #fff; }

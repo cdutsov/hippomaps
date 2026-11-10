@@ -9,8 +9,9 @@ address (of the machine of the test), without a credit of DB-IP on the map; the 
 Directions button opens start and destination, a typed destination gives a route by car with its
 time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
 sentences of the server; the language changed while navigating (no new page); a long press while
-navigating (the point and the places around, the point as a stop); the traffic button; the map drawn at 2 pixels per point at most, our sources with tiles to zoom 14 only, the
-banner kept between updates of one turn, dark and light switched in place (our layers and the route kept, no new load of the map); a stop and the places along a
+navigating (the point and the places around, the point as a stop); the destination of a route dragged with a finger; the traffic button; the map drawn at 2 pixels per point at most, our sources with tiles to zoom 14 only, the
+banner kept between updates of one turn, many lanes in the width of the top with the sign under them, the arrows of the turns ahead
+over the line, dark and light switched in place (our layers and the route kept, no new load of the map); a stop and the places along a
 route; navigation drawn at 30 frames a second at most, the camera following, tilted 50 degrees, the next turn right under the banner; arrival by bike with Start and fixes that stop short of the end (said once, navigation
 ends); the X clears everything; the panel of a phone (empty: stays down; the suggestions scroll, a tap picks;
 directions at their top when the keyboard goes; up and down in one movement when the keyboard comes and goes, a field of
@@ -258,6 +259,25 @@ try:
       [i.textContent, t.hidden, t.textContent] = was; return out; })()""")
     check(gaps and abs(gaps[0]) <= 1 and abs(gaps[2]) <= 1 and gaps[3] > gaps[1],
           f"the next turn right under the banner, one and two lines (gap, height: {gaps})")
+    # many lanes (12, three arrows each) with the sign: all in the width of the top (smaller), the sign under them;
+    # three lanes at full size with the sign beside them (fitLanes); in one go, as above
+    lanes = js("""(() => { const s = document.querySelector('.lm-nav-sign'), L = document.querySelector('.lm-nav-lanes'), H = document.querySelector('.lm-nav-head');
+      const was = [s.hidden, s.className, s.textContent], out = {};
+      s.hidden = false; s.className = 'lm-nav-sign lm-sign-motorway'; s.textContent = 'A1 Bern Zürich';
+      hmLanes(Array.from({ length: 12 }, (_, i) => ({ d: 2 | 32 | 64, a: i > 9 ? 64 : 0 })));
+      out.many = [L.lastElementChild.getBoundingClientRect().right, L.getBoundingClientRect().right, H.getBoundingClientRect().right,
+        s.getBoundingClientRect().top, L.getBoundingClientRect().bottom].map(Math.round);
+      hmLanes([{ d: 2, a: 2 }, { d: 2 | 64, a: 64 }, { d: 64, a: 64 }]);
+      out.few = [L.style.zoom, Math.round(s.getBoundingClientRect().top - L.getBoundingClientRect().top)];
+      [s.hidden, s.className, s.textContent] = was; hmLanes([]); return out; })()""")
+    m = (lanes or {}).get("many") or [1, 0, 0, 0, 1]
+    check(m[0] <= m[1] <= m[2] + 1 and m[3] >= m[4], f"12 lanes and the sign: the last lane in view, the sign under the lanes ({lanes})")
+    check(lanes and lanes["few"][0] == "" and abs(lanes["few"][1]) < 12, f"3 lanes and the sign: full size, side by side ({lanes})")
+    # the arrows of the turns ahead over the line: a white line and its head, turned with the way on
+    check(wait("""(() => { const fs = hmMap.getStyle().sources['lm-turns']?.data.features || [];
+      return !!hmMap.getLayer('lm-turn-line') && !!hmMap.getLayer('lm-turn-head') && fs.some(f => f.geometry.type === 'LineString' && f.geometry.coordinates.length >= 2)
+        && fs.filter(f => f.geometry.type === 'Point').every(f => typeof f.properties.rotate === 'number') && fs.some(f => f.geometry.type === 'Point'); })()""", 20),
+          "the arrows of the turns ahead over the line")
     # the menu while navigating: the map keeps following
     js("document.querySelector('.lm-map-burger').click()")
     time.sleep(0.5)
@@ -343,6 +363,28 @@ try:
     check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && document.querySelector('.lm-nav-go .lm-chip')", 40)
           and not js("document.getElementById('app').classList.contains('lm-navigating')"),
           "a tapped point and the Directions button: the route to it, with Preview and Start")
+    # the destination dragged with a finger (from 8 px beside it): the map does not pan, the point where it was let go,
+    # a new route; the release opens nothing
+    js("(() => { const f = hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to'); hmMap.jumpTo({ center: f.geometry.coordinates, padding: { bottom: 420 } }); })()")
+    time.sleep(1)
+    to_px = js("(() => { const f = hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to'); const p = hmMap.project(f.geometry.coordinates); return [p.x, p.y]; })()")
+    if to_px:
+        want = js(f"(() => {{ const l = hmMap.unproject([{to_px[0] - 60}, {to_px[1] + 40}]); return [l.lng, l.lat]; }})()")
+        c0, routes0 = js("JSON.stringify(hmMap.getCenter())"), js("performance.getEntriesByType('resource').filter(e => e.name.includes('/api/route')).length")
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": to_px[0] + 8, "y": to_px[1]}])
+        for k in range(1, 9):
+            call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": to_px[0] + 8 - 60 * k / 8, "y": to_px[1] + 40 * k / 8}])
+            time.sleep(0.03)
+        moved = js("JSON.stringify(hmMap.getCenter())") != c0  # before the new route fits the map to it
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        check(wait(f"performance.getEntriesByType('resource').filter(e => e.name.includes('/api/route')).length > {routes0} && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30), "the destination dragged: a new route")
+        got = js("hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to')?.geometry.coordinates")
+        check(not moved and got and abs(got[0] - want[0]) < 2e-4 and abs(got[1] - want[1]) < 2e-4,
+              f"the destination where the finger let go, the map not panned ({got}, {want}, panned: {moved})")
+        check(js("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden && !document.querySelector('.lm-route').hidden"),
+              "the release of the drag opens no place")
+    else:
+        check(False, "the destination of the route on the map")
 
     # the X clears everything
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
