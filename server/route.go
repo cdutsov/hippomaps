@@ -21,7 +21,8 @@ import (
 // one line, and stops holds the index of the line where each stop is).
 //
 // answers {"km","s","line":[[lon,lat],…],"steps":[…],"stops":[i,…],"limits":[[from,to,kmh],…]}, or
-// {"error":{"code","message"}}: 400 bad_request and too_far, 404 no_route, 429 too_many,
+// {"error":{"code","message"}}: 400 bad_request and too_far, 404 no_route, no_road (none near a point) and
+// closed_now (a route at another time: a pass closed in winter, a road closed by traffic), 429 too_many,
 // 503 busy, 502 failed. A step has the text, its length and time, where it starts on the line
 // (at, i, end), the spoken texts for navigation (alert before, pre at the turn, post after),
 // the street, and what a sign shows (exit number and name, route numbers, toward). limits are
@@ -130,6 +131,27 @@ func routeError(w http.ResponseWriter, status int, code, msg string) {
 	json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": msg}})
 }
 
+// routeAtAnyTime: is there a route for the request without a time (closures by date and traffic not counted)?
+func (s *Server) routeAtAnyTime(ctx context.Context, ask map[string]any) bool {
+	again := map[string]any{}
+	for k, v := range ask {
+		if k != "date_time" {
+			again[k] = v
+		}
+	}
+	body, _ := json.Marshal(again)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RoutingURL+"/route", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	resp, err := s.routeClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var v valhallaRoute
+	return resp.StatusCode == http.StatusOK && json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&v) == nil && len(v.Trip.Legs) > 0
+}
+
 // latLon reads "47.37,8.54".
 func latLon(v string) (lat, lon float64, ok bool) {
 	a, b, found := strings.Cut(v, ",")
@@ -210,14 +232,15 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		locations = append(locations, map[string]any{"lat": p[0], "lon": p[1], "type": "break"})
 	}
 	locations = append(locations, map[string]any{"lat": lat2, "lon": lon2})
-	body, _ := json.Marshal(map[string]any{
+	ask := map[string]any{
 		"locations":  locations,
 		"costing":    mode.costing,
 		"units":      "kilometers",
 		"language":   lang,
 		"date_time":  map[string]int{"type": 0}, // leaving now: live traffic and closures count
 		"turn_lanes": true,
-	})
+	}
+	body, _ := json.Marshal(ask)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RoutingURL+"/route", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", s.cfg.UserAgent)
@@ -244,7 +267,10 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		// 442 no path, 171 no road near a point, 154/150 over the limits of Valhalla
 		code, msg := "no_route", "No route between these points."
 		if v.ErrorCode == 171 {
-			msg = "No road near one of the points."
+			code, msg = "no_road", "No road near one of the points."
+		} else if v.ErrorCode == 442 && s.routeAtAnyTime(ctx, ask) {
+			// a way at another time: a road closed now (a pass in winter, access:conditional), or closed by traffic
+			code, msg = "closed_now", "The way is closed at this time, for example a pass in winter."
 		} else if v.ErrorCode >= 150 && v.ErrorCode <= 159 {
 			code, msg = "too_far", "The points are too far apart for this mode."
 		}

@@ -140,15 +140,14 @@ try:
 
     # directions: the button, a typed destination, the route by car
     # a double tap zooms the map and opens nothing
+    wait("!hmMap.isMoving() && hmMap.loaded()", 10)  # (the flight to the location and its tiles)
     box = js("(() => { const r = document.querySelector('.lm-map').getBoundingClientRect(); return [r.left + r.width / 2, r.top + 150]; })()")
     z0 = js("+location.hash.split('/')[0].slice(5)")
-    for _ in range(2):
-        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": box[0], "y": box[1]}])
-        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
-        time.sleep(0.08)
+    call("Input.synthesizeTapGesture", x=box[0], y=box[1], tapCount=2, gestureSourceType="touch")  # (two touches 80 ms apart came too late on a busy page)
     time.sleep(1.5)
+    dt = js("JSON.stringify([location.hash, document.querySelector('.lm-here').hidden, document.querySelector('.lm-detail').hidden])")
     check(js("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden") and js(f"+location.hash.split('/')[0].slice(5) > {z0}"),
-          "a double tap zooms in and opens nothing")
+          f"a double tap zooms in and opens nothing (zoom {z0}, after: {dt})")
     js("document.querySelector('.lm-dir-btn').click()")
     check(wait("!document.querySelector('.lm-route').hidden", 5), "the Directions button opens start and destination")
     check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "no search bar above start and destination")
@@ -599,6 +598,16 @@ try:
         return ok, t[::max(1, len(t) // 12)]
 
     sheet = lambda: js("document.getElementById('app').dataset.sheet")
+
+    # the moves of the map from now, in window.hmMoves: start and end in ms, zoom at both ends and the
+    # lowest between; window.hmResized: when the page last changed its height (the keyboard)
+    def moves():
+        js("(() => { window.hmMoves = []; let m = null; window.hmResized = 0; addEventListener('resize', () => { hmResized = performance.now(); });"
+           " const at = () => JSON.stringify([hmMap.getCenter(), hmMap.getZoom()]);"
+           " hmMap.on('movestart', () => { const z = hmMap.getZoom(); m = { t0: performance.now(), z0: z, zmin: z, c0: at() }; hmMoves.push(m); });"
+           " hmMap.on('move', () => { if (m) m.zmin = Math.min(m.zmin, hmMap.getZoom()); });"
+           " hmMap.on('moveend', () => { if (m) { m.t1 = performance.now(); m.z1 = hmMap.getZoom(); m.same = at() === m.c0; m = null; } }); })()")
+
     call("Page.navigate", url=URL)
     wait("window.hmMap?.loaded() && document.getElementById('app').dataset.sheet === 'peek'", 30)
     time.sleep(1)
@@ -618,12 +627,20 @@ try:
         js("(() => { const f0 = window.fetch; window.fetch = function (u) { const p = f0.apply(this, arguments);"
            " return /\\/api\\/search\\/(query|search)/.test(String(u)) ? p.then((r) => new Promise((ok) => setTimeout(() => ok(r), 1000))) : p; }; })()")
         tops(3500)
+        moves()
         tap(".lm-suggest:not([hidden]) .lm-opt-place")
         keyboard_goes(".lm-input")
         time.sleep(3.6)
         ok, t = one_way(False)
         check(ok and wait("/Bern/.test(document.querySelector('.lm-title')?.textContent || '')", 30),
               f"a suggestion picked, the keyboard goes: the panel down in one movement ({t})")
+        # Zürich to Bern: one flight out and in, after the keyboard went, no correction after it
+        wait("hmMoves.length > 0 && hmMoves.every(m => m.t1)", 5)
+        time.sleep(0.5)
+        m = js("JSON.stringify({ moves: hmMoves.filter(m => !m.same).map(m => ({ ms: Math.round(m.t1 - m.t0), out: +(Math.min(m.z0, m.z1) - m.zmin).toFixed(2), after: Math.round(m.t0 - hmResized) })) })")
+        mv = json.loads(m)["moves"]
+        check(len(mv) == 1 and mv[0]["after"] >= 0 and 800 <= mv[0]["ms"] <= 1700,
+              f"a far place: the map moves once, after the keyboard, a flight of 0.9 to 1.5 s ({mv})")
     else:
         check(False, "suggestions for Bern")
     call("Page.navigate", url=URL + "/?to=47.36690,8.54500&tn=Bellevue&mode=car")
@@ -674,6 +691,14 @@ try:
         side = js("document.querySelector('.lm-title').textContent + ' | ' + [...document.querySelectorAll('.lm-chiprow, .lm-results .lm-card-sub, .lm-results [data-hours]')].map(e => e.textContent).join(' | ')")
         english = re.findall(r"in the view|Or search for|Sushi Fast Food|Outdoor Seating|Food Court|\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d", side)
         check("Kartenausschnitt" in side and "Schnellimbiss" in side and not english, f"the Restaurants bubble in German: German words ({english or side[:120]})")
+        # a place of the list, in the view: a short glide, no flight out
+        time.sleep(1.5)
+        moves()
+        js("document.querySelector('.lm-results .lm-card').click()")
+        wait("hmMoves.length > 0 && hmMoves.every(m => m.t1)", 5)
+        time.sleep(0.5)
+        mv = json.loads(js("JSON.stringify(hmMoves.filter(m => !m.same).map(m => ({ ms: Math.round(m.t1 - m.t0), out: +(Math.min(m.z0, m.z1) - m.zmin).toFixed(2) })))"))
+        check(len(mv) == 1 and mv[0]["ms"] <= 600 and mv[0]["out"] <= 0.05, f"a near place: one short glide, no flight out ({mv})")
     else:
         check(False, "the Restaurants bubble in German: no results")
     js("localStorage.removeItem('hm-lang')")

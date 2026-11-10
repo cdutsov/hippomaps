@@ -113,6 +113,14 @@ const EN = {
   routing: "Finding the route…",
   modes: [["car", "Car"], ["bike", "Bike"], ["walk", "Walk"]],
   routeFailed: "The route could not be found. Please try again.",
+  routeErrors: {
+    no_route: "No route between these points.",
+    no_road: "No road near one of the points.",
+    closed_now: "The way is closed at this time, for example a pass in winter.",
+    too_far: "The points are too far apart for this mode.",
+    too_many: "Too many directions in a short time. Please wait a few minutes.",
+    busy: "Directions are busy. Please try again.",
+  },
   start: "Start",
   preview: "Preview",
   previewNote: "A drive along the route, three times as fast",
@@ -192,7 +200,7 @@ const T = {};
 const loadTexts = () => {
   const tr = texts(num)[UI] || {};
   for (const k of Object.keys(T)) delete T[k];
-  Object.assign(T, EN, tr, { errors: { ...EN.errors, ...(tr.errors || {}) } });
+  Object.assign(T, EN, tr, { errors: { ...EN.errors, ...(tr.errors || {}) }, routeErrors: { ...EN.routeErrors, ...(tr.routeErrors || {}) } });
 };
 loadTexts();
 
@@ -995,7 +1003,7 @@ async function transitSearch(q, text) {
   title.textContent = T.transitIn(name);
   const done = new Promise((ok) => map.once("moveend", ok));
   if (ext) fitBox([ext[0], ext[3], ext[2], ext[1]], 13);
-  else fit(() => map.flyTo({ center: place.geometry.coordinates, zoom: 12, duration: 900, padding: pad() }));
+  else fit(() => glide({ center: place.geometry.coordinates, zoom: 12, padding: pad() }));
   await done;
   const fs = await loadTransit();
   say("");
@@ -1492,7 +1500,7 @@ function shareButton(what, iconOnly = false) {
 
 // a starred place opened: the map there, and the card of the point with its name
 function openStar(x) {
-  fit(() => map.flyTo({ center: x.ll, zoom: Math.max(map.getZoom(), 16), duration: 900, padding: pad() }));
+  fit(() => glide({ center: x.ll, zoom: Math.max(map.getZoom(), 16), padding: pad() }));
   here({ lng: x.ll[0], lat: x.ll[1] }, x.name);
 }
 
@@ -1715,7 +1723,7 @@ function showMe(quiet) {
       meAt(pos);
       if (quiet && (state.touched || state.text || !routeView.hidden || nav.on)) return;
       if (status.classList.contains("lm-bad")) say("");
-      fit(() => map.flyTo({ center: state.me.at2, zoom: Math.max(map.getZoom(), 15), duration: 900, padding: pad() }));
+      fit(() => glide({ center: state.me.at2, zoom: Math.max(map.getZoom(), 15), padding: pad() }));
     },
     (err) => {
       locBtn.classList.remove("lm-busy");
@@ -1909,12 +1917,71 @@ function showReading(p) {
 let quietUntil = 0; // until then the map moves for a search, not for the visitor
 // The padding of an easeTo or flyTo stays with the map, and fitBounds adds its own to it: with
 // both, a box may not fit at all and the map stays put. Every move of the page starts from none.
+// On a phone a move waits for the keyboard that is going: the page grows when it is gone, and pad()
+// then knows the height of the sheet. One movement to the end, not one and a correction after.
 const fit = (fn, ms = 1300) => {
-  quietUntil = Date.now() + ms;
-  const p = map.getPadding();
-  if (p.top || p.bottom || p.left || p.right) map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
-  fn();
+  const asked = Date.now();
+  const go = () => {
+    if (touchedAt > asked) return; // the visitor took the map in the meantime
+    quietUntil = Date.now() + ms;
+    const p = map.getPadding();
+    if (p.top || p.bottom || p.left || p.right) map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+    fn();
+  };
+  quietUntil = Date.now() + ms + 700;
+  if (phone() && keyboardUp() && (typing() || Date.now() - kbGoneAt < 400)) afterKeyboard(go);
+  else go();
 };
+// the keyboard is up when the page is clearly lower than at its full height (at this width)
+let fullH = { w: 0, h: 0 };
+const viewH = () => window.visualViewport?.height || innerHeight;
+const keyboardUp = () => {
+  if (fullH.w !== innerWidth) fullH = { w: innerWidth, h: 0 };
+  fullH.h = Math.max(fullH.h, viewH(), innerHeight);
+  return viewH() < fullH.h - 120;
+};
+addEventListener("resize", keyboardUp);
+keyboardUp(); // the full height at the start
+const typing = () => !!document.activeElement?.matches?.("textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button])");
+let kbGoneAt = 0; // a field of a phone lost the focus: its keyboard goes
+document.addEventListener("focusout", (e) => { if (phone() && e.target.matches?.("input, textarea")) kbGoneAt = Date.now(); }, true);
+// go once the size of the page settles after the keyboard: right away when a field keeps the focus
+// (the keyboard stays), when the size did not change within 300 ms, or after 700 ms in any case
+function afterKeyboard(go) {
+  let ran = false, timer = 0;
+  const vv = window.visualViewport;
+  const done = () => {
+    if (ran) return;
+    ran = true;
+    clearTimeout(timer);
+    clearTimeout(cap);
+    removeEventListener("resize", onResize);
+    vv?.removeEventListener("resize", onResize);
+    go();
+  };
+  const onResize = () => { clearTimeout(timer); timer = setTimeout(done, 150); };
+  addEventListener("resize", onResize);
+  vv?.addEventListener("resize", onResize);
+  timer = setTimeout(() => { if (typing()) done(); else timer = setTimeout(done, 300); }, 80);
+  const cap = setTimeout(done, 700);
+}
+// glide moves the map to a place ({ center, zoom }) or a box ({ bounds, maxZoom }): a short glide when
+// the target is near (within a screen or so at the lower of the two zooms), a flight out and in when
+// it is far, in 0.9 to 1.5 s by the distance (with its own speed MapLibre would jump past maxDuration).
+function glide(o) {
+  const { bounds, maxZoom = 22, ...rest } = o;
+  const to = bounds ? map.cameraForBounds(bounds, { padding: o.padding, maxZoom }) : o;
+  if (!to?.center) return;
+  const z0 = map.getZoom(), z1 = to.zoom ?? z0;
+  const a = map.project(map.getCenter()), b = map.project(to.center);
+  const px = Math.hypot(b.x - a.x, b.y - a.y) * 2 ** (Math.min(z0, z1) - z0);
+  const near = px < 1.2 * Math.max(mapEl.clientWidth, mapEl.clientHeight) && Math.abs(z1 - z0) < 5;
+  const screens = px / Math.max(mapEl.clientWidth, mapEl.clientHeight, 1);
+  const how = near ? { duration: Math.abs(z1 - z0) > 2 ? 450 : 350 } : { duration: Math.round(Math.min(1500, 900 + 150 * Math.log2(Math.max(1, screens)))) };
+  if (bounds) map.fitBounds(bounds, { ...rest, maxZoom, ...how, linear: near });
+  else if (near) map.easeTo({ ...rest, ...how });
+  else map.flyTo({ ...rest, ...how });
+}
 // the visitor moved the map (a drag, the wheel, a pinch, the keys, the buttons): the
 // moves of the map itself, to show a search, do not count
 let touched = false, touchedAt = 0;
@@ -1926,13 +1993,16 @@ for (const ev of ["pointerdown", "wheel", "touchstart", "keydown"]) {
 // fitted again, unless the visitor touched the map since.
 let lastFit = null, refitTimer = 0;
 function fitBox(box, maxZoom) {
-  lastFit = { box, maxZoom, at: Date.now() };
-  fit(() => map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: pad(), maxZoom, duration: 800 }));
+  fit(() => {
+    lastFit = { box, maxZoom, at: Date.now() }; // when it moves: after the keyboard
+    glide({ bounds: [[box[0], box[1]], [box[2], box[3]]], padding: pad(), maxZoom });
+  });
 }
 (window.visualViewport || window).addEventListener("resize", () => {
   clearTimeout(refitTimer);
+  const at = Date.now();
   refitTimer = setTimeout(() => {
-    if (!lastFit || Date.now() - lastFit.at > 2500 || touchedAt > lastFit.at) return;
+    if (!lastFit || at < lastFit.at || Date.now() - lastFit.at > 2500 || touchedAt > lastFit.at) return; // (it moved after this resize)
     map.resize();
     const b = lastFit.box;
     fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: lastFit.maxZoom, duration: 300 }));
@@ -2229,8 +2299,8 @@ function select(f, { push = true, fly = true } = {}) {
   const c = center(f);
   if (fly && c) {
     const b = extent(f.geometry);
-    if (f.geometry.type === "Point" || !b) fit(() => map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 16), duration: 600, padding: pad() }));
-    else fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 17, duration: 600 }));
+    if (f.geometry.type === "Point" || !b) fit(() => glide({ center: c, zoom: Math.max(map.getZoom(), 16), padding: pad() }));
+    else fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 17 }));
   }
   state.from = hereView.hidden ? "list" : "here";
   renderDetail(f);
@@ -2736,6 +2806,23 @@ function placeLabel(p) {
   const kind = p.osm_value && p.osm_value !== "yes" && p.type !== "house" ? human(p.osm_value) : "";
   return { label, detail: [kind, where].filter(Boolean).join(" · ") };
 }
+// An area of the geocoder (a boundary: a municipality, a district) has its point in its middle, which
+// may lie far from roads (Gadmen: on the slope of the Susten pass, past its winter closure). When the
+// place of the same name lies in it, the place takes the rank of the area, and the area goes.
+function placesOverAreas(fs) {
+  const inside = (ll, e) => e && ll[0] >= Math.min(e[0], e[2]) && ll[0] <= Math.max(e[0], e[2]) && ll[1] >= Math.min(e[1], e[3]) && ll[1] <= Math.max(e[1], e[3]);
+  const out = [], used = new Set();
+  for (const f of fs) {
+    if (used.has(f)) continue;
+    const p = f.properties || {};
+    if (p.osm_key === "boundary" && p.name) {
+      const place = fs.find((g) => !used.has(g) && g.properties?.osm_key === "place" && g.properties.name === p.name && inside(g.geometry.coordinates, p.extent));
+      if (place) { used.add(place); out.push(place); continue; }
+    }
+    out.push(f);
+  }
+  return out;
+}
 // geoFind: the places and addresses for a text from the geocoder, near the map view: {label, detail, ll}
 async function geoFind(q, signal) {
   const c = map.getCenter();
@@ -2743,7 +2830,7 @@ async function geoFind(q, signal) {
     lat: c.lat.toFixed(4), lon: c.lng.toFixed(4) })}`, { signal });
   const d = await r.json();
   const seen = new Set();
-  return (d.features || []).map((f) => ({ ...placeLabel(f.properties || {}), ll: f.geometry.coordinates }))
+  return placesOverAreas(d.features || []).map((f) => ({ ...placeLabel(f.properties || {}), ll: f.geometry.coordinates }))
     .filter((it) => it.label && !seen.has(`${it.label}\n${it.detail}`) && seen.add(`${it.label}\n${it.detail}`));
 }
 const MAX_STOPS = 8;
@@ -2920,7 +3007,7 @@ async function findRoute({ quiet = false } = {}) {
     d = await r.json().catch(() => ({}));
     if (ctl.signal.aborted) return;
     if (!r.ok) {
-      if (!quiet) routeMsg.textContent = d.error?.message || T.routeFailed;
+      if (!quiet) routeMsg.textContent = T.routeErrors[d.error?.code] || T.routeFailed;
       return;
     }
   } catch (err) {
@@ -2962,7 +3049,7 @@ async function findRoute({ quiet = false } = {}) {
     const b = el("button", "", { type: "button" });
     b.append(el("span", "lm-step-text", {}, st.stop ? `${T.stop} ${st.stop}: ${d.via[st.stop - 1]?.label || ""}` : st.text));
     if (st.km > 0) b.append(el("span", "lm-step-km", {}, fmtKm(st.km)));
-    b.addEventListener("click", () => fit(() => map.easeTo({ center: st.at, zoom: Math.max(map.getZoom(), 16), duration: 600, padding: pad() })));
+    b.addEventListener("click", () => fit(() => glide({ center: st.at, zoom: Math.max(map.getZoom(), 16), padding: pad() })));
     li.append(b);
     routeSteps.append(li);
   }
@@ -2976,7 +3063,7 @@ async function findRoute({ quiet = false } = {}) {
   }
   route.go = false;
   const b = extent({ type: "LineString", coordinates: d.line });
-  if (b && !quiet) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 700 }));
+  if (b && !quiet) fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 16 }));
 }
 
 // ------------------------------------------------------------------ stops and places along the route
@@ -3059,7 +3146,7 @@ function alongItem(f, { ahead = null, onAdd, onDest } = {}) {
   b.addEventListener("click", () => {
     setSource("selected", one(f));
     if (nav.on) { nav.follow = false; navCenter.hidden = false; }
-    fit(() => map.easeTo({ center: f.geometry.coordinates, zoom: Math.max(map.getZoom(), 15), duration: 600, padding: nav.on ? navPad() : pad() }));
+    fit(() => glide({ center: f.geometry.coordinates, zoom: Math.max(map.getZoom(), 15), padding: nav.on ? navPad() : pad() }));
   });
   b.addEventListener("mouseenter", () => setSource("hover", one(f)));
   b.addEventListener("mouseleave", () => setSource("hover", empty));
@@ -4165,7 +4252,7 @@ function navStop() {
     if (fs && !routeView.hidden) setSource("along", { type: "FeatureCollection", features: fs });
     const b = route.answer && extent({ type: "LineString", coordinates: route.answer.line });
     // back to the whole route, flat unless the menu has 3D on
-    if (b) fit(() => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, pitch: look.threeD ? 50 : 0, bearing: 0, duration: 700 }));
+    if (b) fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 16, pitch: look.threeD ? 50 : 0, bearing: 0 }));
   }, 0);
 }
 navEnd.addEventListener("click", navStop);

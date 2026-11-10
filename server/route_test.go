@@ -49,6 +49,13 @@ func fakeValhalla(t *testing.T, calls *atomic.Int32, last *map[string]any) *http
 		json.NewDecoder(r.Body).Decode(&req)
 		*last = req
 		locs := req["locations"].([]any)
+		if lat := locs[0].(map[string]any)["lat"].(float64); lat == 1 || lat == 2 { // 1: a pass closed now, a route without a time; 2: no route at all
+			if lat == 2 || req["date_time"] != nil {
+				w.WriteHeader(400)
+				io.WriteString(w, `{"error_code":442,"error":"No path could be found for input"}`)
+				return
+			}
+		}
 		if locs[0].(map[string]any)["lat"].(float64) == 0 { // the sea
 			w.WriteHeader(400)
 			io.WriteString(w, `{"error_code":171,"error":"No suitable edges near location"}`)
@@ -165,7 +172,13 @@ func TestRoute(t *testing.T) {
 	if calls.Load() != n {
 		t.Errorf("Valhalla asked for a bad request")
 	}
-	if w := get(s, "/labs/maps/api/route?from=0,0&to=0.1,0.1&mode=car"); w.Code != 404 || !strings.Contains(w.Body.String(), "No road near") {
+	if w := get(s, "/labs/maps/api/route?from=1,8&to=1.1,8.1&mode=car"); w.Code != 404 || !strings.Contains(w.Body.String(), `"closed_now"`) {
+		t.Errorf("a road closed now (a pass in winter): %d %s", w.Code, w.Body)
+	}
+	if w := get(s, "/labs/maps/api/route?from=2,8&to=2.1,8.1&mode=car"); w.Code != 404 || !strings.Contains(w.Body.String(), `"no_route"`) {
+		t.Errorf("no route at any time: %d %s", w.Code, w.Body)
+	}
+	if w := get(s, "/labs/maps/api/route?from=0,0&to=0.1,0.1&mode=car"); w.Code != 404 || !strings.Contains(w.Body.String(), `"no_road"`) || !strings.Contains(w.Body.String(), "No road near") {
 		t.Errorf("no road: %d %s", w.Code, w.Body)
 	}
 }
