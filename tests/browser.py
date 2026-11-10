@@ -241,10 +241,12 @@ try:
           "another language while navigating: the same page, navigation goes on, the route asked in German")
     check(js("(() => { const a = document.querySelector('.lm-menu-privacy'); return !!a && a.textContent === 'Datenschutz' && new URL(a.href).pathname.endsWith('/de/privacy'); })()"),
           "the menu links the privacy policy, in German for German")
+    check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/de/'"), "Powered by overpass.ch links overpass.ch, in German for German")
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })(); localStorage.removeItem('hm-lang')")
     check(wait("document.documentElement.lang === 'en' && /search/i.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 10), "Automatic: the language of the browser again")
     check(js("(() => { const a = document.querySelector('.lm-menu-privacy'); return a.textContent === 'Privacy' && /\\/privacy$/.test(new URL(a.href).pathname) && !a.href.includes('/de/'); })()"),
           "the privacy link in English again")
+    check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/'"), "Powered by overpass.ch links overpass.ch in English again")
     if js("!!document.getElementById('app').dataset.say"):
         check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/say'))", 20), "the voice of the server speaks")
     # a finger held on the map while navigating: the point and the places around it; the point as a stop

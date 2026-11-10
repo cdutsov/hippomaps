@@ -1140,6 +1140,9 @@ const menuFoot = el("p", "lm-menu-foot", {}, menuFootText());
 // the privacy policy, in German for German, else in English
 const privacyHref = () => root.dataset.privacy.replace(/\/privacy$/, UI === "de" ? "/de/privacy" : "/privacy");
 const privacyLink = el("a", "lm-menu-privacy", { href: privacyHref() }, T.privacy);
+// overpass.ch, its German pages for German
+const overpassHref = () => UI === "de" ? "https://overpass.ch/de/" : "https://overpass.ch/";
+const poweredLink = poweredBy();
 const langRow = el("label", "lm-toggle lm-lang");
 const langText = el("span", "lm-toggle-text");
 langText.append(el("span", "", {}, T.language), el("span", "lm-toggle-note", {}, T.languageNote));
@@ -1155,11 +1158,11 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
   ...(TRANSIT ? [transitRow] : []),
   langRow,
   forgetBtn,
-  poweredBy(), menuFoot, privacyLink);
+  poweredLink, menuFoot, privacyLink);
 root.append(backdrop, menu);
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
 function poweredBy() {
-  const a = el("a", "lm-powered", { href: "/", title: "overpass.ch" });
+  const a = el("a", "lm-powered", { href: overpassHref(), title: "overpass.ch" });
   const light = el("img", "lm-powered-light", { src: root.dataset.overpass, alt: "overpass.ch", height: "22" });
   const dark = el("img", "lm-powered-dark", { src: root.dataset.overpassDark, alt: "overpass.ch", height: "22" });
   a.append(el("span", "", {}, T.poweredBy), light, dark);
@@ -4518,6 +4521,7 @@ function setLang(chosen) {
   foot.textContent = footText();
   menuFoot.textContent = menuFootText();
   privacyLink.href = privacyHref();
+  poweredLink.href = overpassHref();
   hints.splice(0, hints.length, ...(T.hints || []));
   if (!input.value) newHint();
   for (const end of [route.from, route.to]) if (end?.me) end.label = T.myPlace;
