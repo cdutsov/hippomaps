@@ -23,7 +23,8 @@ the search; the search box on one or two lines, Enter searching; the list of res
 map of a route saved at Start and shown from the device, the page opening (the service worker); the suggestions of
 directions in their field, the panel at the height of its state when the keyboard goes; the signs along a route by car
 (speed cameras in the Netherlands, none in Switzerland, stop signs in Berkeley) drawn beside it; the search box without the
-focus at the start on a phone, with it on a computer (no list until a click); and no errors of the page on the way. Needs chromium and websocket-client.
+focus at the start on a phone, with it on a computer (no list until a click); a place written in the search moved to the
+destination by Directions; and no errors of the page on the way. Needs chromium and websocket-client.
 """
 import base64
 import json
@@ -1154,6 +1155,12 @@ try:
           "a click in the search box: the last searches")
     call("Input.insertText", text="Bern")
     check(wait("document.querySelector('.lm-input').value === 'Bern'", 5), "on a computer typing at once goes into the search box")
+    # a place written in the search (not searched), then Directions: the text moves to the destination, its suggestions there
+    js("document.querySelector('.lm-dir-btn').click()")
+    check(wait("!document.querySelector('.lm-route').hidden && document.querySelector('.lm-end-to input').value === 'Bern' && document.querySelector('.lm-input').value === ''", 10)
+          and wait("[...document.querySelectorAll('.lm-end-to .lm-end-list:not([hidden]) .lm-opt-label')].some(e => /^Bern/.test(e.textContent))", 20),
+          f"a place written in the search, then Directions: the text in the destination with its suggestions, the search box empty"
+          f" ({js('JSON.stringify([document.querySelector(\'.lm-end-to input\')?.value, document.querySelector(\'.lm-input\').value])')})")
     js("localStorage.removeItem('hm-recent')")
     call("Page.removeScriptToEvaluateOnNewDocument", identifier=mouse.get("identifier", ""))
     real = [e for e in errors if "Map cannot fit" not in e]

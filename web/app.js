@@ -652,7 +652,17 @@ dirBtn.hidden = !ROUTE;
 dirBtn.addEventListener("click", () => {
   const to = placeNow();
   if (to) return directions(to); // the route with Preview and Start, not navigation at once
-  if (routeView.hidden) directions(null);
+  // a place written in the search and not searched: the text moves to the destination, its suggestions under it
+  const typed = input.value.trim(), moved = typed && typed !== state.text ? typed : "";
+  if (moved) {
+    clearTimeout(suggestTimer);
+    suggestCtl?.abort();
+    closeList();
+    input.value = "";
+    clearBtn.hidden = true;
+    newHint();
+  }
+  if (routeView.hidden || moved) directions(null, false, moved);
   routeView.querySelector(route.to ? ".lm-end-from input" : ".lm-end-to input")?.focus();
 });
 // beside the search only while the panel has no Directions of its own (a place found or opened has)
@@ -3117,7 +3127,7 @@ async function here(ll, symbol, backToRoute = false) {
 // From the page of a place or from a point of the map: to there, from the location of the
 // visitor, or from a tap on the map. The line and the steps come from data-route.
 const MODE_ICON = { car: ICON.car, bike: ICON.bike, walk: ICON.walk };
-const route = { keep: false, from: null, to: null, stops: [], mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
+const route = { keep: false, from: null, to: null, toText: "", stops: [], mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
 function routeButton(go) {
   const b = el("button", "lm-action", { type: "button" });
   b.innerHTML = svg(ICON.directions, 18);
@@ -3221,9 +3231,11 @@ function drawEnds(line) {
   });
 }
 // go: start navigation once the route from the location is there
-async function directions(to, go = false) {
+// text: written for the destination, not chosen yet (it stays when the fields are drawn again)
+async function directions(to, go = false, text = "") {
   route.back = [listView, hereView, detailView].find((v) => !v.hidden) || listView;
   route.to = to;
+  route.toText = text;
   route.stops = [];
   route.alongCat = "";
   route.go = go;
@@ -3423,7 +3435,7 @@ function placeField(which) {
   const id = `lm-end-list-${++fieldN}`;
   const box = el("div", "lm-end-box");
   const name = isStop ? T.stop : which === "from" ? T.from : T.to;
-  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : "", placeholder: isStop ? T.stopHint : which === "from" ? T.fromHint : T.toHint,
+  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : which === "to" ? route.toText || "" : "", placeholder: isStop ? T.stopHint : which === "from" ? T.fromHint : T.toHint,
     "aria-label": isStop ? `${T.stop} ${which + 1}` : name, role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id,
     autocomplete: "off", spellcheck: "false", enterkeyhint: "search", maxlength: "160" });
   // the suggestions: in the field, under what is typed; the rest of the panel moves down for them
@@ -3499,6 +3511,7 @@ function placeField(which) {
   };
   field.addEventListener("input", () => {
     clearTimeout(timer);
+    if (which === "to") route.toText = field.value;
     if (field.value.trim().length >= 2) close(); // not "Your location" under the text being typed
     timer = setTimeout(ask, 250);
   });
@@ -3511,7 +3524,8 @@ function placeField(which) {
       field.placeholder = now.label;
       field.value = "";
     }
-    show(meItem);
+    if (!now && field.value.trim().length >= 2) ask(); // a text written, no place chosen: its suggestions
+    else show(meItem);
     routeFieldIn();
   });
   // a tap away: down with the keyboard (not to another field: it stays up)
