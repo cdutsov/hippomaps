@@ -150,7 +150,8 @@ button { font: inherit; color: inherit; }
 
 /* phones: the map fills the screen, the side bar is a sheet over its lower part */
 @media (max-width: 760px) {
-  .lm { grid-template-columns: 1fr; }
+  /* the page is the screen (without the keyboard): the sheet at its bottom, never scrolled away */
+  .lm { grid-template-columns: 1fr; position: fixed; inset: 0; height: auto; }
   .lm-map { grid-area: 1 / 1; }
   .lm-side { grid-area: 1 / 1; align-self: end; height: 48dvh; border-right: 0; border-radius: 16px 16px 0 0; padding-top: 14px;
     transition: height .22s ease; overflow: hidden; }
@@ -172,6 +173,21 @@ button { font: inherit; color: inherit; }
 .lm-locate.lm-busy svg { animation: lm-spin 1.2s linear infinite; }
 @keyframes lm-spin { to { transform: rotate(360deg); } }
 .lm-area { display: inline-flex; align-items: center; gap: .4rem; animation: lm-in .18s ease-out; }
+/* no connection: a note at the top of the map in place of the quick searches (they need it), in navigation
+   under the banner; on a phone over a full sheet only its first line */
+.lm-offline { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 3;
+  display: flex; align-items: center; gap: .65rem; width: max-content; max-width: min(420px, calc(100% - 24px)); padding: .5rem .9rem;
+  border-radius: 14px; background: #2b2f33; color: #fff; box-shadow: 0 2px 12px rgba(0, 0, 0, .3); font-size: .85rem; line-height: 1.3;
+  animation: lm-in .18s ease-out; }
+.lm-offline svg { flex: none; color: #ffc078; }
+.lm-offline-text { display: flex; flex-direction: column; min-width: 0; }
+.lm-offline-text span { color: #d0d5da; }
+.lm-offline-on .lm-area, .lm-offline-on .lm-bubbles { display: none !important; }
+.lm-nav-head .lm-offline { position: static; transform: none; width: auto; max-width: none; margin-top: 6px; animation: none; }
+@media (max-width: 760px) {
+  .lm-map > .lm-offline { left: 68px; right: 12px; width: auto; max-width: none; transform: none; animation: none; }
+  .lm[data-sheet=full] .lm-map > .lm-offline .lm-offline-text span { display: none; }
+}
 @keyframes lm-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (max-width: 760px) {
   .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { bottom: var(--sheet, 40dvh); }
@@ -203,7 +219,13 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-end-input { width: 100%; border: 0; background: none; color: var(--fg); font: inherit; padding: .1rem 0; outline: none; text-overflow: ellipsis; }
 .lm-end-input::placeholder { color: var(--muted); }
 .lm-end:focus-within { box-shadow: 0 0 0 2px var(--accent); }
-.lm-end-list { left: -5.35rem; right: -.6rem; }
+/* the suggestions of a field of directions: in the field, under what is typed, its icons under the dot and their
+   text under the name of the field; what follows the field moves down */
+.lm-end > .lm-end-list { position: static; grid-column: 1 / -1; margin: 0 -.6rem -.45rem; padding: .2rem 0; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--r-card) var(--r-card); background: none; box-shadow: none; max-height: none; overflow: hidden; }
+.lm-end-stop > .lm-end-list { margin-right: -.2rem; }
+.lm-end > .lm-end-list .lm-opt { gap: calc(.5rem - 2px); padding: .55rem .6rem .55rem calc(.6rem - 2px); }
+.lm-ends:has(.lm-end-list:not([hidden])) .lm-swap { visibility: hidden; }
 .lm-end-none { color: var(--muted); }
 .lm-swap { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
 .lm-swap:disabled { opacity: .4; cursor: default; }

@@ -1,5 +1,5 @@
 // The languages of navigation (web/app.js): each has a name in the menu, a lead for a turn ahead ("In 150 meters, "),
-// the sentences of the app (rerouted, GPS lost, arrived, a stop reached), a language of the steps on the server
+// the sentences of the app (rerouted, GPS lost, arrived, a stop reached, no connection for a new route), a language of the steps on the server
 // (server/route.go) and a voice (server/say.go).
 //   docker run --rm -v "$PWD":/w:ro -w /w node:24.21.0-alpine3.23 node --test tests/nav-lang.test.mjs
 import { test } from "node:test";
@@ -22,7 +22,7 @@ const A = make();
 const all = texts(String);
 const go = readFileSync(new URL("../server/route.go", import.meta.url), "utf8");
 const say = readFileSync(new URL("../server/say.go", import.meta.url), "utf8");
-const KEYS = ["rerouted", "gpsLost", "arrived", "stopReached"];
+const KEYS = ["rerouted", "gpsLost", "arrived", "stopReached", "offlineRoute"];
 
 test("each language of navigation: a name, a lead, the sentences of the app", () => {
   assert.ok(Object.keys(LOCALES).length >= 18);

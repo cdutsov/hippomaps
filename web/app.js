@@ -161,6 +161,12 @@ const EN = {
   rerouting: "New route…",
   rerouted: "Route recalculated.",
   gpsLost: "GPS signal lost.",
+  // no connection: the note over the map (offlineNav in navigation); offlineRoute in the banner and said, off the route
+  offline: "No internet connection",
+  offlineMap: "The map shows only what it has already loaded.",
+  offlineNav: "Navigation goes on along this route. A new route needs the connection.",
+  offlineRoute: "No connection for a new route.",
+  offlineNavMap: "Navigation goes on along this route, its map saved on this device. A new route needs the connection.",
   arrived: "You have arrived.",
   stopReached: "You have reached the stop.",
   noGPS: "Navigation needs your location. Allow it in the settings of the browser, then try again.",
@@ -274,6 +280,7 @@ const ICON = {
   walk: "M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM10 21l2-6 3 3v3M12 15l-1-6 4 2 2 3M11 9l-3 2-1 3",
   swap: "M7 4v16M7 4 4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3",
   plus: "M12 5v14M5 12h14",
+  offline: "M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5-2.7M19 13a10 10 0 0 0-2-1.5M2 9a15 15 0 0 1 4-2.6M22 9a15 15 0 0 0-11.3-3.8M12 20h.01",
 };
 const human = (v) => (v ? v.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
 const tagsOf = (p) => (typeof p.tags === "string" ? JSON.parse(p.tags) : p.tags) || {};
@@ -325,6 +332,171 @@ const km = (a, b) => {
   return Math.sqrt(x * x + y * y) * 6371;
 };
 const fmtKm = (d) => (d < 1 ? `${Math.round(d * 100) * 10} m` : `${d.toFixed(d < 10 ? 1 : 0)} km`);
+
+// ------------------------------------------------------------------ the connection
+// Without a connection a note over the map says so (in navigation under the banner). The device tells
+// (navigator.onLine, the events offline and online); a request of the page without any answer (fetch here, the
+// tiles of the map) has the server asked (/healthz, not from the cache, any answer will do): no answer there either,
+// and the page is offline. Then it asks every 5 s, and at once after an answer to another request (it may have
+// come from the cache of the browser); its answer brings the page back: the note goes, the tiles that failed load
+// again, and in navigation a new route can come.
+const net = { down: false, timer: 0, asking: null, failed: new Map() };
+const HEALTH = `${location.origin}/healthz`;
+// fetch of this page: as the browser has it, and an answer or none tells about the connection
+const fetch = (...args) => window.fetch(...args).then((r) => {
+  if (net.down) netAsk();
+  return r;
+}, (err) => {
+  if (err?.name !== "AbortError") netAsk();
+  throw err;
+});
+function netAsk() {
+  if (net.asking) return net.asking;
+  const ctl = new AbortController(), limit = setTimeout(() => ctl.abort(), 8000);
+  net.asking = window.fetch(HEALTH, { cache: "no-store", signal: ctl.signal })
+    .then(() => setOffline(false), () => setOffline(true))
+    .finally(() => { clearTimeout(limit); net.asking = null; });
+  return net.asking;
+}
+const offlineBox = el("div", "lm-offline", { role: "status" });
+offlineBox.hidden = true;
+// the note, in the place and with the text for now (called again when navigation starts or ends)
+function offlineNote() {
+  if (!net.down) return void (offlineBox.hidden = true);
+  offlineBox.innerHTML = svg(ICON.offline, 20);
+  const t = el("div", "lm-offline-text");
+  t.append(el("strong", "", {}, T.offline), el("span", "", {}, nav.on ? (routeCache.saved ? T.offlineNavMap : T.offlineNav) : T.offlineMap));
+  offlineBox.append(t);
+  offlineBox.hidden = false;
+  const at = nav.on ? navHead : mapEl;
+  if (offlineBox.parentNode !== at) at.append(offlineBox);
+}
+function setOffline(down) {
+  if (down === net.down) return;
+  net.down = down;
+  root.classList.toggle("lm-offline-on", down);
+  offlineNote();
+  clearInterval(net.timer);
+  net.timer = down ? setInterval(netAsk, 5000) : 0;
+  if (down) return;
+  nav.offlineSaid = false;
+  if (nav.on && !nav.sim && !routeCache.saved) cacheRoute(nav.d); // the rest of the map of the route
+  for (const [id, tiles] of net.failed) {
+    try { map.refreshTiles(id, [...tiles.values()]); } catch {} // (the style changed meanwhile: gone)
+  }
+  net.failed.clear();
+  if (TRAFFIC && look.traffic) loadTraffic();
+  if (TRANSIT && look.transit) loadTransit();
+}
+addEventListener("offline", () => setOffline(true));
+addEventListener("online", netAsk);
+if (navigator.onLine === false) setTimeout(() => setOffline(true));
+// the text of a request that failed: no connection, when that is why
+const failText = (t) => (net.down || navigator.onLine === false ? T.offline : t);
+// the service worker (web/sw.js): the page and the map of a route without a connection
+if (root.dataset.sw && "serviceWorker" in navigator) navigator.serviceWorker.register(root.dataset.sw, { scope: root.dataset.scope }).catch(() => {});
+
+// ------------------------------------------------------------------ the map of a route, for the way without a connection
+// At Start (not Preview) the page puts the tiles of the map along the route in the cache hm-route, which the service
+// worker serves first: for each source of the map (vector to zoom 15, terrain to 10) the tiles under the line at its
+// 6 highest zooms, at the 3 highest also those around them (the view of navigation), the box of the route at the 5
+// zooms below (the overview), in the order of the way, at most ROUTE_TILES (about 350 km); 4 at a time, at low
+// priority. About 15 MB for 25 km by car. Not with Data Saver on. A new route adds what it lacks; once all are there,
+// the tiles of other routes go. The cache goes 3 days after the last navigation.
+const ROUTE_TILES = 3000, ROUTE_CACHE = "hm-route", ROUTE_DAYS = 3;
+const routeCache = { ctl: null, total: 0, done: 0, failed: 0, saved: false };
+window.hmRouteCache = routeCache; // for tests/browser.py
+// routeTiles: the addresses of the tiles of a source ({tiles, minzoom, maxzoom}) for a line ([lon, lat]…)
+function routeTiles(line, src, max = ROUTE_TILES) {
+  const out = [], seen = new Set();
+  const xy = (lon, lat, z) => {
+    const n = 2 ** z, r = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
+    return [Math.floor(((lon + 180) / 360) * n), Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)];
+  };
+  const add = (z, x, y) => {
+    const n = 2 ** z;
+    if (y < 0 || y >= n || out.length >= max) return;
+    x = ((x % n) + n) % n;
+    const k = `${z}/${x}/${y}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(src.tiles[0].replace("{z}", z).replace("{x}", x).replace("{y}", y));
+  };
+  const min = src.minzoom || 0, top = Math.max(min, src.maxzoom ?? 14), near = Math.max(min, top - 5);
+  let w = 180, so = 90, e = -180, no = -90;
+  for (const [lon, lat] of line) { w = Math.min(w, lon); e = Math.max(e, lon); so = Math.min(so, lat); no = Math.max(no, lat); }
+  for (let z = Math.max(min, near - 5); z < near; z++) { // the overview: the box, when it is a few tiles
+    const [x0, y0] = xy(w, no, z), [x1, y1] = xy(e, so, z);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 24) continue;
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) add(z, x, y);
+  }
+  // along the line every 150 m (a tile of zoom 15 is 800 m wide in Switzerland)
+  for (let i = 0; i < line.length; i++) {
+    const a = line[i], b = line[i + 1] || a;
+    const k = Math.max(1, Math.ceil((111320 * Math.hypot((b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180), b[1] - a[1])) / 150));
+    for (let j = 0; j < k; j++) {
+      const lon = a[0] + ((b[0] - a[0]) * j) / k, lat = a[1] + ((b[1] - a[1]) * j) / k;
+      for (let z = top; z >= near; z--) {
+        const [x, y] = xy(lon, lat, z), r = z > top - 3 ? 1 : 0;
+        for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) add(z, x + dx, y + dy);
+      }
+      if (out.length >= max) return out;
+    }
+  }
+  return out;
+}
+async function cacheRoute(d) {
+  if (!root.dataset.sw || !navigator.serviceWorker?.controller || !window.caches || !d?.line?.length || navigator.connection?.saveData) return;
+  routeCache.ctl?.abort();
+  const ctl = routeCache.ctl = new AbortController();
+  let cache;
+  try { cache = await caches.open(ROUTE_CACHE); } catch { return; }
+  store.set("hm-route-at", String(Date.now()));
+  const urls = new Set();
+  for (const id of Object.keys(map.getStyle()?.sources || {})) {
+    const src = map.getSource(id);
+    if (!/^(vector|raster|raster-dem)$/.test(src?.type) || !/^https:/.test(src.tiles?.[0] || "")) continue;
+    for (const u of routeTiles(d.line, src)) if (urls.size < ROUTE_TILES) urls.add(u);
+  }
+  // the sprites of the styles of navigation (the map asks for them when the style changes: a tunnel, the night),
+  // kept by the service worker as they pass
+  const styles = route.mode === "car" ? [shownStyle(), "driving", "driving-night"] : [shownStyle()];
+  for (const k of styles) {
+    styleJSON(styleURL(k), k.endsWith("-night")).then((st) => {
+      for (const sp of [st.sprite].flat().map((x) => x?.url || x).filter(Boolean)) {
+        for (const ext of [".json", ".png"]) window.fetch(`${sp}${map.getPixelRatio() > 1 ? "@2x" : ""}${ext}`, { priority: "low" }).catch(() => {});
+      }
+    }).catch(() => {});
+  }
+  const list = [...urls];
+  Object.assign(routeCache, { total: list.length, done: 0, failed: 0, saved: false });
+  let i = 0;
+  const one = async () => {
+    while (i < list.length && !ctl.signal.aborted) {
+      const u = list[i++];
+      try {
+        if (!(await cache.match(u))) {
+          const r = await window.fetch(u, { signal: ctl.signal, priority: "low" });
+          if (r.ok || r.status === 404) await cache.put(u, r); // (404: no tile there, the same without a connection)
+          else routeCache.failed++;
+        }
+        routeCache.done++;
+      } catch {
+        if (!ctl.signal.aborted) { routeCache.failed++; ctl.abort(); } // no connection, or no room: again when it is back
+        return;
+      }
+    }
+  };
+  await Promise.all([one(), one(), one(), one()]);
+  if (ctl.signal.aborted || routeCache.failed) return;
+  routeCache.saved = true;
+  offlineNote();
+  for (const k of await cache.keys()) if (!urls.has(k.url)) await cache.delete(k); // the tiles of other routes
+}
+// 3 days after the last navigation the map of its route goes
+try {
+  if (window.caches && Date.now() - (+localStorage.getItem("hm-route-at") || 0) > ROUTE_DAYS * 864e5) caches.delete(ROUTE_CACHE).catch(() => {});
+} catch {}
 
 // ------------------------------------------------------------------ the map style
 // The style of the map, 3D terrain, 3D buildings and relief shading, kept in the browser. The
@@ -522,6 +694,18 @@ const map = new maplibregl.Map({
   pixelRatio: Math.min(devicePixelRatio, 2),
 });
 window.hmMap = map; // for tests/browser.py: the sources and layers of the map
+// a tile without an answer (no HTTP status): the connection is asked about, the tile kept to load again when it is
+// back. Other errors go to the console, as without this handler.
+map.on("error", (e) => {
+  const c = e.tile?.tileID?.canonical;
+  if (e.sourceId && c && !e.error?.status) {
+    if (!net.failed.has(e.sourceId)) net.failed.set(e.sourceId, new Map());
+    net.failed.get(e.sourceId).set(`${c.z}/${c.x}/${c.y}`, { z: c.z, x: c.x, y: c.y });
+    netAsk();
+    if (net.down || navigator.onLine === false) return;
+  }
+  console.error(e.error || e);
+});
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 // the toast over the map: the search again, in what the map shows now
@@ -1433,14 +1617,17 @@ document.addEventListener("dblclick", (e) => { if (!mapEl.contains(e.target)) e.
 // (the search box and the title), half, full. It is dragged by its handle and its title.
 const phone = () => matchMedia("(max-width: 760px)").matches;
 const sheet = { state: "half" };
-const sheetHeights = () => ({
+// The heights are parts of the page (lm) as it is laid out now, with the keyboard or without.
+const pageHeight = () => root.clientHeight || innerHeight;
+const sheetHeights = (H = pageHeight()) => ({
   // peek: the search box and the title under it, with the buttons of a place found; the search box alone while nothing is under it
-  peek: Math.min(form.offsetTop + form.offsetHeight + (title.textContent || notes.textContent ? 64 : 14) + (root.querySelector(".lm-place-acts:not(:empty)") ? 44 : 0), innerHeight * 0.4),
-  half: Math.round(innerHeight * 0.48),
-  full: innerHeight - 56,
+  peek: Math.min(form.offsetTop + form.offsetHeight + (title.textContent || notes.textContent ? 64 : 14) + (root.querySelector(".lm-place-acts:not(:empty)") ? 44 : 0), H * 0.4),
+  half: Math.round(H * 0.48),
+  full: H - 56,
 });
 function setSheet(state) {
   if (!phone()) return;
+  sheet.set = true;
   if (state !== "peek" && emptyPanel()) state = "peek"; // nothing under the search box: it stays down
   sheet.state = state;
   root.dataset.sheet = state;
@@ -1526,13 +1713,15 @@ const swipeEnd = () => {
 };
 side.addEventListener("touchend", swipeEnd);
 side.addEventListener("touchcancel", swipeEnd);
-// The keyboard of a phone comes and goes as a change of the height of the page (the app: adjustResize).
-// The sheet keeps its top where it is on the screen at that moment and moves on from there to its
-// height in the new page: one movement, not a jump with the keyboard and back.
-let pageH = innerHeight;
-addEventListener("resize", () => {
-  const dh = innerHeight - pageH;
-  pageH = innerHeight;
+// The keyboard of a phone comes and goes as a change of the height of the page (the app: adjustResize; the
+// browsers: interactive-widget=resizes-content). Whatever changes the height of the page (lm, fixed to the
+// screen on a phone), the sheet keeps its top where it is on the screen at that moment and moves on from there
+// to its height in the new page: one movement, not a jump with the keyboard and back.
+// The resize events come before the page is drawn anew; the observer of the page catches a change without one.
+let pageH = 0;
+function pageResized() {
+  const H = pageHeight(), dh = pageH ? H - pageH : 0;
+  pageH = H;
   if (phone() && dh && !side.classList.contains("lm-dragging")) {
     const h = side.getBoundingClientRect().height; // (before the transition stops: then it is at its end)
     side.style.transition = "none";
@@ -1540,8 +1729,11 @@ addEventListener("resize", () => {
     void side.offsetHeight; // that height at once, then the transition from it
     side.style.transition = "";
   }
-  setSheet(sheet.state);
-});
+  if (sheet.set && dh) setSheet(sheet.state);
+}
+addEventListener("resize", () => { pageResized(); if (sheet.set) setSheet(sheet.state); });
+window.visualViewport?.addEventListener("resize", pageResized);
+new ResizeObserver(pageResized).observe(root);
 // the sheet covers the lower part of the map: its height lifts the controls
 new ResizeObserver(() => root.style.setProperty("--sheet", `${side.offsetHeight}px`)).observe(side);
 
@@ -1919,7 +2111,7 @@ async function run(text, extra = {}, { push = true, bbox = null, sel = null } = 
     show(d, sel);
   } catch (err) {
     if (ctl.signal.reason === "timeout") say(T.tooLong, true);
-    else if (err.name !== "AbortError") say(T.failed, true);
+    else if (err.name !== "AbortError") say(failText(T.failed), true);
   } finally {
     clearTimeout(limit);
   }
@@ -2078,7 +2270,17 @@ addEventListener("resize", keyboardUp);
 keyboardUp(); // the full height at the start
 const typing = () => !!document.activeElement?.matches?.("textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button])");
 let kbGoneAt = 0; // a field of a phone lost the focus: its keyboard goes
-document.addEventListener("focusout", (e) => { if (phone() && e.target.matches?.("input, textarea")) kbGoneAt = Date.now(); }, true);
+// once the keyboard is gone (no field took the focus), the page is at its top (a browser may leave it scrolled
+// to where the field was) and the sheet at the height of its state in the page as it is then
+document.addEventListener("focusout", (e) => {
+  if (!phone() || !e.target.matches?.("input, textarea")) return;
+  kbGoneAt = Date.now();
+  afterKeyboard(() => {
+    if (typing()) return;
+    if (scrollX || scrollY) scrollTo(0, 0);
+    if (!side.classList.contains("lm-dragging")) setSheet(sheet.state);
+  });
+}, true);
 // go once the size of the page settles after the keyboard: right away when a field keeps the focus
 // (the keyboard stays), when the size did not change within 300 ms, or after 700 ms in any case
 function afterKeyboard(go) {
@@ -2709,7 +2911,7 @@ async function here(ll, symbol, backToRoute = false) {
       return;
     }
   } catch (err) {
-    if (err.name !== "AbortError") note.textContent = T.failed;
+    if (err.name !== "AbortError") note.textContent = failText(T.failed);
     return;
   }
   if (ctl.signal.aborted) return;
@@ -3073,9 +3275,10 @@ function placeField(which) {
   const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : "", placeholder: isStop ? T.stopHint : which === "from" ? T.fromHint : T.toHint,
     "aria-label": isStop ? `${T.stop} ${which + 1}` : name, role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id,
     autocomplete: "off", spellcheck: "false", enterkeyhint: "search", maxlength: "160" });
+  // the suggestions: in the field, under what is typed; the rest of the panel moves down for them
   const opts = el("ul", "lm-suggest lm-end-list", { id, role: "listbox" });
   opts.hidden = true;
-  box.append(field, opts);
+  box.append(field);
   row.append(el("span", "lm-end-dot", {}, isStop ? String(which + 1) : ""), el("span", "lm-end-name", {}, name), box);
   if (isStop) {
     const x = el("button", "lm-icon-btn lm-end-remove", { type: "button", title: T.removeStop, "aria-label": T.removeStop });
@@ -3087,6 +3290,7 @@ function placeField(which) {
     });
     row.append(x);
   }
+  row.append(opts);
   let items = [], active = -1, timer = 0, ctl = null;
   const close = () => { opts.hidden = true; field.setAttribute("aria-expanded", "false"); active = -1; };
   const mark = (i) => {
@@ -3212,7 +3416,7 @@ async function findRoute({ quiet = false } = {}) {
       return;
     }
   } catch (err) {
-    if (err.name !== "AbortError" && !quiet) routeMsg.textContent = T.routeFailed;
+    if (err.name !== "AbortError" && !quiet) routeMsg.textContent = failText(T.routeFailed);
     return;
   }
   if (quiet) {
@@ -3650,22 +3854,22 @@ const SAY_IN = {
 // What the app itself says in the language of navigation (the rest is said by Valhalla): de, en, fr and it are
 // the texts of the page; the others here.
 const SPOKEN = {
-  bg: { rerouted: "Маршрутът е преизчислен.", gpsLost: "Няма GPS сигнал.", arrived: "Пристигнахте.", stopReached: "Достигнахте междинната точка." },
-  el: { rerouted: "Η διαδρομή υπολογίστηκε ξανά.", gpsLost: "Χάθηκε το σήμα GPS.", arrived: "Φτάσατε.", stopReached: "Φτάσατε στην ενδιάμεση στάση." },
-  es: { rerouted: "Ruta recalculada.", gpsLost: "Señal GPS perdida.", arrived: "Ha llegado.", stopReached: "Ha llegado a la parada intermedia." },
-  et: { rerouted: "Marsruut arvutati ümber.", gpsLost: "GPS-signaal kadus.", arrived: "Olete kohale jõudnud.", stopReached: "Jõudsite vahepeatuseni." },
-  fi: { rerouted: "Reitti laskettu uudelleen.", gpsLost: "GPS-signaali katosi.", arrived: "Olet perillä.", stopReached: "Olet saavuttanut välipisteen." },
-  hu: { rerouted: "Útvonal újratervezve.", gpsLost: "Megszűnt a GPS-jel.", arrived: "Megérkezett.", stopReached: "Elérte az útpontot." },
-  nb: { rerouted: "Ruten er beregnet på nytt.", gpsLost: "GPS-signalet er borte.", arrived: "Du er fremme.", stopReached: "Du har nådd stoppet." },
-  nl: { rerouted: "Route opnieuw berekend.", gpsLost: "GPS-signaal verloren.", arrived: "Je bent aangekomen.", stopReached: "Je hebt de tussenstop bereikt." },
-  pl: { rerouted: "Wyznaczono nową trasę.", gpsLost: "Utracono sygnał GPS.", arrived: "Jesteś na miejscu.", stopReached: "Osiągnięto punkt pośredni." },
-  pt: { rerouted: "Rota recalculada.", gpsLost: "Sinal de GPS perdido.", arrived: "Chegou.", stopReached: "Chegou à paragem." },
-  ro: { rerouted: "Traseu recalculat.", gpsLost: "Semnal GPS pierdut.", arrived: "Ai ajuns.", stopReached: "Ai ajuns la punctul intermediar." },
-  ru: { rerouted: "Маршрут перестроен.", gpsLost: "Сигнал GPS потерян.", arrived: "Вы прибыли.", stopReached: "Вы достигли промежуточной точки." },
-  sv: { rerouted: "Rutten har beräknats om.", gpsLost: "GPS-signalen förlorad.", arrived: "Du är framme.", stopReached: "Du har nått delmålet." },
-  uk: { rerouted: "Маршрут перебудовано.", gpsLost: "Сигнал GPS втрачено.", arrived: "Ви прибули.", stopReached: "Ви досягли проміжної точки." },
+  bg: { rerouted: "Маршрутът е преизчислен.", gpsLost: "Няма GPS сигнал.", arrived: "Пристигнахте.", stopReached: "Достигнахте междинната точка.", offlineRoute: "Няма връзка за нов маршрут." },
+  el: { rerouted: "Η διαδρομή υπολογίστηκε ξανά.", gpsLost: "Χάθηκε το σήμα GPS.", arrived: "Φτάσατε.", stopReached: "Φτάσατε στην ενδιάμεση στάση.", offlineRoute: "Δεν υπάρχει σύνδεση για νέα διαδρομή." },
+  es: { rerouted: "Ruta recalculada.", gpsLost: "Señal GPS perdida.", arrived: "Ha llegado.", stopReached: "Ha llegado a la parada intermedia.", offlineRoute: "Sin conexión para una nueva ruta." },
+  et: { rerouted: "Marsruut arvutati ümber.", gpsLost: "GPS-signaal kadus.", arrived: "Olete kohale jõudnud.", stopReached: "Jõudsite vahepeatuseni.", offlineRoute: "Uue marsruudi jaoks pole ühendust." },
+  fi: { rerouted: "Reitti laskettu uudelleen.", gpsLost: "GPS-signaali katosi.", arrived: "Olet perillä.", stopReached: "Olet saavuttanut välipisteen.", offlineRoute: "Ei yhteyttä uuden reitin laskemiseen." },
+  hu: { rerouted: "Útvonal újratervezve.", gpsLost: "Megszűnt a GPS-jel.", arrived: "Megérkezett.", stopReached: "Elérte az útpontot.", offlineRoute: "Nincs kapcsolat új útvonalhoz." },
+  nb: { rerouted: "Ruten er beregnet på nytt.", gpsLost: "GPS-signalet er borte.", arrived: "Du er fremme.", stopReached: "Du har nådd stoppet.", offlineRoute: "Ingen forbindelse for en ny rute." },
+  nl: { rerouted: "Route opnieuw berekend.", gpsLost: "GPS-signaal verloren.", arrived: "Je bent aangekomen.", stopReached: "Je hebt de tussenstop bereikt.", offlineRoute: "Geen verbinding voor een nieuwe route." },
+  pl: { rerouted: "Wyznaczono nową trasę.", gpsLost: "Utracono sygnał GPS.", arrived: "Jesteś na miejscu.", stopReached: "Osiągnięto punkt pośredni.", offlineRoute: "Brak połączenia, nie można wyznaczyć nowej trasy." },
+  pt: { rerouted: "Rota recalculada.", gpsLost: "Sinal de GPS perdido.", arrived: "Chegou.", stopReached: "Chegou à paragem.", offlineRoute: "Sem ligação para uma nova rota." },
+  ro: { rerouted: "Traseu recalculat.", gpsLost: "Semnal GPS pierdut.", arrived: "Ai ajuns.", stopReached: "Ai ajuns la punctul intermediar.", offlineRoute: "Nu există conexiune pentru un traseu nou." },
+  ru: { rerouted: "Маршрут перестроен.", gpsLost: "Сигнал GPS потерян.", arrived: "Вы прибыли.", stopReached: "Вы достигли промежуточной точки.", offlineRoute: "Нет соединения для нового маршрута." },
+  sv: { rerouted: "Rutten har beräknats om.", gpsLost: "GPS-signalen förlorad.", arrived: "Du är framme.", stopReached: "Du har nått delmålet.", offlineRoute: "Ingen anslutning för en ny rutt." },
+  uk: { rerouted: "Маршрут перебудовано.", gpsLost: "Сигнал GPS втрачено.", arrived: "Ви прибули.", stopReached: "Ви досягли проміжної точки.", offlineRoute: "Немає з'єднання для нового маршруту." },
 };
-// own: a sentence of the app (rerouted, gpsLost, arrived, stopReached) to say, [text, language], in the language
+// own: a sentence of the app (rerouted, gpsLost, arrived, stopReached, offlineRoute) to say, [text, language], in the language
 // of navigation (in English when it has none)
 const own = (k) => {
   const t = SPOKEN[STEP_LANG]?.[k] || (STEP_LANG === "en" ? EN[k] : texts(num)[STEP_LANG]?.[k]);
@@ -3957,7 +4161,7 @@ function sentencesOf(all, st) {
 let sayQueue = [], sayQueueRunning = 0;
 function preSayAll(steps) {
   sayQueue = steps.flatMap((st) => sentencesOf(steps, st));
-  sayKeep = new Set([...sayQueue, own("gpsLost")[0], own("rerouted")[0]]);
+  sayKeep = new Set([...sayQueue, own("gpsLost")[0], own("rerouted")[0], own("offlineRoute")[0]]);
   const next = () => {
     while (sayQueueRunning < 2 && sayQueue.length) {
       const p = fetchSay(sayQueue.shift());
@@ -4406,6 +4610,14 @@ function onFix(pos) {
 // stops: the stops still ahead ({ll, label}), else those of the route not yet passed; quiet: the same
 // way in another language (setLang), with no "Route recalculated"
 async function reroute(ll, stops = null, { quiet = false } = {}) {
+  if (net.down && !quiet) { // no new route without a connection: the banner says so, the voice once while it lasts
+    navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.offlineRoute);
+    if (!nav.offlineSaid) {
+      nav.offlineSaid = true;
+      say1(...own("offlineRoute"));
+    }
+    return;
+  }
   nav.rerouting = nav.routing = true;
   if (!quiet) navBanner.querySelector(".lm-nav-instr")?.replaceChildren(T.rerouting);
   const via = stops || nav.stops.filter((x) => x.i > nav.idx && x.ll && !x.done).map(({ ll, label }) => ({ ll, label }));
@@ -4420,6 +4632,7 @@ async function reroute(ll, stops = null, { quiet = false } = {}) {
       d.via = via;
       navLoad(d);
       preSayAll(d.steps);
+      if (!nav.sim) cacheRoute(d);
       nav.first = true;
       // "Route recalculated", then the first instruction of the new route
       nav.spoken.add("0");
@@ -4437,6 +4650,7 @@ async function navStart(sim) {
   preSayAll(route.answer.steps);
   fetchSay(...own("gpsLost"));
   fetchSay(...own("rerouted"));
+  fetchSay(...own("offlineRoute")); // said when there is no connection: there before it goes
   // the styles of day and night by car (tunnels) and the one to come back to, before they are needed
   const styles = route.mode === "car" ? [shownStyle(), "driving", "driving-night"] : [shownStyle()];
   for (const k of styles) styleJSON(styleURL(k), k.endsWith("-night")).catch(() => {});
@@ -4453,6 +4667,8 @@ async function navStart(sim) {
   nav.lastFix = null;
   navLoad(route.answer);
   root.classList.add("lm-navigating");
+  nav.offlineSaid = false;
+  offlineNote();
   showDim();
   navBox.hidden = false;
   navCenter.hidden = true;
@@ -4473,6 +4689,10 @@ async function navStart(sim) {
   nav.avatar.set(nav.d.line[0], bearingOf(nav.d.line[0], nav.d.line[1] || nav.d.line[0]));
   setTimeout(() => map.resize(), 0);
   await keepAwake();
+  if (!sim) { // the map of the route, once the first tiles of navigation are there
+    const trip = nav.trip;
+    setTimeout(() => { if (nav.on && nav.trip === trip) cacheRoute(nav.d); }, 3000);
+  }
   if (sim) {
     // Preview: along the line at three times the speed of each step
     // nav.simAlong: navLoad sets it to 0, so a new route (a stop added) drives on from its start
@@ -4519,6 +4739,7 @@ async function keepAwake() {
 document.addEventListener("visibilitychange", keepAwake);
 function navStop() {
   nav.on = false;
+  routeCache.ctl?.abort();
   fpsCap(false);
   setSource("turns", empty);
   nav.turnsKey = null;
@@ -4538,6 +4759,7 @@ function navStop() {
   navElev.hidden = true;
   navBox.hidden = true;
   root.classList.remove("lm-navigating", "lm-nav-elev-on");
+  offlineNote();
   showDim();
   followMe();
   setTimeout(() => {
@@ -4601,7 +4823,7 @@ function navFind(cats) {
     ctl = new AbortController();
     let found;
     try { found = await geoFind(q, ctl.signal); } catch (err) {
-      if (err.name !== "AbortError") msg.textContent = T.failed;
+      if (err.name !== "AbortError") msg.textContent = failText(T.failed);
       return;
     }
     if (!box.isConnected || field.value.trim() !== q) return;
@@ -4692,7 +4914,7 @@ async function navPointOpen(ll, symbol) {
     d = await r.json().catch(() => ({}));
     if (!r.ok) { note.textContent = problem(d); return; }
   } catch (err) {
-    if (err.name !== "AbortError") note.textContent = T.failed;
+    if (err.name !== "AbortError") note.textContent = failText(T.failed);
     return;
   }
   if (ctl.signal.aborted || navAlong.dataset.kind !== "point") return;

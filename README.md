@@ -15,6 +15,9 @@ OpenStreetMap data. Live at https://hippomaps.ch.
 - **Navigation** turn by turn, spoken in 18 languages (Bulgarian, Dutch, English, Estonian, Finnish, French, German, Greek,
   Hungarian, Italian, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Ukrainian; chosen apart from the
   language of the page), with arrows at the turns, re-routing, a 3D traveller and a preview mode
+- **Without a connection** a note over the map says so and the page opens as last loaded; at Start the map along the
+  route is saved on the device (about 15 MB for 25 km by car, `web/sw.js`), so navigation goes on along the route with
+  its map and its spoken sentences, says when it cannot find a new route, and finds one when the connection is back
 - **Live traffic** in Switzerland: closures, queues and roadworks on the map and in the route time
 - **Transit lines** (metro, light rail, tram) in their colours
 - **Map**: opens near the visitor (the town of their IP address) until the device tells where they are; a globe with the night side when zoomed out; nine styles, the default day map in the colours of Swiss
@@ -94,6 +97,9 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | `GET traffic` | traffic incidents |
 | `GET search/{search,query,complete,here}` | relayed overpass-search; with `lang=de`, `fr` or `it` its English words (the reading, other readings, notes, kinds of places) in that language (`server/labels.go`) |
 
+`GET {base}/sw.js` serves the service worker (`web/sw.js`, scope the page): the page and its files as last loaded, and the
+map tiles of the route being navigated (cache `hm-route`, filled by the page at Start), served first.
+
 `GET /privacy` and `/de/privacy` serve the privacy policy (`web/privacy*.html`), linked from the menu.
 
 `GET /healthz` answers `ok`; `hippomaps healthcheck` asks it (the Docker health check).
@@ -117,7 +123,7 @@ screenshots are in `fastlane/`. Details: [android/README.md](android/README.md).
 ```
 cmd/hippomaps/   settings, server, healthcheck
 server/          page, pictures, directions, search relay, transit, traffic, voice
-web/             index.html, app.js, i18n.js, avatar.js (3D traveller), app.css, icons, vendor/
+web/             index.html, app.js, i18n.js, avatar.js (3D traveller), sw.js (service worker), app.css, icons, vendor/
 android/         the Android app
 fastlane/        F-Droid texts and screenshots
 tests/           tests of a running site

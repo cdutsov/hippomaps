@@ -19,7 +19,9 @@ directions at their top when the keyboard goes; up and down in one movement when
 directions takes it to the top); a place searched in navigation as the destination; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
 enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
 twice (the voice answered with silence in the test); German texts after the language of the menu, also the words of
-the search; and no
+the search; without a connection the note over the map, a search, navigation off the route (no new route asked), the
+map of a route saved at Start and shown from the device, the page opening (the service worker); the suggestions of
+directions in their field, the panel at the height of its state when the keyboard goes; and no
 errors of the page on the way. Needs chromium and websocket-client.
 """
 import base64
@@ -192,6 +194,11 @@ try:
     js("(() => { const f = document.querySelector('.lm-end-to input'); if (document.activeElement !== f) { f.focus(); f.dispatchEvent(new Event('input')); } })()")
     check(wait("[...document.querySelectorAll('.lm-end-list:not([hidden]) .lm-opt-label')].some(e => /Enge/.test(e.textContent))", 20),
           "the destination field suggests places")
+    # the suggestions are part of the field, under what is typed; the rest of the panel moves down under them
+    check(js("(() => { const l = document.querySelector('.lm-end-to > .lm-end-list:not([hidden])'), f = document.querySelector('.lm-end-to input'), m = document.querySelector('.lm-route-msg');"
+             " if (!l || !m) return false; const b = l.getBoundingClientRect();"
+             " return getComputedStyle(l).position === 'static' && b.top >= f.getBoundingClientRect().bottom && m.getBoundingClientRect().top >= b.bottom; })()"),
+          "the suggestions in the destination field, under what is typed; the rest of the panel under them")
     # the first suggestion (a click: the page may have lost the focus)
     tap(".lm-end-list:not([hidden]) .lm-opt")
     check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30), "a route by car with its time")
@@ -725,6 +732,13 @@ try:
         return ok, t[::max(1, len(t) // 12)]
 
     sheet = lambda: js("document.getElementById('app').dataset.sheet")
+    # the panel at the height of its state in the page as it is (half 48 %, full all but 56 px, peek at most 40 %), its
+    # bottom at the bottom of the page, the page not scrolled
+    at_height = lambda: js("(() => { const s = document.querySelector('.lm-side').getBoundingClientRect(), H = document.getElementById('app').clientHeight,"
+                           " st = document.getElementById('app').dataset.sheet, want = { half: Math.round(H * 0.48), full: H - 56 }[st];"
+                           " return Math.abs(s.bottom - innerHeight) <= 1 && H === innerHeight && scrollY === 0"
+                           " && (want == null ? s.height <= H * 0.4 + 1 : Math.abs(s.height - want) <= 2); })()")
+    panel = lambda: js("(() => { const s = document.querySelector('.lm-side').getBoundingClientRect(); return [document.getElementById('app').dataset.sheet, Math.round(s.top), Math.round(s.height), innerHeight]; })()")
 
     # the moves of the map from now, in window.hmMoves: start and end in ms, zoom at both ends and the
     # lowest between; window.hmResized: when the page last changed its height (the keyboard)
@@ -744,7 +758,7 @@ try:
     keyboard(True)
     time.sleep(1.7)
     ok, t = one_way(True)
-    check(ok and sheet() == "full" and abs(js("document.querySelector('.lm-side').getBoundingClientRect().top") - 56) <= 2,
+    check(ok and sheet() == "full" and abs(js("document.querySelector('.lm-side').getBoundingClientRect().top") - 56) <= 2 and at_height(),
           f"the search box tapped, the keyboard comes: the panel up to the top in one movement ({t})")
     call("Input.insertText", text="Bern")
     js("(() => { const i = document.querySelector('.lm-input'); if (document.activeElement !== i) { i.focus(); i.dispatchEvent(new Event('input')); } })()")
@@ -759,8 +773,8 @@ try:
         keyboard_goes(".lm-input")
         time.sleep(3.6)
         ok, t = one_way(False)
-        check(ok and wait("/Bern/.test(document.querySelector('.lm-title')?.textContent || '')", 30),
-              f"a suggestion picked, the keyboard goes: the panel down in one movement ({t})")
+        check(ok and wait("/Bern/.test(document.querySelector('.lm-title')?.textContent || '')", 30) and at_height(),
+              f"a suggestion picked, the keyboard goes: the panel down in one movement, to the height of its state ({t}, {panel()})")
         # Zürich to Bern: one flight out and in, after the keyboard went, no correction after it
         wait("hmMoves.length > 0 && hmMoves.every(m => m.t1)", 5)
         time.sleep(0.5)
@@ -790,8 +804,8 @@ try:
         keyboard_goes(".lm-end-to input")
         time.sleep(2.6)
         ok, t = one_way(False)
-        check(ok and sheet() == "half" and wait("/Paradeplatz/.test(document.querySelector('.lm-end-to input').value)", 5),
-              f"a place picked in directions, the keyboard goes: the panel down to half in one movement ({t})")
+        check(ok and sheet() == "half" and wait("/Paradeplatz/.test(document.querySelector('.lm-end-to input').value)", 5) and at_height(),
+              f"a place picked in directions, the keyboard goes: the panel down to half in one movement ({t}, {panel()})")
     else:
         check(False, "suggestions for Paradeplatz in directions")
     tap(".lm-end-from input")
@@ -803,8 +817,137 @@ try:
     keyboard_goes(".lm-end-from input")
     time.sleep(2.1)
     ok, t = one_way(False)
-    check(ok and sheet() == "half", f"a tap away from a field of directions: the panel down in one movement ({t})")
+    check(ok and sheet() == "half" and at_height(), f"a tap away from a field of directions: the panel down in one movement ({t}, {panel()})")
     keyboard(False)
+    # the keyboard put away with the field still in focus (the back button of Android), then a tap away: full in the
+    # whole page, then half; and the keyboard going in two steps
+    tap(".lm-end-from input")
+    time.sleep(0.1)
+    keyboard(True)
+    time.sleep(1)
+    keyboard(False)
+    time.sleep(1)
+    full_ok = sheet() == "full" and at_height()
+    js("document.activeElement.blur()")
+    time.sleep(1.2)
+    check(full_ok and sheet() == "half" and at_height(), f"the keyboard put away in a field, then a tap away: the panel full, then half ({panel()})")
+    tap(".lm-end-to input")
+    time.sleep(0.1)
+    keyboard(True)
+    time.sleep(1)
+    js("document.activeElement.blur()")
+    time.sleep(0.05)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=700, deviceScaleFactor=2, mobile=True)
+    time.sleep(0.05)
+    keyboard(False)
+    time.sleep(1.5)
+    check(sheet() == "half" and at_height(), f"the keyboard going in two steps: the panel at half of the whole page ({panel()})")
+
+    # no connection: the note at the top of the map in place of the bubbles, a search says why it failed, the note goes
+    # when the connection is back. Online for the device but the server out of reach: the same, the server asked again
+    # every 5 s. In navigation the note under the banner; off the route no new route is asked: the banner says why,
+    # the voice once (said from a sound fetched at Start); the connection back, a new route.
+    def offline(on):
+        call("Network.emulateNetworkConditions", offline=on, latency=0, downloadThroughput=-1, uploadThroughput=-1)
+    call("Network.enable")  # (without it the device is offline for the page, but its requests still go out)
+    note = "(document.querySelector('.lm-offline:not([hidden])')?.offsetParent ? document.querySelector('.lm-offline').parentNode.className + ' | ' + document.querySelector('.lm-offline').textContent : '')"
+    js("window.hmOld = 1")
+    call("Page.navigate", url=URL)
+    wait("!window.hmOld && window.hmMap?.loaded()", 30)
+    time.sleep(0.5)
+    check(js(f"!{note}"), "online: no note of the connection")
+    offline(True)
+    check(wait(f"/^lm-map.*No internet connection/.test({note})", 5) and js("getComputedStyle(document.querySelector('.lm-bubbles')).display === 'none'"),
+          "offline: the note at the top of the map, in place of the bubbles")
+    js("(() => { document.querySelector('.lm-input').value = 'museums'; document.querySelector('.lm-form').requestSubmit(); })()")
+    check(wait("document.querySelector('.lm-status').textContent === 'No internet connection'", 10),
+          f"offline: a search says there is no connection ({js('document.querySelector(\'.lm-status\').textContent')})")
+    offline(False)
+    check(wait(f"!{note}", 10), "the connection back: the note goes")
+    call("Network.setBlockedURLs", urls=["*/api/*", "*/healthz*"])
+    js("(() => { document.querySelector('.lm-input').value = 'museums'; document.querySelector('.lm-form').requestSubmit(); })()")
+    check(wait(f"/No internet connection/.test({note})", 15), "the server out of reach: the note of the connection")
+    time.sleep(6)  # (answers from the cache of the browser meanwhile, the tiles: the server asked again, still out of reach)
+    check(js(f"/No internet connection/.test({note})"), "the server out of reach: the note stays")
+    call("Network.setBlockedURLs", urls=[])
+    check(wait(f"!{note}", 12), "the server answers again: the note goes")
+    call("Page.navigate", url=URL + "/?to=47.36690,8.54500&tn=Bellevue&mode=car")
+    if wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40):
+        js("(() => { const f0 = window.fetch; window.hmRoutes = 0; window.fetch = function (u) { if (String(u).includes('/api/route')) hmRoutes++; return f0.apply(this, arguments); }; })()")
+        js("document.querySelector('.lm-nav-start').click()")
+        wait("document.getElementById('app').classList.contains('lm-navigating') && /\\d/.test(document.querySelector('.lm-nav-dist')?.textContent || '')", 20)
+        time.sleep(2)
+        offline(True)
+        check(wait(f"/^lm-nav-head.*Navigation goes on/.test({note})", 5), "offline in navigation: the note under the banner")
+        for i in range(6):  # 400 m off the route
+            call("Emulation.setGeolocationOverride", latitude=ZURICH[0] + 0.004 + i * 0.0001, longitude=ZURICH[1] + 0.004, accuracy=10)
+            time.sleep(1.2)
+        said = js("(window.hmSaid || []).map(x => Array.isArray(x) ? x[0] : x)") or []
+        check(js("/No connection for a new route/.test(document.querySelector('.lm-nav-banner').textContent) && hmRoutes === 0")
+              and len([t for t in said if "No connection for a new route" in t]) == 1,
+              f"offline off the route: no new route asked, the banner says why, said once ({said[-2:]})")
+        offline(False)
+        for i in range(5):
+            call("Emulation.setGeolocationOverride", latitude=ZURICH[0] + 0.0046 + i * 0.0001, longitude=ZURICH[1] + 0.004, accuracy=10)
+            time.sleep(1.2)
+        check(wait(f"!{note} && hmRoutes > 0 && !/No connection/.test(document.querySelector('.lm-nav-banner').textContent)", 10),
+              "the connection back in navigation: the note goes, a new route")
+        js("document.querySelector('.lm-nav-x')?.click()")
+        wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+    else:
+        check(False, "a route for navigation without a connection")
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+
+    # the map of a route for the way without a connection: the service worker (web/sw.js) controls the page; Start puts
+    # the tiles along the route in its cache (window.hmRouteCache). Without a connection (the page and the service worker:
+    # the workers of the map fetch through it) the note says the map is saved, the map along the route loads from the
+    # device, tilted as in navigation, and the page opens again.
+    sw_ws = []
+
+    def offline_all(on):
+        if not sw_ws:
+            for t in json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json")):
+                if t["type"] == "service_worker" and t["url"].startswith(URL):
+                    sw_ws.append(websocket.create_connection(t["webSocketDebuggerUrl"], timeout=30))
+        for w in sw_ws:
+            for i, (m, p) in enumerate([("Network.enable", {}), ("Network.emulateNetworkConditions", {"offline": on, "latency": 0, "downloadThroughput": -1, "uploadThroughput": -1})]):
+                w.send(json.dumps({"id": 900 + i, "method": m, "params": p}))
+                while json.loads(w.recv()).get("id") != 900 + i:
+                    pass
+        offline(on)
+    js("window.hmOld = 1")
+    call("Page.navigate", url=URL + "/?to=47.41150,8.54420&tn=Oerlikon&mode=car")
+    check(wait("!window.hmOld && navigator.serviceWorker?.controller", 20), "the service worker controls the page")
+    if wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40):
+        js("document.querySelector('.lm-nav-start').click()")
+        saved = wait("hmRouteCache.saved || hmRouteCache.failed", 120)
+        rc = js("JSON.stringify(hmRouteCache, ['total', 'done', 'failed', 'saved'])")
+        kept = js("caches.open('hm-route').then(c => c.keys()).then(k => k.length)")
+        check(saved and js("hmRouteCache.saved && hmRouteCache.total > 50") and kept >= js("hmRouteCache.total"),
+              f"Start: the map along the route saved on the device ({rc}, {kept} in the cache)")
+        pts = js("(() => { const l = hmMap.getSource('lm-route')?.serialize?.().data?.features?.[0]?.geometry?.coordinates;"
+                 " return l && l.length > 3 ? [0.3, 0.6, 0.95].map((f) => { const i = Math.floor(f * (l.length - 2)); return [l[i], l[i + 1]]; }) : null; })()") or []
+        offline_all(True)
+        check(wait(f"/its map saved/.test({note})", 10), "without a connection in navigation: the note says the map of the route is saved")
+        js("document.querySelector('.lm-nav-x')?.click()")
+        wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+        js("window.hmTileErrs = 0; hmMap.on('error', (e) => { if (e.sourceId === 'protomaps') hmTileErrs++; })")
+        loaded = []
+        for a, b2 in pts:
+            brg = math.degrees(math.atan2((b2[0] - a[0]) * math.cos(math.radians(a[1])), b2[1] - a[1]))
+            js(f"hmMap.jumpTo({{ center: {json.dumps(a)}, zoom: 16.5, pitch: 50, bearing: {brg} }})")
+            loaded.append(wait("hmMap.areTilesLoaded()", 10))
+        time.sleep(1)
+        check(len(pts) == 3 and all(loaded) and js("hmTileErrs === 0"),
+              f"without a connection the map along the route loads from the device, tilted ({loaded}, {js('hmTileErrs')} tiles failed)")
+        js("window.hmOld = 1")
+        call("Page.navigate", url=URL)
+        check(wait("!window.hmOld && window.hmMap?.isStyleLoaded()", 30), "without a connection the page opens (the service worker)")
+        offline_all(False)
+        for w in sw_ws:
+            w.close()
+    else:
+        check(False, "a route for the map kept for the way")
 
     # German
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")

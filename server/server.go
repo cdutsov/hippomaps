@@ -170,6 +170,9 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET "+base+"/privacy", s.privacy("privacy.html"))
 	s.mux.HandleFunc("GET "+base+"/de/privacy", s.privacy("privacy-de.html"))
 	s.mux.Handle("GET "+base+"/static/", http.StripPrefix(base+"/static/", http.HandlerFunc(s.static)))
+	// the service worker (web/sw.js): the page and the map of a route without a connection; next to the page, with
+	// the page in its scope
+	s.mux.HandleFunc("GET "+base+"/sw.js", s.serviceWorker)
 	if cfg.Pictures {
 		s.mux.HandleFunc("GET "+base+"/api/picture", s.picture)
 	}
@@ -255,7 +258,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version, "Donate": s.donations()}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version, "Donate": s.donations(), "Scope": s.scope()}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}
@@ -271,6 +274,28 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=()")
 	h.Set("Referrer-Policy", "strict-origin-when-cross-origin") // the tiles key holds for the site only
 	w.Write(buf.Bytes())
+}
+
+// scope is the scope of the service worker: the path of the page
+func (s *Server) scope() string {
+	if b := strings.TrimRight(s.cfg.Base, "/"); b != "" {
+		return b
+	}
+	return "/"
+}
+
+// serviceWorker serves web/sw.js; the browser asks for it again at each visit (no-cache)
+func (s *Server) serviceWorker(w http.ResponseWriter, r *http.Request) {
+	b, err := fs.ReadFile(web.Files, "sw.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/javascript; charset=utf-8")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Service-Worker-Allowed", s.scope())
+	w.Write(b)
 }
 
 // privacy serves the privacy policy in one language: a page of text, no script

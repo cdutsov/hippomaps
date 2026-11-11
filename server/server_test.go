@@ -137,6 +137,23 @@ func TestStatic(t *testing.T) {
 	}
 }
 
+// the service worker next to the page, its scope the page (also at the root of a site), asked again at each visit
+func TestServiceWorker(t *testing.T) {
+	for _, c := range []struct{ base, sw, scope string }{{"/labs/maps", "/labs/maps/sw.js", "/labs/maps"}, {"/", "/sw.js", "/"}} {
+		s := testServer(t, nil, func(cfg *Config) { cfg.Base = c.base })
+		w := get(s, c.sw)
+		h := w.Header()
+		if w.Code != 200 || !strings.HasPrefix(h.Get("Content-Type"), "text/javascript") || h.Get("Cache-Control") != "no-cache" ||
+			h.Get("Service-Worker-Allowed") != c.scope || !strings.Contains(w.Body.String(), `addEventListener("fetch"`) {
+			t.Errorf("%s: %d %v", c.sw, w.Code, h)
+		}
+		body := get(s, c.base).Body.String()
+		if !strings.Contains(body, `data-sw="`+c.sw+`"`) || !strings.Contains(body, `data-scope="`+c.scope+`"`) {
+			t.Errorf("page %s: no service worker in %s", c.base, body)
+		}
+	}
+}
+
 func TestPictures(t *testing.T) {
 	f := newFake(t)
 	s := testServer(t, f)
