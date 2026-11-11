@@ -5,6 +5,7 @@
 import * as THREE from "./vendor/three-0.170.0/three.module.min.js";
 
 const BLUE = 0x1a5fd0;
+const RED = 0xd0201a; // the car
 const UP = new THREE.Vector3(0, 1, 0);
 const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.05, ...o });
 
@@ -65,7 +66,7 @@ function wheel(r, w, tyre, rim) {
 
 function car() {
   const g = new THREE.Group();
-  const paint = mat(BLUE, { roughness: 0.32, metalness: 0.35 });
+  const paint = mat(RED, { roughness: 0.32, metalness: 0.35 });
   const glass = mat(0x1b2633, { roughness: 0.15, metalness: 0.6 });
   const tyre = mat(0x16181b, { roughness: 0.9 });
   const rim = mat(0xc9ced6, { metalness: 0.7, roughness: 0.3 });
@@ -249,9 +250,9 @@ export function avatar(map, maplibregl, mode) {
   sun.position.set(-40, -30, 90); // high in the south-west
   scene.add(sun);
 
-  // its size: a car of about 9 m, a cyclist of 4 m, a walker of 3 m, so it keeps to the road when
-  // the map zooms out; never smaller than about 24 pixels, nor larger than a few times its own
-  const fit = { car: [0.2, 0.55, 1.6], bike: [0.12, 0.7, 1.9], walk: [0.09, 0.75, 1.9] }[mode]; // metres per unit, pixels per unit min and max
+  // its size: a car of about 18 m, a cyclist of 4 m, a walker of 3 m, so it keeps to the road when
+  // the map zooms out; never smaller than about 24 pixels (the car 48), nor larger than a few times its own
+  const fit = { car: [0.4, 1.1, 3.2], bike: [0.12, 0.7, 1.9], walk: [0.09, 0.75, 1.9] }[mode]; // metres per unit, pixels per unit min and max
   let renderer = null;
   let from = null, to = null, t0 = 0, dur = 0, hFrom = 0, hTo = 0, speed = 0, last = 0;
   const now = () => performance.now();

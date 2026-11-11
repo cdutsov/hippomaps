@@ -987,7 +987,52 @@ const addIcons = () => {
     g.lineWidth = 2; g.strokeStyle = "#fff"; g.stroke();
     g.beginPath(); g.arc(16, 16, 4.5, 0, 2 * Math.PI); g.fillStyle = "#fff"; g.fill();
   });
+  // the marks along a route by car (lm-marks): signs on a pole whose foot is the place, 40 by 56 px (drawn on 20 by 28)
+  const sign = (name, draw) => drawIcon(name, 40, 56, (g) => {
+    g.scale(2, 2);
+    g.fillStyle = "#4b5563"; g.fillRect(9.25, 17, 1.5, 10); // the pole
+    g.shadowColor = "rgba(0,0,0,.35)"; g.shadowBlur = 4; g.shadowOffsetY = 2; // (a shadow is not scaled)
+    draw(g);
+  });
+  sign("lm-mark-stop", (g) => { // a red octagon, STOP
+    g.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = Math.PI / 8 + (i * Math.PI) / 4;
+      g.lineTo(10 + 9 * Math.cos(a), 10 + 9 * Math.sin(a));
+    }
+    g.closePath();
+    g.fillStyle = "#c8102e"; g.fill();
+    g.shadowColor = "transparent";
+    g.lineWidth = 1.4; g.strokeStyle = "#fff"; g.stroke();
+    g.fillStyle = "#fff"; g.font = "bold 5.6px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("STOP", 10, 10.4);
+  });
+  sign("lm-mark-bump", (g) => { // a warning triangle with a bump
+    g.beginPath();
+    g.moveTo(10, 1.5); g.lineTo(19, 17.5); g.lineTo(1, 17.5);
+    g.closePath();
+    g.lineJoin = "round"; g.fillStyle = "#fff"; g.fill();
+    g.shadowColor = "transparent";
+    g.lineWidth = 2.2; g.strokeStyle = "#c8102e"; g.stroke();
+    g.beginPath();
+    g.moveTo(4.6, 14.6); g.lineTo(7, 14.6); g.quadraticCurveTo(10, 8.4, 13, 14.6); g.lineTo(15.4, 14.6);
+    g.lineWidth = 1.6; g.strokeStyle = "#111827"; g.stroke();
+  });
+  sign("lm-mark-camera", (g) => { // a camera on a dark sign
+    g.beginPath();
+    g.roundRect(1, 1, 18, 17, 3.5);
+    g.fillStyle = "#1f2937"; g.fill();
+    g.shadowColor = "transparent";
+    g.lineWidth = 1.4; g.strokeStyle = "#fff"; g.stroke();
+    g.fillStyle = "#fff";
+    g.beginPath(); g.roundRect(4.2, 6.8, 11.6, 7.6, 1.4); g.fill();
+    g.fillRect(7.2, 5.2, 4.2, 2);
+    g.beginPath(); g.arc(10, 10.6, 2.5, 0, 2 * Math.PI); g.fillStyle = "#1f2937"; g.fill();
+    g.beginPath(); g.arc(10, 10.6, 1.2, 0, 2 * Math.PI); g.fillStyle = "#fff"; g.fill();
+  });
 };
+// a mark along a route by car (d.marks: k camera, stop or bump, at, i) as a point of lm-route
+const markFeature = (m) => ({ type: "Feature", geometry: { type: "Point", coordinates: m.at }, properties: { mark: m.k } });
 // the head of a turn arrow in navigation (lm-turn-head): white with the casing of the route, open at its base where the
 // white of the arrow line comes in; it points up (north), turned with the map by its rotate
 const TURN_CASE = "#0b3d91";
@@ -1103,8 +1148,14 @@ map.on("style.load", () => {
   if (font) add({ id: "lm-along-name", type: "symbol", source: "lm-along", minzoom: 13, filter: ["has", "name"],
     layout: { "text-field": ["get", "name"], "text-font": font, "text-size": 12, "text-offset": [0, 1], "text-anchor": "top", "text-max-width": 10, "text-optional": true },
     paint: { ...textPaint("lm-along-name"), "text-halo-width": 1.5 } });
+  // speed cameras (where they may be shown) from zoom 9, stop signs and speed bumps from 13, along a route by car;
+  // the cameras first where they meet
+  const markLayout = { "icon-image": ["concat", "lm-mark-", ["get", "mark"]], "icon-anchor": "bottom",
+    "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.75, 16, 1], "symbol-sort-key": ["match", ["get", "mark"], "camera", 0, "stop", 1, 2] };
+  add({ id: "lm-marks", type: "symbol", source: "lm-route", minzoom: 13, filter: ["in", ["get", "mark"], ["literal", ["stop", "bump"]]], layout: markLayout });
+  add({ id: "lm-marks-camera", type: "symbol", source: "lm-route", minzoom: 9, filter: ["==", ["get", "mark"], "camera"], layout: markLayout });
   // the start (white), the stops (orange, numbered) and the destination (red)
-  add({ id: "lm-route-ends", type: "circle", source: "lm-route", filter: ["!", line], paint: {
+  add({ id: "lm-route-ends", type: "circle", source: "lm-route", filter: ["all", ["!", line], ["has", "end"]], paint: {
     "circle-radius": ["match", ["get", "end"], "stop", 9, 7], "circle-color": ["match", ["get", "end"], "from", "#fff", "stop", STOP_COLOUR, "#d0312d"],
     "circle-stroke-color": ["match", ["get", "end"], "from", "#111827", "#fff"], "circle-stroke-width": ["match", ["get", "end"], "stop", 2, 3] } });
   if (font) add({ id: "lm-route-stop-n", type: "symbol", source: "lm-route", filter: ["==", ["get", "end"], "stop"],
@@ -2017,10 +2068,13 @@ input.addEventListener("beforeinput", (e) => {
   if (!list.hidden && active >= 0) pick(active);
   else form.requestSubmit();
 });
+let quietFocus = false; // the focus of the start: no list
 input.addEventListener("focus", () => {
   setSheet("full");
-  if (!input.value.trim()) renderList(savedItems());
+  if (!input.value.trim() && !quietFocus) renderList(savedItems());
 });
+// a click in the box that has the focus (the start gave it): the starred places and last searches
+input.addEventListener("click", () => { if (!input.value.trim() && list.hidden) renderList(savedItems()); });
 input.addEventListener("blur", () => setTimeout(() => { closeList(); foldIfEmpty(); }, 120));
 // the X clears it all: the text, the results, the place shown, directions; back to the start
 clearBtn.addEventListener("click", () => {
@@ -3098,7 +3152,7 @@ function trafficClass(d, from = 0) {
 function drawEnds(line) {
   if (!line) setSource("routetraffic", empty);
   const fs = [];
-  if (line) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: line }, properties: {} });
+  if (line) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: line }, properties: {} }, ...(route.answer?.marks || []).map(markFeature));
   if (route.from) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.from.ll }, properties: { end: "from" } });
   route.stops.forEach((x, i) => { if (x) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { end: "stop", n: String(i + 1) } }); });
   if (route.to) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } });
@@ -3854,10 +3908,11 @@ function showOnRoute(frac) {
 // visitor leaves this one. Start follows the location of the browser; Preview drives the route
 // at three times its speed.
 const SPRITE = {
-  car: '<svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="19" fill="#1a73e8" fill-opacity=".18"/>' +
-    '<rect x="12.5" y="6" width="15" height="28" rx="6" fill="#1a73e8" stroke="#fff" stroke-width="2"/>' +
+  // the car red and twice the size of the others
+  car: '<svg viewBox="0 0 40 40" width="80" height="80"><circle cx="20" cy="20" r="19" fill="#d0201a" fill-opacity=".18"/>' +
+    '<rect x="12.5" y="6" width="15" height="28" rx="6" fill="#d0201a" stroke="#fff" stroke-width="2"/>' +
     '<path d="M15 14.5q5-3 10 0l-1.2 4h-7.6z" fill="#cfe3ff"/><path d="M16 28.5h8l1 2.5h-10z" fill="#cfe3ff"/>' +
-    '<rect x="11" y="11" width="2" height="3.5" rx="1" fill="#0b3d91"/><rect x="27" y="11" width="2" height="3.5" rx="1" fill="#0b3d91"/></svg>',
+    '<rect x="11" y="11" width="2" height="3.5" rx="1" fill="#7a1410"/><rect x="27" y="11" width="2" height="3.5" rx="1" fill="#7a1410"/></svg>',
   bike: '<svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="19" fill="#1a73e8" fill-opacity=".18"/>' +
     '<rect x="18.5" y="5" width="3" height="10" rx="1.5" fill="#111827"/><rect x="18.5" y="25" width="3" height="10" rx="1.5" fill="#111827"/>' +
     '<path d="M12 13h16" stroke="#111827" stroke-width="2.4" stroke-linecap="round"/>' +
@@ -3877,7 +3932,7 @@ function makeAvatar(mode) {
       return { is3d: true, set(ll, h, ms, sp) { this.at = ll; this.heading = h; a.set(ll, h, ms, sp); }, remove: () => a.remove() };
     } catch {}
   }
-  const sprite = el("div", "lm-sprite");
+  const sprite = el("div", `lm-sprite lm-sprite-${mode}`);
   sprite.innerHTML = SPRITE[mode];
   const m = new maplibregl.Marker({ element: sprite, rotationAlignment: "map", pitchAlignment: "map" });
   return { is3d: false, set(ll, h) { this.at = ll; this.heading = h; m.setLngLat(ll).setRotation(h).addTo(map); }, remove: () => m.remove() };
@@ -4613,6 +4668,7 @@ function drawNavLine(p) {
   const rest = [p.ll, ...nav.d.line.slice(p.i + 1)];
   setSource("route", { type: "FeatureCollection", features: [
     { type: "Feature", geometry: { type: "LineString", coordinates: rest }, properties: {} },
+    ...(nav.d.marks || []).filter((m) => m.i >= p.i).slice(0, 300).map(markFeature), // those ahead
     ...nav.stops.map((x, j) => x.i > p.i && { type: "Feature", geometry: { type: "Point", coordinates: nav.d.line[x.i] }, properties: { end: "stop", n: String(j + 1) } }).filter(Boolean),
     { type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } },
   ] });
@@ -5171,6 +5227,13 @@ function stepsAgain() {
 // address once the map is there, as it searches the map view
 const startQ = new URLSearchParams(location.search).get("q");
 if (!startQ) intro();
+// on a computer the cursor in the search box, to type at once (not with a touch screen: its keyboard would cover the
+// map), when the address opens nothing else (a search, a shared place or route)
+if (!startQ && !/[?&](to|at)=/.test(location.search) && matchMedia("(hover: hover) and (pointer: fine)").matches) {
+  quietFocus = true;
+  input.focus({ preventScroll: true });
+  quietFocus = false;
+}
 // back from Stripe after a donation (?donated=1): thanks in the panel, and the address without it
 if (new URLSearchParams(location.search).has("donated")) {
   say(T.donated);

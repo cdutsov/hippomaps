@@ -30,8 +30,9 @@ import (
 // (at, i, end), the spoken texts for navigation (alert before, pre at the turn, post after),
 // the street, and what a sign shows (exit number and name, route numbers, toward). limits are
 // the speed limits along the line by car (indexes of line), from a second call to Valhalla
-// (trace_attributes, leaving now), with the stretches slowed by traffic and the delay; without them
-// when that call fails. By bike and on foot, elev is the
+// (trace_attributes, leaving now, in pieces of at most traceMaxKm), with the stretches slowed by traffic and the
+// delay; without them where that call fails. marks: speed cameras, stop signs and speed bumps on the route by
+// car (marks.go), from Overpass; none when it fails. By bike and on foot, elev is the
 // height profile from the elevation API of overpass.ch (ElevationURL, ElevationKey); without it
 // when that call fails or there is no key.
 
@@ -96,6 +97,7 @@ type routeAnswer struct {
 	Traffic [][3]int     `json:"traffic,omitempty"` // by car: slow (1) and queued (2) stretches, in indexes of line
 	Delay   float64      `json:"delay,omitempty"`   // by car: seconds that traffic adds
 	Tunnels [][3]int     `json:"tunnels,omitempty"` // by car: [from, to, metres] in indexes of line
+	Marks   []routeMark  `json:"marks,omitempty"`   // by car: speed cameras (where allowed), stop signs, speed bumps (marks.go)
 	Elev    *routeElev   `json:"elev,omitempty"`
 	lang    string       // the language of the steps (bg-BG): fixes of its phrases in addSteps
 }
@@ -307,12 +309,12 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		routeError(w, http.StatusNotFound, "no_route", "No route between these points.")
 		return
 	}
-	shape := v.Trip.Legs[0].Shape
-	if len(v.Trip.Legs) > 1 {
-		shape = encodePolyline(a.Line, 1e6)
-	}
 	if mode.costing == "auto" {
-		a.Limits, a.Traffic, a.Tunnels, a.Delay = s.alongRoute(ctx, shape, a.Line)
+		var edges []tracedEdge
+		a.Limits, a.Traffic, a.Tunnels, a.Delay, edges = s.alongRoute(ctx, a.Line)
+		if s.overpass() {
+			a.Marks = s.routeMarks(ctx, a.Line, edges)
+		}
 	} else if s.cfg.ElevationKey != "" {
 		a.Elev = s.heights(ctx, a.Line, a.Km)
 	}
@@ -582,40 +584,9 @@ func texts(es []signElement) []string {
 // now): the posted limits as [from, to, km/h], the traffic as [from, to, level] (1 slow: under 75 %
 // of the usual speed; 2 queue: under 50 %, as it is now), in indexes of line, and the delay in
 // seconds that live traffic adds to the time of the route (which counts live speeds less the
-// further ahead they are), and the tunnels as [from, to, metres]. The matched shape may drop a point of the line; its indexes are mapped back.
-func (s *Server) alongRoute(ctx context.Context, shape string, line [][2]float64) (limits, traffic, tunnels [][3]int, delay float64) {
-	body, _ := json.Marshal(map[string]any{
-		"encoded_polyline": shape, "costing": "auto", "shape_match": "walk_or_snap", "date_time": map[string]int{"type": 0},
-		"filters": map[string]any{"attributes": []string{"edge.speed_limit", "edge.speeds_non_faded", "edge.speed", "edge.length", "edge.tunnel",
-			"edge.begin_shape_index", "edge.end_shape_index", "shape"}, "action": "include"},
-	})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RoutingURL+"/trace_attributes", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", s.cfg.UserAgent)
-	resp, err := s.routeClient.Do(req)
-	if err != nil {
-		return nil, nil, nil, 0
-	}
-	defer resp.Body.Close()
-	var v struct {
-		Shape string `json:"shape"`
-		Edges []struct {
-			Limit  json.RawMessage `json:"speed_limit"` // a number, or "unlimited"
-			Speeds struct {
-				Current float64 `json:"current_flow"`
-				Usual   float64 `json:"no_flow"`
-			} `json:"speeds_non_faded"`
-			Used   float64 `json:"speed"` // what the time of the route counts: live speeds fade out within an hour
-			Tunnel bool    `json:"tunnel"`
-			Km     float64 `json:"length"`
-			Begin  int     `json:"begin_shape_index"`
-			End    int     `json:"end_shape_index"`
-		} `json:"edges"`
-	}
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&v) != nil {
-		return nil, nil, nil, 0
-	}
-	at := shapeIndex(decodePolyline(v.Shape, 1e6), line)
+// further ahead they are), and the tunnels as [from, to, metres]; and the edges themselves (traceEdges).
+func (s *Server) alongRoute(ctx context.Context, line [][2]float64) (limits, traffic, tunnels [][3]int, delay float64, edges []tracedEdge) {
+	edges = s.traceEdges(ctx, line)
 	merge := func(out [][3]int, a, b, val int) [][3]int {
 		if k := len(out) - 1; k >= 0 && out[k][2] == val && out[k][1] >= a {
 			out[k][1] = b
@@ -623,11 +594,8 @@ func (s *Server) alongRoute(ctx context.Context, shape string, line [][2]float64
 		}
 		return append(out, [3]int{a, b, val})
 	}
-	for _, e := range v.Edges {
-		if e.Begin < 0 || e.End >= len(at) || e.Begin > e.End {
-			continue
-		}
-		a, b := at[e.Begin], at[e.End]
+	for _, e := range edges {
+		a, b := e.a, e.b
 		if n, err := strconv.Atoi(string(e.Limit)); err == nil && n > 0 && n < 200 {
 			limits = merge(limits, a, b, n)
 		}
@@ -657,7 +625,97 @@ func (s *Server) alongRoute(ctx context.Context, shape string, line [][2]float64
 			traffic = merge(traffic, a, b, level)
 		}
 	}
-	return limits, traffic, tunnels, math.Round(delay)
+	return limits, traffic, tunnels, math.Round(delay), edges
+}
+
+// traceMaxKm is the longest piece of a line asked of trace_attributes: Valhalla matches at most 200 km
+// (service_limits.trace.max_distance), so a longer route is asked in pieces.
+const traceMaxKm = 180
+
+// tracedEdge is an edge of a route by car from trace_attributes. a and b: where it begins and ends,
+// in indexes of the whole line; country: the ISO code of the country at its end ("" unknown).
+type tracedEdge struct {
+	Limit  json.RawMessage `json:"speed_limit"` // a number, or "unlimited"
+	Speeds struct {
+		Current float64 `json:"current_flow"`
+		Usual   float64 `json:"no_flow"`
+	} `json:"speeds_non_faded"`
+	Used    float64 `json:"speed"` // what the time of the route counts: live speeds fade out within an hour
+	Tunnel  bool    `json:"tunnel"`
+	Km      float64 `json:"length"`
+	Begin   int     `json:"begin_shape_index"`
+	End     int     `json:"end_shape_index"`
+	Way     int64   `json:"way_id"`
+	Forward bool    `json:"forward"` // along the way in the order of its nodes
+	Class   string  `json:"road_class"`
+	Right   bool    `json:"drive_on_right"`
+	EndNode struct {
+		Admin *int       `json:"admin_index"`
+		Cross []struct { // the other edges at its end
+			Drive string `json:"driveability"` // forward, backward, both; none or missing: not by car
+			Class string `json:"road_class"`
+		} `json:"intersecting_edges"`
+	} `json:"end_node"`
+	a, b    int
+	country string
+}
+
+// traceEdges asks Valhalla for the edges along line (trace_attributes, leaving now), in pieces of at most
+// traceMaxKm. A piece that fails leaves its stretch without edges. The matched shape may drop a point of
+// the line; its indexes are mapped back.
+func (s *Server) traceEdges(ctx context.Context, line [][2]float64) []tracedEdge {
+	cum := cumKm(line)
+	var out []tracedEdge
+	for from := 0; from < len(line)-1; {
+		to := from + 1
+		for to < len(line)-1 && cum[to+1]-cum[from] <= traceMaxKm {
+			to++
+		}
+		out = append(out, s.tracePiece(ctx, line[from:to+1], from)...)
+		from = to
+	}
+	return out
+}
+
+// tracePiece is traceEdges for a piece of the line that starts at index off.
+func (s *Server) tracePiece(ctx context.Context, piece [][2]float64, off int) []tracedEdge {
+	body, _ := json.Marshal(map[string]any{
+		"encoded_polyline": encodePolyline(piece, 1e6), "costing": "auto", "shape_match": "walk_or_snap", "date_time": map[string]int{"type": 0},
+		"filters": map[string]any{"attributes": []string{"edge.speed_limit", "edge.speeds_non_faded", "edge.speed", "edge.length", "edge.tunnel",
+			"edge.begin_shape_index", "edge.end_shape_index", "edge.way_id", "edge.forward", "edge.road_class", "edge.drive_on_right",
+			"node.admin_index", "node.intersecting_edge.driveability", "node.intersecting_edge.road_class", "admin.country_code", "shape"}, "action": "include"},
+	})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RoutingURL+"/trace_attributes", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	resp, err := s.routeClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	var v struct {
+		Shape  string       `json:"shape"`
+		Edges  []tracedEdge `json:"edges"`
+		Admins []struct {
+			Country string `json:"country_code"`
+		} `json:"admins"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&v) != nil {
+		return nil
+	}
+	at := shapeIndex(decodePolyline(v.Shape, 1e6), piece)
+	out := v.Edges[:0]
+	for _, e := range v.Edges {
+		if e.Begin < 0 || e.End >= len(at) || e.Begin > e.End {
+			continue
+		}
+		e.a, e.b = at[e.Begin]+off, at[e.End]+off
+		if i := e.EndNode.Admin; i != nil && *i >= 0 && *i < len(v.Admins) {
+			e.country = v.Admins[*i].Country
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // shapeIndex maps each point of a matched shape to the index of the same point of line (both

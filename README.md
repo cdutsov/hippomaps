@@ -12,7 +12,9 @@ OpenStreetMap data. Live at https://hippomaps.ch.
   address, wheelchair access, Wikipedia, all tags
 - **What is here**: a tap on the map shows the address and the named places around it
 - **Directions** by car, bike and on foot, with up to 8 stops, places along the route (fuel, charging, rest areas, food,
-  drinking water…), lanes, junction signs and speed limits, and a height profile by bike and on foot
+  drinking water…), lanes, junction signs and speed limits, and a height profile by bike and on foot; by car small signs
+  beside the route for stop signs, speed bumps and speed cameras (cameras only in countries that allow a navigation app to
+  show them: none in Switzerland, Liechtenstein, Germany, France, Cyprus, North Macedonia and Kuwait; `server/marks.go`)
 - **Navigation** turn by turn, spoken in 18 languages (Bulgarian, Dutch, English, Estonian, Finnish, French, German, Greek,
   Hungarian, Italian, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Ukrainian; chosen apart from the
   language of the page), with arrows at the turns, re-routing, a 3D traveller and a preview mode
@@ -40,7 +42,7 @@ to other services:
 | Map tiles API ([overpass.ch](https://overpass.ch) maps, or a gateway with the same paths) | vector and terrain tiles, styles, geocoding | `TILES_URL`, `MAPS_KEY` |
 | [overpass-search](https://gitlab.com/cdutsov/overpass-search) | the search | `SEARCH_UPSTREAM` |
 | [Valhalla](https://github.com/valhalla/valhalla) | directions, lanes, speed limits | `ROUTING_URL` |
-| Overpass API | transit lines, places along a route | `OVERPASS_URL`, or overpass.ch with `ELEVATION_KEY` |
+| Overpass API | transit lines, places along a route, stop signs, speed bumps and speed cameras on a route by car | `OVERPASS_URL`, or overpass.ch with `ELEVATION_KEY` |
 | overpass.ch elevation API | height profiles | `ELEVATION_URL`, `ELEVATION_KEY` |
 | [Piper](https://github.com/OHF-Voice/piper1-gpl) 1.5 or later behind `/say?lang=&text=`, a voice for each language of `sayLangs` (`server/say.go`) | spoken navigation (else the voices of the browser) | `TTS_URL` |
 | A traffic service with `/incidents.json` | live traffic | `TRAFFIC_URL` |
@@ -93,7 +95,7 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | | |
 |---|---|
 | `GET picture?wikidata=Q…&brand=Q…&commons=File:…&w=120` | thumbnail of the place photo, else the chain logo, with credit headers |
-| `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=` | line, steps, stops, speed limits, lanes, traffic, tunnels, height profile |
+| `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=` | line, steps, stops, speed limits, lanes, traffic, tunnels, signs on the way (`marks`), height profile |
 | `POST along` `{"line","cat","mode","lang"}` | places of a kind near a route, in route order |
 | `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |
 | `GET say?lang=&text=` | spoken sentence (audio/mpeg) |

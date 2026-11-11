@@ -391,6 +391,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-nav-x { background: #d52b1e; color: #fff; }
 .lm-nav-x:hover { background: #b3241a; }
 .lm-sprite { width: 40px; height: 40px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); }
+.lm-sprite-car { width: 80px; height: 80px; }
 .lm-sprite svg { display: block; }
 
 /* the height profile of a route by bike or on foot */

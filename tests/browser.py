@@ -21,8 +21,9 @@ enough from the one before said ahead with its distance ("In 150 meters, …"), 
 twice (the voice answered with silence in the test); German texts after the language of the menu, also the words of
 the search; the search box on one or two lines, Enter searching; the list of results after a move of the map: those in view, the map keeps all; without a connection the note over the map, a search, navigation off the route (no new route asked), the
 map of a route saved at Start and shown from the device, the page opening (the service worker); the suggestions of
-directions in their field, the panel at the height of its state when the keyboard goes; and no
-errors of the page on the way. Needs chromium and websocket-client.
+directions in their field, the panel at the height of its state when the keyboard goes; the signs along a route by car
+(speed cameras in the Netherlands, none in Switzerland, stop signs in Berkeley) drawn beside it; the search box without the
+focus at the start on a phone, with it on a computer (no list until a click); and no errors of the page on the way. Needs chromium and websocket-client.
 """
 import base64
 import json
@@ -164,6 +165,7 @@ try:
     call("Page.navigate", url=URL)
 
     check(wait("document.querySelector('.maplibregl-canvas')", 30), "the map draws")
+    check(js("document.activeElement !== document.querySelector('.lm-input')"), "on a phone the search box without the focus at the start (no keyboard over the map)")
     check(wait("location.hash.includes('/47.37')", 20), "the map starts at the location")
     # the map drawn with 2 pixels per point at most (phones have 3; at 3 here the double tap and the focus fail in headless Chromium)
     check(wait("window.hmMap?.isStyleLoaded()", 30) and js("hmMap.getPixelRatio() <= 2"), "the map drawn at 2 pixels per point at most")
@@ -674,6 +676,9 @@ try:
     call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&via=47.05020,8.30930&vn=Lucerne&to=46.94900,7.43910&tn=Bern&mode=car")
     check(wait("document.querySelectorAll('.lm-end-stop').length === 1 && document.querySelectorAll('.lm-step-stop').length === 1", 40),
           "a shared route with a stop: its field and its step")
+    # Switzerland forbids warnings of speed cameras: none on the route (OpenStreetMap has more than ten within 20 m of it)
+    marks = json.loads(js("hmMap.getSource('lm-route').getData().then((d) => JSON.stringify(d.features.filter((f) => f.properties.mark).map((f) => f.properties.mark)))") or "[]")
+    check("camera" not in marks, f"no speed cameras on a route in Switzerland ({marks})")
     if js("!!document.querySelector('.lm-along-cats')"):
         js("document.querySelector('.lm-along-cats [data-cat=rest]').click()")
         check(wait("document.querySelectorAll('.lm-along-item').length > 3", 30), "rest areas along the route")
@@ -1065,6 +1070,25 @@ try:
         check(False, "the Restaurants bubble in German: no results")
     js("localStorage.removeItem('hm-lang')")
 
+    # the signs along a route by car: speed cameras where a navigation app may show them (the Netherlands), stop signs
+    # (all-way stops in Berkeley), drawn beside the route when near
+    def route_marks(link, what):
+        js("window.hmOld = 1")
+        call("Page.navigate", url=URL + link)
+        if not wait("!window.hmOld && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40):
+            check(False, f"a route by car {what}")
+            return []
+        return json.loads(js("hmMap.getSource('lm-route').getData().then((d) => JSON.stringify(d.features.filter((f) => f.properties.mark).map((f) => [f.properties.mark, f.geometry.coordinates])))") or "[]")
+    def drawn(m, layer):
+        js(f"hmMap.jumpTo({{ center: {json.dumps(m[1])}, zoom: 16 }})")
+        return wait(f"hmMap.loaded() && hmMap.queryRenderedFeatures({{ layers: ['{layer}'] }}).length > 0", 15)
+    marks = route_marks("/?from=52.37600,4.90410&fn=Amsterdam&to=52.09070,5.12140&tn=Utrecht&mode=car", "in the Netherlands")
+    cams = [m for m in marks if m[0] == "camera"]
+    check(len(cams) >= 1 and drawn(cams[0], "lm-marks-camera"), f"speed cameras along a route by car in the Netherlands, drawn beside it ({len(cams)})")
+    marks = route_marks("/?from=37.87160,-122.27270&fn=A&to=37.85900,-122.29900&tn=B&mode=car", "in Berkeley")
+    stops = [m for m in marks if m[0] == "stop"]
+    check(len(stops) >= 1 and drawn(stops[0], "lm-marks"), f"stop signs along a route by car in Berkeley, drawn beside it ({len(stops)})")
+
     # navigation on a long route by car (Zurich to Winterthur, Preview), for what takes a while: pinches out of tilted
     # navigation; the language of directions and voice apart from that of the page. Last: before the panel on a phone
     # it made a tap on a suggestion there miss now and then
@@ -1112,6 +1136,26 @@ try:
         wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
     else:
         check(False, "a long route by car for Preview")
+    # on a computer (no touch screen) the cursor is in the search box at the start: typing goes there at once; the starred
+    # places and last searches only after a click in it. Headless Chromium has no mouse ((hover: hover) and (pointer:
+    # fine) do not match, and Emulation.setEmulatedMedia leaves them): a mouse given to the page in matchMedia
+    call("Emulation.setTouchEmulationEnabled", enabled=False)
+    call("Emulation.setDeviceMetricsOverride", width=1280, height=800, deviceScaleFactor=1, mobile=False)
+    mouse = call("Page.addScriptToEvaluateOnNewDocument", source="(() => { const mm = window.matchMedia.bind(window);"
+                 " window.matchMedia = (q) => (/\\((hover: hover|pointer: fine)\\)/.test(q) && !/none|coarse/.test(q) ? mm('all') : mm(q)); })()")
+    js("window.hmOld = 1; localStorage.setItem('hm-recent', JSON.stringify([{ text: 'cafes in Zurich', extra: {} }]))")
+    call("Page.navigate", url=URL)
+    focused = wait("!window.hmOld && document.activeElement === document.querySelector('.lm-input')", 15)
+    check(focused and js("document.querySelector('.lm-suggest').hidden"), "on a computer the cursor in the search box at the start, no list over the map")
+    r = js("(() => { const b = document.querySelector('.lm-input').getBoundingClientRect(); return [b.left + 20, b.top + b.height / 2]; })()")
+    for t in ("mousePressed", "mouseReleased"):
+        call("Input.dispatchMouseEvent", type=t, x=r[0], y=r[1], button="left", clickCount=1)
+    check(wait("!document.querySelector('.lm-suggest').hidden && /cafes in Zurich/.test(document.querySelector('.lm-suggest').textContent)", 5),
+          "a click in the search box: the last searches")
+    call("Input.insertText", text="Bern")
+    check(wait("document.querySelector('.lm-input').value === 'Bern'", 5), "on a computer typing at once goes into the search box")
+    js("localStorage.removeItem('hm-recent')")
+    call("Page.removeScriptToEvaluateOnNewDocument", identifier=mouse.get("identifier", ""))
     real = [e for e in errors if "Map cannot fit" not in e]
     check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
 finally:
