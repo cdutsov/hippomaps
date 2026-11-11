@@ -216,13 +216,19 @@ for (const [l, b] of [["en", en], ...["de", "fr", "it"].map((l) => [l, all[l].bu
 		jq -e '(.query // "") | contains("(47.36000,8.50000,47.39000,8.56000)") and (contains("brand") | not)' "$TMP/b" >/dev/null 2>&1 || bad+=("$l $label")
 	done <<<"$labels"
 	((n >= 32 && ${#bad[@]} == 0)) && ok "the bubbles search what they show, in the view ($n labels in 4 languages)" || ko "bubbles not searched in the view ($n labels): ${bad[*]:-none read}"
-	# near a kind of place: Overpass keeps all of them near (around.target); the answer draws each place near a result
-	# (a point) with the circle of the radius around it; "far from highways" reads highways as roads
+	# near a kind of place: Overpass keeps all of them near (around.class1, the set of that kind of place); the answer
+	# draws each place near a result (a point) with the circle of the radius around it; "far from highways" reads
+	# highways as roads
 	get -G "$search/search" --data-urlencode "q=Migros near a bus stop in Zurich" --data-urlencode "lang=en" >/dev/null
-	jq -e '(.query | contains("(around.target:300)")) and .total > 0
+	jq -e '(.query | contains("(around.class1:300)")) and .total > 0
 		and ([.lines.features[] | select(.properties.kind == "target" and .geometry.type == "Point")] | length > 0)
 		and ([.lines.features[] | select(.properties.kind == "circle")] | length > 0)' "$TMP/b" >/dev/null 2>&1 &&
 		ok "Migros near a bus stop: the stops near them, each with its circle" || ko "Migros near a bus stop: $(head -c 300 "$TMP/b")"
+	# a sentence of several parts, in any order: along the river in the town and near a lake, the river and the lake drawn
+	get -G "$search/search" --data-urlencode "q=restaurants in zurich near the lake along the limmat" --data-urlencode "lang=en" >/dev/null
+	jq -e '.total > 0 and (.understood | test("within 300 m of the lake, along Limmat"))
+		and ([.lines.features[].properties.kind] | index("river") != null and index("shape") != null)' "$TMP/b" >/dev/null 2>&1 &&
+		ok "restaurants along the Limmat near the lake: $(jq -r .total "$TMP/b") found" || ko "along the Limmat near the lake: $(head -c 300 "$TMP/b")"
 	get -G "$search/query" --data-urlencode "q=cafés far from highways" --data-urlencode "lang=en" --data-urlencode "bbox=8.50,47.36,8.56,47.39" >/dev/null
 	jq -e '(.understood | test("more than 300 m from highways")) and (.query | contains("motorway|trunk|primary"))' "$TMP/b" >/dev/null 2>&1 &&
 		ok "cafés far from highways: highways are roads" || ko "cafés far from highways: $(jq -c .understood "$TMP/b" 2>/dev/null)"
