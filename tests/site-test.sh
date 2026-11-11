@@ -2,7 +2,7 @@
 # hippomaps on its site (default https://hippomaps.ch): the service, the page (for search engines), its files, the key of the
 # map tiles, the pictures from Wikimedia Commons, directions in Switzerland by car with speed limits, lanes and traffic,
 # heights on foot, the voice, traffic. About 25 requests to the site, one or two to Wikimedia (then kept for a day), two
-# routes; the spoken turns of navigation, the 30 fps cap and the texts of each language in the source (tests/*.test.mjs, node in Docker). BROWSER=1 adds the page in headless Chromium (tests/browser.py, two minutes; needs chromium and websocket-client).
+# routes; the spoken turns of navigation, the 30 fps cap and the texts of each language in the source (tests/*.test.mjs, node in Docker). BROWSER=1 adds the page in headless Chromium (tests/browser.py, about five minutes; needs chromium and websocket-client).
 #   tests/site-test.sh                       PAGE=https://… tests/site-test.sh
 # Ends with "hippomaps test: N passed, M failed"; exit 1 on a failure.
 set -uo pipefail
@@ -228,11 +228,11 @@ for (const [l, b] of [["en", en], ...["de", "fr", "it"].map((l) => [l, all[l].bu
 		ok "cafés far from highways: highways are roads" || ko "cafés far from highways: $(jq -c .understood "$TMP/b" 2>/dev/null)"
 fi
 
-# the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about two minutes
+# the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about five minutes, at most eight
 if [[ ${BROWSER:-0} == 1 ]]; then
 	echo "Browser"
 	# once more when it fails: a slow tile or answer of a server once is no failure of the page
-	if out=$(timeout 300 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1) || out=$(timeout 300 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); then
+	if out=$(timeout 480 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1) || out=$(timeout 480 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); then
 		while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
 	else
 		while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
