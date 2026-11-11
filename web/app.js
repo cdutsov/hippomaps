@@ -605,8 +605,27 @@ top.append(menuBtn, logo());
 
 const form = el("form", "lm-form", { role: "search" });
 const combo = el("div", "lm-combo");
-const input = el("input", "lm-input", { type: "search", role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false",
+// the search box: one line, two when the text needs them (then it scrolls inside); Enter searches, no line breaks
+const input = el("textarea", "lm-input", { rows: "1", role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false",
   "aria-controls": "lm-list", "aria-label": T.placeholder, placeholder: T.placeholder, autocomplete: "off", spellcheck: "false", maxlength: "160", enterkeyhint: "search" });
+const fitInput = () => {
+  input.style.height = "auto";
+  const cs = getComputedStyle(input), line = parseFloat(cs.lineHeight) || 23, padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  const max = Math.round(2 * line + padY), want = input.value ? input.scrollHeight : Math.round(line + padY); // the hint: one line
+  input.style.height = `${Math.min(want, max)}px`;
+  input.style.overflowY = want > max + 1 ? "auto" : "hidden";
+};
+{ // every value set by the page fits the box too (a suggestion taken, a search from the address, the X)
+  const v = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+  Object.defineProperty(input, "value", { configurable: true, get() { return v.get.call(this); }, set(x) { v.set.call(this, x); fitInput(); } });
+}
+let inputW = 0;
+new ResizeObserver(() => { if (input.clientWidth !== inputW) { inputW = input.clientWidth; fitInput(); } }).observe(input);
+combo.addEventListener("mousedown", (e) => { // the edge of the box above and below the text: the text
+  if (e.target !== combo) return;
+  e.preventDefault();
+  input.focus();
+});
 const clearBtn = el("button", "lm-clear", { type: "button", "aria-label": T.clear });
 clearBtn.innerHTML = svg(ICON.close, 16);
 clearBtn.hidden = true;
@@ -1961,6 +1980,12 @@ const accept = (s) => {
   suggest();
 };
 input.addEventListener("input", () => {
+  if (/[\r\n]/.test(input.value)) { // pasted with line breaks: spaces
+    const at = input.selectionStart;
+    input.value = input.value.replace(/\r\n?|\n/g, " ");
+    input.setSelectionRange(at, at);
+  }
+  fitInput();
   clearBtn.hidden = !input.value;
   if (!input.value) newHint();
   clearTimeout(suggestTimer);
@@ -1975,12 +2000,22 @@ input.addEventListener("keydown", (e) => {
   } else if (e.key === "Enter" && !list.hidden && active >= 0) {
     e.preventDefault();
     pick(active);
+  } else if (e.key === "Enter" && !e.isComposing) { // a search, not a new line
+    e.preventDefault();
+    form.requestSubmit();
   } else if (e.key === "Tab" && !e.shiftKey && !list.hidden && options.length && suggestFor === input.value) {
     e.preventDefault();
     accept(active >= 0 ? options[active] : options[0]);
   } else if (e.key === "Escape") {
     if (!list.hidden) { e.preventDefault(); closeList(); }
   }
+});
+// a keyboard that sends no Enter key: its line break searches too
+input.addEventListener("beforeinput", (e) => {
+  if (e.inputType !== "insertLineBreak" && e.inputType !== "insertParagraph") return;
+  e.preventDefault();
+  if (!list.hidden && active >= 0) pick(active);
+  else form.requestSubmit();
 });
 input.addEventListener("focus", () => {
   setSheet("full");

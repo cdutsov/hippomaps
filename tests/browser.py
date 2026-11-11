@@ -19,7 +19,7 @@ directions at their top when the keyboard goes; up and down in one movement when
 directions takes it to the top); a place searched in navigation as the destination; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
 enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
 twice (the voice answered with silence in the test); German texts after the language of the menu, also the words of
-the search; the list of results after a move of the map: those in view, the map keeps all; without a connection the note over the map, a search, navigation off the route (no new route asked), the
+the search; the search box on one or two lines, Enter searching; the list of results after a move of the map: those in view, the map keeps all; without a connection the note over the map, a search, navigation off the route (no new route asked), the
 map of a route saved at Start and shown from the device, the page opening (the service worker); the suggestions of
 directions in their field, the panel at the height of its state when the keyboard goes; and no
 errors of the page on the way. Needs chromium and websocket-client.
@@ -415,6 +415,32 @@ try:
     js("document.querySelector('.lm-clear').click()")
     check(wait("document.querySelector('.lm-input').value === '' && !document.querySelector('.lm-listview').hidden && document.querySelector('.lm-route').hidden", 5),
           "the X clears the search and the views")
+
+    # the search box: one line, two when the text needs them, never more (the rest scrolls inside); Enter searches
+    # and a line break pasted becomes a space
+    lines = lambda: js("(() => { const i = document.querySelector('.lm-input'); return [Math.round(i.clientHeight / parseFloat(getComputedStyle(i).lineHeight)),"
+                       " i.scrollWidth <= i.clientWidth, getComputedStyle(i).overflowY]; })()")
+    empty_lines = lines()
+    js("document.querySelector('.lm-input').focus()")
+    call("Input.insertText", text="cafés")
+    short_lines = lines()
+    call("Input.insertText", text=" within 500 m of Zurich main station")
+    long_lines = lines()
+    check(empty_lines[0] == 1 and short_lines[0] == 1 and long_lines[0] == 2 and long_lines[1],
+          f"the search box: one line, two for a long search ({empty_lines}, {short_lines}, {long_lines})")
+    call("Input.insertText", text="\nopen now")
+    typed = js("document.querySelector('.lm-input').value")
+    check("\n" not in typed and typed.endswith("station open now"), f"the search box: a line break pasted becomes a space ({typed!r})")
+    js("document.querySelector('.lm-input').value = 'restaurants along the Limmat in Zurich near the lake with outdoor seating and vegan food open on Sunday'")
+    check(lines()[0] == 2 and lines()[2] == "auto", f"the search box: a longer text set by the page, two lines that scroll ({lines()})")
+    js("document.querySelector('.lm-input').value = 'cafés within 500 m of Zurich main station'")
+    js("document.querySelector('.lm-input').focus()")
+    key("Enter", "Enter", 13)
+    check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelector('.lm-input').value === 'cafés within 500 m of Zurich main station'", 60),
+          "the search box: Enter searches (no new line)")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+    check(wait("document.querySelector('.lm-input').value === '' && Math.round(document.querySelector('.lm-input').clientHeight / parseFloat(getComputedStyle(document.querySelector('.lm-input')).lineHeight)) === 1", 5),
+          "the search box: one line again after the X")
 
     # a search far from where the map is: the map moves to its results (Brugg -> Zurich)
     js("location.hash = '#map=14/47.481/8.211'")
