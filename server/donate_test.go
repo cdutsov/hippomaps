@@ -67,6 +67,7 @@ func TestDonate(t *testing.T) {
 		"line_items[0][price_data][currency]": "chf", "line_items[0][price_data][unit_amount]": "1000", "line_items[0][quantity]": "1",
 		"line_items[0][price_data][product_data][name]":    "Spende an HippoMaps",
 		"payment_intent_data[statement_descriptor_suffix]": "HIPPOMAPS", "metadata[app]": "hippomaps",
+		"excluded_payment_method_types[0]": "klarna", "excluded_payment_method_types[1]": "amazon_pay",
 		"success_url": "https://hippomaps.ch/?donated=1", "cancel_url": "https://hippomaps.ch/",
 	} {
 		if last.Get(k) != v {

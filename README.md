@@ -72,7 +72,7 @@ The Docker build runs `go vet` and the tests.
 | `TTS_URL` | | Piper server |
 | `TRAFFIC_URL` | | traffic service |
 | `GEOIP_DB` | | a MaxMind DB file with a location per network (DB-IP City Lite; GeoLite2 City has the same fields): the map opens at the place of the IP address of the visitor, else in Zurich. A new file renamed over it is opened within a minute. `hippomaps geoip FILE ADDRESS…` looks addresses up in a file |
-| `STRIPE_KEY` | | a restricted key of Stripe with Checkout Sessions: Write, for donations (`server/donate.go`; needs `PUBLIC_URL` for the way back), server side only. 10 checkouts per visitor in 10 minutes |
+| `STRIPE_KEY` | | a restricted key of Stripe with Checkout Sessions: Write, for donations (`server/donate.go`; needs `PUBLIC_URL` for the way back), server side only. The payment methods of the account but Klarna and Amazon Pay. 10 checkouts per visitor in 10 minutes |
 | `PICTURES` | `true` | photos and logos from Wikimedia |
 | `PICTURE_CACHE_MB` | `64` | memory for Wikimedia answers and thumbnails |
 | `PICTURES_PER_IP`, `ROUTES_PER_IP`, `SAYS_PER_IP`, `SEARCHES_PER_IP` | `600`, `120`, `600`, `100` | per visitor in 10 minutes (map taps: three times the searches) |

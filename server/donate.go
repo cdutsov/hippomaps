@@ -17,7 +17,9 @@ import (
 //
 // amount in whole francs, minDonation to maxDonation; lang en, de, fr or it, for the checkout page and the name of the
 // item. A donation, not a sale: no Managed Payments, the button of Stripe says Donate, and the card statement
-// "OVERPASS* HIPPOMAPS". Back on the page after paying with ?donated=1. 400 for a bad amount, 429 too many,
+// "OVERPASS* HIPPOMAPS". The payment methods of the account (cards with Apple Pay and Google Pay, Link, TWINT) but
+// Klarna and Amazon Pay (owner 2026-11-11: pay later is no way to donate, and their terms may not take donations).
+// Back on the page after paying with ?donated=1. 400 for a bad amount, 429 too many,
 // 502 when Stripe fails. Needs PublicURL for the way back.
 
 const (
@@ -61,6 +63,8 @@ func (s *Server) donate(w http.ResponseWriter, r *http.Request) {
 		"payment_intent_data[statement_descriptor_suffix]": {"HIPPOMAPS"},
 		"payment_intent_data[metadata][app]":               {"hippomaps"},
 		"metadata[app]":                                    {"hippomaps"},
+		"excluded_payment_method_types[0]":                 {"klarna"},
+		"excluded_payment_method_types[1]":                 {"amazon_pay"},
 		"success_url":                                      {back + "?donated=1"},
 		"cancel_url":                                       {back},
 	}
