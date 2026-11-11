@@ -160,6 +160,19 @@ else
 	echo "  SKIP  no voice (TTS_URL not set)"
 fi
 
+echo "Donations"
+# no checkout is opened here: only what the server refuses before it asks Stripe
+if grep -q 'data-donate=' "$TMP/page"; then
+	code=$(get -X POST --data 'amount=1&lang=de' "$PAGE/api/donate")
+	[[ $code == 400 ]] && ok "a donation under 2 francs: 400" || ko "a donation under 2 francs: HTTP $code"
+	code=$(get -X POST --data 'amount=10.50' "$PAGE/api/donate")
+	[[ $code == 400 ]] && ok "a donation in rappen: 400" || ko "a donation in rappen: HTTP $code"
+	code=$(get "$PAGE/api/donate?amount=10")
+	[[ $code == 405 ]] && ok "a donation by GET: 405" || ko "a donation by GET: HTTP $code"
+else
+	echo "  SKIP  no donations (STRIPE_KEY not set)"
+fi
+
 echo "Traffic"
 if grep -q "data-traffic=" "$TMP/page"; then
 	code=$(get "$PAGE/api/traffic")

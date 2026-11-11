@@ -470,6 +470,16 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-place-acts .lm-star { padding: .35rem .45rem; }
 .lm-forget { margin: .8rem 0 .2rem; }
 .lm-forget:disabled { opacity: .5; }
+/* below it in the menu: HippoMaps is free software, and a donation in francs */
+.lm-about { margin: 1rem 0 .2rem; padding-top: .9rem; border-top: 1px solid var(--line); font-size: .85rem; }
+.lm-about-text { margin: 0 0 .7rem; }
+.lm-donate { display: flex; align-items: center; gap: .5rem; }
+.lm-donate-cur { color: var(--muted); }
+.lm-donate-amount { width: 5.5rem; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; }
+.lm-donate-btn { border: 0; border-radius: 16px; padding: .4rem 1.1rem; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+:root[data-theme=dark] .lm-donate-btn { color: var(--bg); }
+.lm-donate-btn:disabled { opacity: .6; cursor: default; }
+.lm-donate-msg { margin: .5rem 0 0; color: var(--red); font-size: .8rem; }
 /* the bubbles over the map: a row that scrolls sideways; fewer on a phone */
 .lm-bubbles { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; z-index: 3; display: flex; gap: .45rem;
   overflow-x: auto; scrollbar-width: none; pointer-events: none; padding: 2px; }

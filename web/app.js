@@ -67,6 +67,13 @@ const EN = {
   starred: "Saved places",
   recent: "Recent searches",
   forgetRecent: "Forget recent searches",
+  // the menu, below Forget recent searches: [ ] marks the link to the source code
+  aboutApp: "HippoMaps is [free open-source software]. It doesn't track you or sell your data.",
+  donateAsk: "Help us maintain the service by donating.",
+  donateAmount: "Amount in CHF",
+  donate: "Donate",
+  donateFailed: "The donation could not be started. Try again later.",
+  donated: "Thank you for your donation.",
   searchArea: "Search this area",
   myLocation: "Show my location",
   north: "Turn the map to north",
@@ -1187,6 +1194,46 @@ forgetBtn.addEventListener("click", () => {
   store.set("hm-recent", "[]");
   forgetBtn.disabled = true;
 });
+// below it: HippoMaps is free software, and a donation through Stripe (data-donate, server/donate.go) in whole francs,
+// 10 to start. The app for Android shows no donation: Google Play takes donations to a developer only through its own
+// billing, and the app is the same for Google Play and F-Droid.
+const DONATE = /\bhippomaps-android\//.test(navigator.userAgent) ? "" : root.dataset.donate || "";
+const about = el("div", "lm-about");
+const aboutText = el("p", "lm-about-text");
+function fillAbout() {
+  const [before, link, after] = T.aboutApp.split(/[[\]]/);
+  aboutText.replaceChildren(before, el("a", "", { href: "https://gitlab.com/cdutsov/hippomaps", target: "_blank", rel: "noopener" }, link), after);
+  if (DONATE) aboutText.append(" ", T.donateAsk);
+}
+fillAbout();
+about.append(aboutText);
+const donateForm = el("form", "lm-donate");
+const donateInput = el("input", "lm-donate-amount", { type: "number", inputmode: "numeric", min: "2", max: "1000", step: "1", value: "10", required: "",
+  "aria-label": T.donateAmount });
+const donateBtn = el("button", "lm-donate-btn", { type: "submit" }, T.donate);
+const donateMsg = el("p", "lm-donate-msg", { role: "status" });
+donateMsg.hidden = true;
+donateForm.append(el("span", "lm-donate-cur", { "aria-hidden": "true" }, "CHF"), donateInput, donateBtn);
+if (DONATE) about.append(donateForm, donateMsg);
+donateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const n = Number(donateInput.value);
+  if (!Number.isInteger(n) || n < 2 || n > 1000) return donateInput.reportValidity();
+  donateBtn.disabled = true;
+  donateMsg.hidden = true;
+  try {
+    const r = await fetch(DONATE, { method: "POST", body: new URLSearchParams({ amount: String(n), lang: UI }) });
+    const d = r.ok ? await r.json() : null;
+    if (!d?.url) throw new Error(`donate ${r.status}`);
+    location.assign(d.url); // the page of Stripe
+  } catch {
+    donateMsg.textContent = T.donateFailed;
+    donateMsg.hidden = false;
+    donateBtn.disabled = false;
+  }
+});
+// back from the page of Stripe with the back button: the page from the cache of the browser, the button disabled
+addEventListener("pageshow", () => { donateBtn.disabled = false; });
 const trafficRow = toggle(T.traffic, T.trafficNote, look.traffic, setTraffic);
 const transitRow = toggle(T.transit, T.transitNote, look.transit, setTransit);
 transitBox = transitRow.querySelector("input");
@@ -1241,7 +1288,7 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
   ...(TRANSIT ? [transitRow] : []),
   langRow,
   ...(ROUTE ? [navLangRow] : []),
-  forgetBtn,
+  forgetBtn, about,
   poweredLink, menuFoot, privacyLink);
 root.append(backdrop, menu);
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
@@ -4774,6 +4821,7 @@ function setLang(chosen) {
   }
   foot.textContent = footText();
   menuFoot.textContent = menuFootText();
+  fillAbout();
   privacyLink.href = privacyHref();
   poweredLink.href = overpassHref();
   hints.splice(0, hints.length, ...(T.hints || []));
@@ -4804,6 +4852,13 @@ function stepsAgain() {
 // address once the map is there, as it searches the map view
 const startQ = new URLSearchParams(location.search).get("q");
 if (!startQ) intro();
+// back from Stripe after a donation (?donated=1): thanks in the panel, and the address without it
+if (new URLSearchParams(location.search).has("donated")) {
+  say(T.donated);
+  const u = new URL(location.href);
+  u.searchParams.delete("donated");
+  history.replaceState(null, "", u);
+}
 map.once("load", () => {
   loadTraffic();
   drawStars();

@@ -30,3 +30,10 @@ test("no line of credits for the map data, the pictures and the chains", () => {
 test("the search in navigation in each language", () => {
   for (const lang of ["de", "fr", "it"]) for (const k of ["navFind", "navFindNone", "useAsTo", "useAsStop"]) assert.ok(all[lang][k] && all[lang][k] !== EN[k], `${lang} ${k}`);
 });
+// the menu below Forget recent searches: one link to the source code in each language, and the donation translated
+test("free software and the donation in each language", () => {
+  for (const [lang, t] of [["en", EN], ...["de", "fr", "it"].map((l) => [l, all[l]])]) {
+    assert.equal(t.aboutApp.split(/[[\]]/).length, 3, `${lang} aboutApp: one [link]`);
+    if (lang !== "en") for (const k of ["aboutApp", "donateAsk", "donateAmount", "donate", "donateFailed", "donated"]) assert.notEqual(t[k], EN[k], `${lang} ${k}`);
+  }
+});

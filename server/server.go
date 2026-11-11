@@ -59,7 +59,11 @@ type Config struct {
 	// GeoIPDB: a MaxMind DB file with a location per network (DB-IP City Lite): the map opens at the
 	// place of the IP address of the visitor until the device tells where it is; empty: at its default place
 	GeoIPDB string
-	Log     *slog.Logger
+	// StripeKey: a restricted key of Stripe that may write Checkout Sessions, for donations (donate.go); empty, or
+	// without PublicURL: no donations
+	StripeKey string
+	StripeAPI string // https://api.stripe.com
+	Log       *slog.Logger
 }
 
 // DefaultConfig is the configuration without the environment.
@@ -70,7 +74,7 @@ func DefaultConfig() Config {
 		WikidataAPI: "https://www.wikidata.org/w/api.php", CommonsAPI: "https://commons.wikimedia.org/w/api.php",
 		ThumbHosts: []string{"upload.wikimedia.org", "thumb.wikimedia.org"}, UserAgent: "hippomaps (+https://gitlab.com/cdutsov/hippomaps)",
 		RoutesPerIP: 120, RouteWindow: 10 * time.Minute, ElevationURL: "https://api.overpass.ch", SaysPerIP: 600, SearchesPerIP: 100,
-		Log: slog.Default(),
+		StripeAPI: "https://api.stripe.com", Log: slog.Default(),
 	}
 }
 
@@ -115,6 +119,8 @@ type Server struct {
 	herePerIP     *window // taps on the map
 
 	geo *geoIP // nil without GeoIPDB
+
+	donatesPerIP *window // checkouts of donations
 }
 
 // New makes the server.
@@ -125,7 +131,8 @@ func New(cfg Config) *Server {
 		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
 		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4),
 		transitPerIP: newWindow(300, 10*time.Minute), transitCalls: make(chan struct{}, 2),
-		searchesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), herePerIP: newWindow(3*cfg.SearchesPerIP, cfg.RouteWindow)}
+		searchesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), herePerIP: newWindow(3*cfg.SearchesPerIP, cfg.RouteWindow),
+		donatesPerIP: newWindow(10, 10*time.Minute)}
 	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
 	s.cfg.TrafficURL = strings.TrimRight(cfg.TrafficURL, "/")
 	s.cfg.SearchUpstream = strings.TrimRight(cfg.SearchUpstream, "/")
@@ -183,6 +190,9 @@ func New(cfg Config) *Server {
 		if s.cfg.RoutingURL != "" {
 			s.mux.HandleFunc("POST "+base+"/api/along", s.along)
 		}
+	}
+	if s.donations() {
+		s.mux.HandleFunc("POST "+base+"/api/donate", s.donate)
 	}
 	if s.cfg.PublicURL != "" {
 		s.mux.HandleFunc("GET /robots.txt", s.robots)
@@ -245,7 +255,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version, "Donate": s.donations()}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}

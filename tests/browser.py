@@ -293,12 +293,24 @@ try:
           "another language while navigating: the same page, navigation goes on, the route asked in German")
     check(js("(() => { const a = document.querySelector('.lm-menu-privacy'); return !!a && a.textContent === 'Datenschutz' && new URL(a.href).pathname.endsWith('/de/privacy'); })()"),
           "the menu links the privacy policy, in German for German")
+    check(js("(() => { const p = document.querySelector('.lm-about-text'); return !!p && p.textContent.startsWith('HippoMaps ist freie Open-Source-Software,') && p.querySelectorAll('a').length === 1; })()"),
+          "the free software text in German, with its link")
     check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/de/'"), "Powered by overpass.ch links overpass.ch, in German for German")
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })(); localStorage.removeItem('hm-lang')")
     check(wait("document.documentElement.lang === 'en' && /search/i.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 10), "Automatic: the language of the browser again")
     check(js("(() => { const a = document.querySelector('.lm-menu-privacy'); return a.textContent === 'Privacy' && /\\/privacy$/.test(new URL(a.href).pathname) && !a.href.includes('/de/'); })()"),
           "the privacy link in English again")
     check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/'"), "Powered by overpass.ch links overpass.ch in English again")
+    # below Forget recent searches: free software with the link to the source code; with donations a field of 10 francs
+    # and Donate (the app for Android shows no donation: Google Play)
+    about = js("""(() => { const p = document.querySelector('.lm-forget + .lm-about .lm-about-text'), a = p?.querySelector('a'),
+      i = document.querySelector('.lm-about .lm-donate-amount'), b = document.querySelector('.lm-about .lm-donate-btn');
+      return p && { text: p.textContent, link: a?.href, amount: i?.value, button: b?.textContent }; })()""")
+    check(about and about["link"] == "https://gitlab.com/cdutsov/hippomaps" and about["text"].startswith("HippoMaps is free open-source software."),
+          f"the menu: free software, linked to the source code ({about})")
+    if js("!!document.getElementById('app').dataset.donate"):
+        check(about["amount"] == "10" and about["button"] == "Donate" and "by donating" in about["text"],
+              f"the menu: a donation of 10 francs to start ({about})")
     if js("!!document.getElementById('app').dataset.say"):
         check(wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/say'))", 20), "the voice of the server speaks")
     # a finger held on the map while navigating: the point and the places around it; the point as a stop

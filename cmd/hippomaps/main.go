@@ -91,6 +91,7 @@ func config() (server.Config, error) {
 	cfg.SaysPerIP = num("SAYS_PER_IP", cfg.SaysPerIP)
 	cfg.SearchesPerIP = num("SEARCHES_PER_IP", cfg.SearchesPerIP)
 	cfg.GeoIPDB = env("GEOIP_DB", "")
+	cfg.StripeKey = env("STRIPE_KEY", "")
 	if !strings.HasPrefix(cfg.Base, "/") {
 		err = errors.Join(err, fmt.Errorf("BASE_PATH: must start with /: %q", cfg.Base))
 	}

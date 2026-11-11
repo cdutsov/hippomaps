@@ -41,6 +41,7 @@ to other services:
 | A traffic service with `/incidents.json` | live traffic | `TRAFFIC_URL` |
 | Wikidata and Wikimedia Commons | photos and logos | `PICTURES` |
 | [DB-IP City Lite](https://db-ip.com/db/download/ip-to-city-lite) (MMDB file, monthly, CC BY 4.0) | the map opens at the town of the IP address of the visitor | `GEOIP_DB` |
+| [Stripe](https://stripe.com) Checkout | donations in Swiss francs from the menu (not in the app for Android: Google Play) | `STRIPE_KEY`, `PUBLIC_URL` |
 
 Except for the tiles, each service is optional: without its setting the feature is left out of the page.
 
@@ -71,6 +72,7 @@ The Docker build runs `go vet` and the tests.
 | `TTS_URL` | | Piper server |
 | `TRAFFIC_URL` | | traffic service |
 | `GEOIP_DB` | | a MaxMind DB file with a location per network (DB-IP City Lite; GeoLite2 City has the same fields): the map opens at the place of the IP address of the visitor, else in Zurich. A new file renamed over it is opened within a minute. `hippomaps geoip FILE ADDRESS…` looks addresses up in a file |
+| `STRIPE_KEY` | | a restricted key of Stripe with Checkout Sessions: Write, for donations (`server/donate.go`; needs `PUBLIC_URL` for the way back), server side only. 10 checkouts per visitor in 10 minutes |
 | `PICTURES` | `true` | photos and logos from Wikimedia |
 | `PICTURE_CACHE_MB` | `64` | memory for Wikimedia answers and thumbnails |
 | `PICTURES_PER_IP`, `ROUTES_PER_IP`, `SAYS_PER_IP`, `SEARCHES_PER_IP` | `600`, `120`, `600`, `100` | per visitor in 10 minutes (map taps: three times the searches) |
