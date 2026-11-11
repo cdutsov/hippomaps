@@ -960,6 +960,9 @@ const pastelPaint = (l, set) => {
 };
 const pastel = () => { for (const l of map.getStyle().layers) pastelPaint(l, (k, w) => map.setPaintProperty(l.id, k, w)); };
 const pastelStyle = (st) => { for (const l of st.layers) pastelPaint(l, (k, w) => { l.paint[k] = w; }); };
+// country borders twice as wide as in the styles of overpass.ch (0.7 px there, in every style); a set width, so a style
+// that comes through here twice (a diff, then style.load) keeps it
+const BORDER_WIDTH = { boundaries_country: 1.4 };
 
 // icons drawn here (a new style drops them): a star for the starred places, a pin for the place shown
 const drawIcon = (name, w, h, draw) => {
@@ -1068,6 +1071,7 @@ map.on("style.load", () => {
   map.setProjection({ type: "globe" });
   // 3D buildings see-through, so the map and the route behind them stay in view
   for (const l of map.getStyle().layers) if (l.type === "fill-extrusion") map.setPaintProperty(l.id, "fill-extrusion-opacity", 0.6);
+  for (const [id, w] of Object.entries(BORDER_WIDTH)) if (map.getLayer(id)) map.setPaintProperty(id, "line-width", w);
   poisEarlier();
   const add = (l, before) => { if (!map.getLayer(l.id)) map.addLayer(l, before); };
   // tiles of our layers up to zoom 14 only, drawn larger beyond (0.3 m steps there, a pixel or two at zoom 19): tiles
@@ -1633,6 +1637,7 @@ function ourStyle(prev, st) {
   st = structuredClone(st);
   if (shownStyle() === "light") pastelStyle(st);
   for (const l of st.layers) if (l.type === "fill-extrusion") l.paint = { ...l.paint, "fill-extrusion-opacity": 0.6 };
+  for (const l of st.layers) if (BORDER_WIDTH[l.id]) l.paint = { ...l.paint, "line-width": BORDER_WIDTH[l.id] };
   st.projection = { type: "globe" };
   if (!prev) return st;
   for (const [id, src] of Object.entries(prev.sources || {})) if (id.startsWith("lm-")) st.sources[id] = src;

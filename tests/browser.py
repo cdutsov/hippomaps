@@ -358,12 +358,15 @@ try:
     check(wait("(location.hash.split('/')[4] || '0') === '0'", 5), "the map is flat again after navigation")
     # light and dark from the menu, the route on the map: the new style as a diff of the one shown (the same style object,
     # no new load of the map and its tiles), our layers and the route kept, our names in the colours of the theme
+    # the country borders 1.4 px wide (0.7 in the styles of the server), on the style loaded first and on each switch
+    check(js("hmMap.getPaintProperty('boundaries_country', 'line-width') === 1.4"), "the country borders twice as wide")
     js("window.hmStyle = hmMap.style")
     for style, colour in (("light", "#7f1d1d"), ("dark", "#ffb4a9"), ("light", "#7f1d1d")):
         js(f"document.querySelector('.lm-style[data-style={style}]').click()")
         check(wait(f"document.documentElement.dataset.theme === '{'dark' if style == 'dark' else 'light'}' && hmMap.getPaintProperty('lm-label', 'text-color') === '{colour}'", 15)
               and js("hmMap.style === hmStyle && !!hmMap.getLayer('lm-route-line') && !!hmMap.getLayer('lm-night') && hmMap.getStyle().sources['lm-route'].data.features.length > 0"),
               f"the {style} style switched in place: our layers and the route kept")
+        check(js("hmMap.getPaintProperty('boundaries_country', 'line-width') === 1.4"), f"the country borders twice as wide in the {style} style")
     js("document.querySelector('.lm-style[data-style=auto]').click()")
 
     # traffic on and off
