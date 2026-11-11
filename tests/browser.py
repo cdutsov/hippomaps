@@ -1148,6 +1148,14 @@ try:
     call("Page.navigate", url=URL)
     focused = wait("!window.hmOld && document.activeElement === document.querySelector('.lm-input')", 15)
     check(focused and js("document.querySelector('.lm-suggest').hidden"), "on a computer the cursor in the search box at the start, no list over the map")
+    # another tab, then back: the box gets the focus again, and that opens no list
+    tab = call("Target.createTarget", url="about:blank").get("targetId")
+    time.sleep(1)
+    call("Page.bringToFront")
+    time.sleep(1.5)
+    check(js("document.activeElement === document.querySelector('.lm-input') && document.querySelector('.lm-suggest').hidden"),
+          "on a computer back from another tab: the cursor in the search box, no list")
+    call("Target.closeTarget", targetId=tab)
     r = js("(() => { const b = document.querySelector('.lm-input').getBoundingClientRect(); return [b.left + 20, b.top + b.height / 2]; })()")
     for t in ("mousePressed", "mouseReleased"):
         call("Input.dispatchMouseEvent", type=t, x=r[0], y=r[1], button="left", clickCount=1)

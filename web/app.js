@@ -2078,11 +2078,15 @@ input.addEventListener("beforeinput", (e) => {
   if (!list.hidden && active >= 0) pick(active);
   else form.requestSubmit();
 });
-let quietFocus = false; // the focus of the start: no list
+// the focus the start gave (a computer): no list until the visitor acts in the box or leaves it for another part of
+// the page; back from another tab or window the box gets the focus again, and that opens nothing
+let quietFocus = false;
 input.addEventListener("focus", () => {
   setSheet("full");
   if (!input.value.trim() && !quietFocus) renderList(savedItems());
 });
+for (const ev of ["pointerdown", "keydown"]) input.addEventListener(ev, () => { quietFocus = false; });
+input.addEventListener("blur", () => { if (document.hasFocus()) quietFocus = false; }); // not the window going
 // a click in the box that has the focus (the start gave it): the starred places and last searches
 input.addEventListener("click", () => { if (!input.value.trim() && list.hidden) renderList(savedItems()); });
 input.addEventListener("blur", () => setTimeout(() => { closeList(); foldIfEmpty(); }, 120));
@@ -5246,7 +5250,6 @@ if (!startQ) intro();
 if (!startQ && !/[?&](to|at)=/.test(location.search) && matchMedia("(hover: hover) and (pointer: fine)").matches) {
   quietFocus = true;
   input.focus({ preventScroll: true });
-  quietFocus = false;
 }
 // back from Stripe after a donation (?donated=1): thanks in the panel, and the address without it
 if (new URLSearchParams(location.search).has("donated")) {
