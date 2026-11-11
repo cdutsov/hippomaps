@@ -683,6 +683,7 @@ try:
     # Switzerland forbids warnings of speed cameras: none on the route (OpenStreetMap has more than ten within 20 m of it)
     marks = json.loads(js("hmMap.getSource('lm-route').getData().then((d) => JSON.stringify(d.features.filter((f) => f.properties.mark).map((f) => f.properties.mark)))") or "[]")
     check("camera" not in marks, f"no speed cameras on a route in Switzerland ({marks})")
+    check(js("!document.querySelector('.lm-ferries')"), "no warning of a ferry on a route without one")
     if js("!!document.querySelector('.lm-along-cats')"):
         js("document.querySelector('.lm-along-cats [data-cat=rest]').click()")
         check(wait("document.querySelectorAll('.lm-along-item').length > 3", 30), "rest areas along the route")
@@ -690,6 +691,13 @@ try:
         check(wait("document.querySelectorAll('.lm-end-stop').length === 2 && document.querySelectorAll('.lm-step-stop').length === 2", 40),
               "a rest area added as a stop: the route by both")
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+    js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+    # a boat on a route by car (Horgen - Meilen over the lake of Zurich): a warning above Start with its name
+    call("Page.navigate", url=URL + "/?from=47.25970,8.59770&fn=Horgen&to=47.27000,8.64300&tn=Meilen&mode=car")
+    check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && !!document.querySelector('.lm-ferries .lm-ferry-ferry')", 40)
+          and js("(() => { const f = document.querySelector('.lm-ferries').getBoundingClientRect(), s = document.querySelector('.lm-nav-start').getBoundingClientRect();"
+                 " return f.height > 0 && f.bottom <= s.top && /^Ferry: \\S/.test(document.querySelector('.lm-ferry-ferry').textContent); })()"),
+          "a ferry on a route by car: a warning with its name above Start")
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
 
     # a ride by bike with the location of the device: fixes every 5 m at 5 m/s (five a second, to be quick), a

@@ -136,6 +136,13 @@ if grep -q "data-route=" "$TMP/page"; then
 	else
 		ko "a route with a stop: HTTP $code $(head -c 200 "$TMP/b")"
 	fi
+	# boats and car trains on the way, above Start in the page: the ferry Horgen - Meilen, the car train of the Lötschberg
+	code=$(get "$PAGE/api/route?from=47.2597,8.5977&to=47.2700,8.6430&mode=car")
+	[[ $code == 200 ]] && jq -e '[.ferries[]? | select(.k == "ferry" and .name != "" and .i < .end)] | length == 1' "$TMP/b" >/dev/null &&
+		ok "Horgen - Meilen by car: the ferry $(jq -r '.ferries[0].name' "$TMP/b")" || ko "Horgen - Meilen: HTTP $code, ferries $(jq -c '.ferries' "$TMP/b" 2>/dev/null)"
+	code=$(get "$PAGE/api/route?from=46.4950,7.6740&to=46.3680,7.7550&mode=car")
+	[[ $code == 200 ]] && jq -e '([.ferries[]? | select(.k == "train")] | length) == 1 and ([.ferries[]? | select(.k == "ferry")] | length) == 0' "$TMP/b" >/dev/null &&
+		ok "Kandersteg - Goppenstein by car: the car train $(jq -r '.ferries[0].name' "$TMP/b")" || ko "Kandersteg - Goppenstein: HTTP $code, ferries $(jq -c '.ferries' "$TMP/b" 2>/dev/null)"
 	if grep -q "data-route=" "$TMP/page"; then
 		code=$(get "$PAGE/api/route?from=46.5936,7.9086&to=46.6058,7.9218&mode=walk") # Lauterbrunnen - Wengen, 500 m up
 		up=$(jq -r ".elev.up // empty" "$TMP/b" 2>/dev/null)

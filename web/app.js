@@ -148,6 +148,10 @@ const EN = {
     busy: "Directions are busy. Please try again.",
   },
   start: "Start",
+  // boats and car trains on a route by car, above Start
+  ferry: (name) => (name ? `Ferry: ${name}` : "Ferry"),
+  carTrain: (name) => (name ? `Car train: ${name}` : "Car train"),
+  ferryNote: "Check the timetable. The travel time includes no waiting.",
   preview: "Preview",
   previewNote: "A drive along the route, three times as fast",
   endNav: "End navigation",
@@ -282,6 +286,8 @@ const ICON = {
   walk: "M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM10 21l2-6 3 3v3M12 15l-1-6 4 2 2 3M11 9l-3 2-1 3",
   swap: "M7 4v16M7 4 4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3",
   plus: "M12 5v14M5 12h14",
+  ferry: "M3 14h18l-2.5 5h-13zM6 14v-4h12v4M9 10V6h6v4M12 3v3",
+  train: "M8 3h8a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a3 3 0 0 1 3-3zM5 10h14M8.5 13h.01M15.5 13h.01M8 16l-2 5M16 16l2 5",
   offline: "M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5-2.7M19 13a10 10 0 0 0-2-1.5M2 9a15 15 0 0 1 4-2.6M22 9a15 15 0 0 0-11.3-3.8M12 20h.01",
 };
 const human = (v) => (v ? v.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
@@ -3566,6 +3572,7 @@ async function findRoute({ quiet = false } = {}) {
     routeSteps.innerHTML = "";
     stepsBox.hidden = true;
     routeView.querySelector(".lm-nav-go")?.remove();
+    routeView.querySelector(".lm-ferries")?.remove();
     routeView.querySelector(".lm-elev")?.remove();
     routeView.querySelector(".lm-along")?.remove();
     alongDone();
@@ -3613,6 +3620,7 @@ async function findRoute({ quiet = false } = {}) {
   simBtn.addEventListener("click", () => navStart(true));
   go.append(startBtn, simBtn, shareButton(() => ({ title: `${route.from?.label || ""} → ${route.to?.label || ""}`, url: routeLink() }), true));
   routeSum.after(go);
+  if (route.mode === "car" && d.ferries?.length) go.before(ferriesBox(d));
   // the time and Start in view: on a phone the sheet shows only its top
   if (!quiet) requestAnimationFrame(() => {
     const over = go.getBoundingClientRect().bottom + 12 - innerHeight;
@@ -3643,6 +3651,24 @@ async function findRoute({ quiet = false } = {}) {
   route.go = false;
   const b = extent({ type: "LineString", coordinates: d.line });
   if (b && !quiet) fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 16 }));
+}
+
+// the boats and car trains of a route by car, above Start: they run to a timetable, and the time of the route has
+// no waiting for the departure; a tap shows the crossing on the map
+function ferriesBox(d) {
+  const box = el("div", "lm-ferries", { role: "note" });
+  for (const f of d.ferries) {
+    const b = el("button", `lm-ferry lm-ferry-${f.k}`, { type: "button" });
+    b.innerHTML = svg(f.k === "train" ? ICON.train : ICON.ferry, 20);
+    b.append(el("span", "lm-ferry-text", {}, f.k === "train" ? T.carTrain(f.name) : T.ferry(f.name)));
+    b.addEventListener("click", () => {
+      const e = extent({ type: "LineString", coordinates: d.line.slice(f.i, f.end + 1) });
+      if (e) fit(() => glide({ bounds: [[e[0], e[1]], [e[2], e[3]]], padding: pad(), maxZoom: 15 }));
+    });
+    box.append(b);
+  }
+  box.append(el("p", "lm-ferry-note", {}, T.ferryNote));
+  return box;
 }
 
 // ------------------------------------------------------------------ stops and places along the route

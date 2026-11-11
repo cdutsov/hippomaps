@@ -32,7 +32,8 @@ import (
 // the speed limits along the line by car (indexes of line), from a second call to Valhalla
 // (trace_attributes, leaving now, in pieces of at most traceMaxKm), with the stretches slowed by traffic and the
 // delay; without them where that call fails. marks: speed cameras, stop signs and speed bumps on the route by
-// car (marks.go), from Overpass; none when it fails. By bike and on foot, elev is the
+// car (marks.go), from Overpass; none when it fails. ferries: the boats and car trains on the way (Valhalla: a
+// rail ferry, a ferry without the flag ferry), from the steps that take them. By bike and on foot, elev is the
 // height profile from the elevation API of overpass.ch (ElevationURL, ElevationKey); without it
 // when that call fails or there is no key.
 
@@ -98,8 +99,20 @@ type routeAnswer struct {
 	Delay   float64      `json:"delay,omitempty"`   // by car: seconds that traffic adds
 	Tunnels [][3]int     `json:"tunnels,omitempty"` // by car: [from, to, metres] in indexes of line
 	Marks   []routeMark  `json:"marks,omitempty"`   // by car: speed cameras (where allowed), stop signs, speed bumps (marks.go)
+	Ferries []routeFerry `json:"ferries,omitempty"` // boats and car trains on the way, in their order
 	Elev    *routeElev   `json:"elev,omitempty"`
 	lang    string       // the language of the steps (bg-BG): fixes of its phrases in addSteps
+}
+
+// routeFerry is a boat or a car train on the way (both a ferry for Valhalla): k ferry or train, its name, where
+// it starts and ends on the line, its length and time (with no waiting for the departure).
+type routeFerry struct {
+	K    string  `json:"k"`
+	Name string  `json:"name,omitempty"`
+	I    int     `json:"i"`
+	End  int     `json:"end"`
+	Km   float64 `json:"km"`
+	S    float64 `json:"s"`
 }
 
 // routeElev is the height profile of a route by bike or on foot, from the elevation API of
@@ -335,6 +348,7 @@ type maneuver = struct {
 	Post        string   `json:"verbal_post_transition_instruction"`
 	Streets     []string `json:"street_names"`
 	Highway     bool     `json:"highway"`
+	Ferry       bool     `json:"ferry"` // on a boat; a car train (a rail ferry) has no flag
 	Roundabout  int      `json:"roundabout_exit_count"`
 	Lanes       []struct {
 		Directions int `json:"directions"`
@@ -373,6 +387,13 @@ func (a *routeAnswer) addSteps(ms []maneuver, off int, toStop bool, stop int) {
 		if toStop && k == len(ms)-1 {
 			st.Stop = stop
 		}
+		if m.Type == 28 { // onto a ferry: a boat, or a car train (Lötschberg, Sylt-Shuttle)
+			f := routeFerry{K: "train", Name: longest(m.Streets), I: st.I, End: st.End, Km: st.Km, S: st.S}
+			if m.Ferry {
+				f.K = "ferry"
+			}
+			a.Ferries = append(a.Ferries, f)
+		}
 		for _, l := range m.Lanes {
 			if l.Active != 0 || l.Valid != 0 { // lanes without a choice say nothing
 				st.Lanes = make([]lane, len(m.Lanes))
@@ -384,6 +405,18 @@ func (a *routeAnswer) addSteps(ms []maneuver, off int, toStop bool, stop int) {
 		}
 		a.Steps = append(a.Steps, st)
 	}
+}
+
+// longest of the names of a ferry: that of its line ("Dover - Calais"), not a port ("Dover (UK)") or a road number
+// ("E 47") beside it.
+func longest(names []string) string {
+	out := ""
+	for _, n := range names {
+		if utf8.RuneCountInString(n) > utf8.RuneCountInString(out) {
+			out = n
+		}
+	}
+	return out
 }
 
 // heights asks the elevation API for the profile of a line of km, in about 300 samples (one

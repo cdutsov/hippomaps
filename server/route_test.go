@@ -303,3 +303,33 @@ func TestPhrasesMended(t *testing.T) {
 		t.Errorf("bg steps: %+v", a.Steps[:2])
 	}
 }
+
+// the boats and car trains of a route, from the steps onto a ferry: a boat has the flag ferry, a car train (a rail
+// ferry for Valhalla) none; the name of the line rather than a port or a road number; where each is on the joined line
+func TestFerries(t *testing.T) {
+	var legs [2][]maneuver
+	json.Unmarshal([]byte(`[{"type":1,"begin_shape_index":0,"end_shape_index":4},
+		{"type":28,"instruction":"Take the Dover (UK)/Calais (F)/Dover - Calais Ferry.","street_names":["Dover (UK)","Calais (F)","Dover - Calais"],
+		 "length":41.822,"time":5318.684,"ferry":true,"begin_shape_index":4,"end_shape_index":9},
+		{"type":29,"begin_shape_index":9,"end_shape_index":10},{"type":4,"begin_shape_index":10,"end_shape_index":10}]`), &legs[0])
+	json.Unmarshal([]byte(`[{"type":2,"begin_shape_index":0,"end_shape_index":3,"ferry":true,"street_names":["Πειραιάς - Κύθνος"]},
+		{"type":28,"instruction":"Take the BLS Autoverlad Lötschberg Ferry.","street_names":["BLS Autoverlad Lötschberg"],
+		 "length":16.629,"time":1221.028,"toll":true,"begin_shape_index":3,"end_shape_index":8},{"type":4,"begin_shape_index":8,"end_shape_index":8}]`), &legs[1])
+	a := routeAnswer{Line: make([][2]float64, 11), lang: "en-US"}
+	a.addSteps(legs[0], 0, true, 1)
+	a.Line = append(a.Line, make([][2]float64, 8)...)
+	a.addSteps(legs[1], 10, false, 2)
+	want := []routeFerry{{K: "ferry", Name: "Dover - Calais", I: 4, End: 9, Km: 41.822, S: 5319}, {K: "train", Name: "BLS Autoverlad Lötschberg", I: 13, End: 18, Km: 16.629, S: 1221}}
+	if len(a.Ferries) != len(want) {
+		t.Fatalf("ferries: %+v", a.Ferries)
+	}
+	for i := range want {
+		if a.Ferries[i] != want[i] {
+			t.Errorf("ferry %d: %+v, want %+v", i, a.Ferries[i], want[i])
+		}
+	}
+	b, _ := json.Marshal(routeAnswer{Steps: []routeStep{}})
+	if strings.Contains(string(b), "ferries") {
+		t.Errorf("a route without ferries: %s", b)
+	}
+}
