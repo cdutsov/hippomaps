@@ -19,7 +19,7 @@ directions at their top when the keyboard goes; up and down in one movement when
 directions takes it to the top); a place searched in navigation as the destination; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
 enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
 twice (the voice answered with silence in the test); German texts after the language of the menu, also the words of
-the search; without a connection the note over the map, a search, navigation off the route (no new route asked), the
+the search; the list of results after a move of the map: those in view, the map keeps all; without a connection the note over the map, a search, navigation off the route (no new route asked), the
 map of a route saved at Start and shown from the device, the page opening (the service worker); the suggestions of
 directions in their field, the panel at the height of its state when the keyboard goes; and no
 errors of the page on the way. Needs chromium and websocket-client.
@@ -427,6 +427,46 @@ try:
     # along a river: the band of the radius along it, in metres (wider zoomed in)
     check(wait("!hmMap.isMoving() && hmMap.queryRenderedFeatures({ layers: ['lm-band'] }).some((f) => f.properties.radius > 0)", 20),
           "along the Limmat: the band of the radius along the river")
+    # the list follows the view: moved by a finger, the map keeps all results and the list shows those in view
+    # (on a phone above the panel); a result picked and closed, the same list; zoomed out over all, all again
+    listed = lambda: js("[...document.querySelectorAll('.lm-listview .lm-results .lm-card')].map((c) => c.dataset.id)")
+    count_text = lambda: js("document.querySelector('.lm-count').textContent")
+    first = count_text()
+    check(first and "in view" not in first and len(listed()) > 0, f"the list after a search: all results ({first})")
+    # the ids drawn in the map above the panel, the edges `m` pixels in (m < 0: out)
+    drawn = lambda m: js("(() => { const w = hmMap.getContainer().clientWidth, s = document.querySelector('.lm-side').getBoundingClientRect().top;"
+                         f" const fs = hmMap.queryRenderedFeatures([[{m}, {m}], [w - {m}, s - {m}]], {{ layers: ['lm-point', 'lm-dot', 'lm-line', 'lm-fill'].filter((l) => hmMap.getLayer(l)) }});"
+                         " return [...new Set(fs.map((f) => f.properties.id))]; })()")
+    on_map = lambda: js("hmMap.getSource('lm-results').getData().then((d) => d.features.length)")
+    all_drawn = on_map()
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 260, "y": 300}])
+    for i in range(1, 9):
+        call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": 260 - 140 * i / 8, "y": 300 + 60 * i / 8}])
+        time.sleep(0.05)
+    time.sleep(0.3)
+    call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    moved = wait("!hmMap.isMoving() && /in view/.test(document.querySelector('.lm-count').textContent)", 10)
+    time.sleep(0.5)
+    now, ids = count_text(), listed()
+    n_in = int(re.search(r"([\d,]+) in view", now).group(1).replace(",", "")) if re.search(r"[\d,]+ in view", now) else 0
+    inner, outer = set(drawn(30)), set(drawn(-30))
+    check(moved and now.startswith(first) and len(ids) == min(n_in, 40) and set(ids) <= outer and len(inner) <= n_in,
+          f"moved by a finger: the list shows the results in view ({now}; listed {len(ids)}, drawn in view {len(inner)}..{len(outer)})")
+    check(all_drawn and on_map() == all_drawn, f"moved by a finger: the map keeps all results ({all_drawn})")
+    if ids:
+        before = (now, ids)
+        tap(".lm-listview .lm-results .lm-card")
+        wait("!document.querySelector('.lm-detail').hidden", 5)
+        wait("!hmMap.isMoving()", 10)
+        time.sleep(0.5)
+        js("document.querySelector('.lm-detail .lm-card-x').click()")
+        wait("!document.querySelector('.lm-listview').hidden", 5)
+        check((count_text(), listed()) == before, "a result picked and closed: the list as it was (the map flew to the result)")
+    for _ in range(8):
+        call("Input.dispatchMouseEvent", type="mouseWheel", x=190, y=220, deltaX=0, deltaY=240)
+        time.sleep(0.08)
+    check(wait("!hmMap.isMoving() && document.querySelector('.lm-count').textContent === " + json.dumps(first), 10),
+          f"zoomed out over all results: all of them again ({count_text()})")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
 
     # near a kind of place: the results, the places they are near (each stop a point) and the circle of the radius around each

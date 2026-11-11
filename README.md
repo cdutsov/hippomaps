@@ -6,7 +6,8 @@ OpenStreetMap data. Live at https://hippomaps.ch.
 ## Features
 
 - **Search** in plain words ("cafés in Zurich old town", "peaks over 4000 m in Valais") with suggestions while typing,
-  results on the map and in a list, "search this area", and quick searches for restaurants, hotels, fuel and more
+  results on the map and in a list (once the map is zoomed or moved, the list shows the results in view), "search this
+  area", and quick searches for restaurants, hotels, fuel and more
 - **Place pages**: photo or logo from Wikimedia Commons with its credit, opening hours with the next change, website, phone,
   address, wheelchair access, Wikipedia, all tags
 - **What is here**: a tap on the map shows the address and the named places around it

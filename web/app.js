@@ -58,6 +58,7 @@ const EN = {
   locating: "Finding your location…",
   results: (n) => (n === 1 ? "1 result" : `${num(n)} results`),
   shown: (n, all) => `${num(n)} of ${num(all)} shown`,
+  inView: (n) => (n ? `${num(n)} in view` : "none in view"),
   more: "Show more",
   noName: "Unnamed",
   back: "Results",
@@ -1758,7 +1759,7 @@ new ResizeObserver(() => root.style.setProperty("--sheet", `${side.offsetHeight}
 
 // ------------------------------------------------------------------ state
 const state = {
-  text: "", extra: {}, answer: null, features: [], byId: new Map(), shown: 0, selected: null, searchable: false, me: null,
+  text: "", extra: {}, answer: null, features: [], list: [], listIds: null, viewOnly: false, countText: "", byId: new Map(), shown: 0, selected: null, searchable: false, me: null,
   country: "", // of the place searched, when the answer says it: for public holidays
   pushedSel: false, // the page of a place has its own entry in the history: Back goes to the list
 };
@@ -2231,6 +2232,9 @@ function clear() {
   setSource("selected", empty);
   setSource("hover", empty);
   state.features = [];
+  state.list = [];
+  state.listIds = null;
+  state.viewOnly = false;
   state.byId = new Map();
   state.selected = null;
   chips.innerHTML = "";
@@ -2374,6 +2378,10 @@ map.on("webglcontextlost", () => say(T.mapLost, true));
 map.on("webglcontextrestored", () => { say(""); map.triggerRepaint(); });
 map.on("moveend", () => {
   if (touched && Date.now() > quietUntil && state.searchable && !farOut()) areaBtn.hidden = false;
+  if (touched && Date.now() > quietUntil && state.searchable) { // the list: the results in view
+    state.viewOnly = true;
+    relist();
+  }
   touched = false;
 });
 areaBtn.addEventListener("click", () => {
@@ -2439,10 +2447,8 @@ function show(d, sel) {
     return;
   }
   state.searchable = true; // moving the map offers the search there
-  count.textContent = T.results(d.total ?? found.length);
-  if (d.truncated) count.textContent += ` · ${T.shown(found.length, d.total)}`;
-  state.shown = 0;
-  renderMore();
+  state.countText = T.results(d.total ?? found.length) + (d.truncated ? ` · ${T.shown(found.length, d.total)}` : "");
+  relist();
   if (d.open) openNow(d.open);
   else if (found.some((f) => f.properties.opening_hours)) loadHours().then(() => markHours());
   if (pick) select(pick, { push: false });
@@ -2461,12 +2467,46 @@ const pad = () => {
 
 const PAGE = 40;
 function renderMore() {
-  const next = state.features.slice(state.shown, state.shown + PAGE);
+  const next = state.list.slice(state.shown, state.shown + PAGE);
   for (const f of next) results.append(card(f));
   state.shown += next.length;
-  moreBtn.hidden = state.shown >= state.features.length;
+  moreBtn.hidden = state.shown >= state.list.length;
 }
 moreBtn.addEventListener("click", renderMore);
+// relist lists the results: all of them after a search; once the visitor zoomed or moved the map, those in
+// view only (the map keeps all of them), and all again when all are in view. The same results: the list
+// stays as it is, scrolled where it was. The moves of the page itself (to the results, to a result
+// picked) change nothing: back from a result, the list is the one left.
+function relist() {
+  const all = state.features, keep = state.viewOnly ? all.filter(inView()) : all;
+  const ids = keep.length === all.length ? "*" : keep.map((f) => f.properties.id).join(" ");
+  if (ids === state.listIds) return;
+  state.listIds = ids;
+  state.list = keep;
+  count.textContent = keep.length === all.length ? state.countText : `${state.countText} · ${T.inView(keep.length)}`;
+  results.innerHTML = "";
+  state.shown = 0;
+  renderMore();
+}
+// inView tells whether a result is in the map as seen: its point, or a part of the box of its line or area;
+// on a phone in the map above the panel
+const boxes = new WeakMap();
+function inView() {
+  const b = map.getBounds(), W = b.getWest(), E = b.getEast(), S = b.getSouth(), N = b.getNorth();
+  const w = mapEl.clientWidth, h = mapEl.clientHeight;
+  const seen = phone() && sheet.state !== "full" ? Math.max(60, h - sheetHeights()[sheet.state]) : h;
+  return (f) => {
+    let x = boxes.get(f);
+    if (!x) boxes.set(f, (x = f.geometry.type === "Point" ? [...f.geometry.coordinates, ...f.geometry.coordinates] : extent(f.geometry) || []));
+    if (x.length < 4 || x[1] > N || x[3] < S) return false;
+    const k = [0, -360, 360].find((k) => x[0] + k <= E && x[2] + k >= W); // a copy of the world beside
+    if (k === undefined) return false;
+    if (seen >= h) return true;
+    const ps = [[x[0], x[1]], [x[2], x[1]], [x[2], x[3]], [x[0], x[3]]].map(([lon, lat]) => map.project([lon + k, lat]));
+    return Math.min(...ps.map((p) => p.y)) <= seen && Math.max(...ps.map((p) => p.y)) >= 0
+      && Math.min(...ps.map((p) => p.x)) <= w && Math.max(...ps.map((p) => p.x)) >= 0;
+  };
+}
 
 function card(f, { fromHere = false } = {}) {
   const p = f.properties, t = tagsOf(p), k = kindOf(p);
@@ -2640,11 +2680,10 @@ async function openNow(o) {
   });
   const keep = new Set(state.features.map((f) => f.properties.id));
   setSource("results", { ...state.answer.results, features: state.answer.results.features.filter((f) => keep.has(f.properties.id)) });
-  count.textContent = T.withHours(state.features.length, o.label, all);
+  state.countText = T.withHours(state.features.length, o.label, all);
   notes.textContent = notes.textContent.replace(/The opening hours were not checked[^.]*\./, "").trim();
-  results.innerHTML = "";
-  state.shown = 0;
-  renderMore();
+  state.listIds = null;
+  relist();
 }
 
 // ------------------------------------------------------------------ the page of a place
