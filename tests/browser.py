@@ -705,11 +705,13 @@ try:
     time.sleep(0.4)
     js("document.querySelector('.lm-end-to input').scrollIntoView({block: 'start'})")  # (the field at the top of the full panel: scrolled to the top of it)
     time.sleep(0.5)
+    panel_at = "JSON.stringify([document.getElementById('app').dataset.sheet, document.querySelector('.lm-body').scrollTop, document.querySelector('.lm-body').scrollHeight, document.querySelector('.lm-body').clientHeight, Math.round(document.querySelector('.lm-modes').getBoundingClientRect().top - document.querySelector('.lm-body').getBoundingClientRect().top), document.activeElement?.className || ''])"
+    before = js(panel_at)
     scrolled = js("document.querySelector('.lm-body').scrollTop > 20")
     js("document.querySelector('.lm-end-to input').blur()")
     call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)  # the keyboard down
     check(scrolled and wait("document.querySelector('.lm-body').scrollTop === 0 && document.querySelector('.lm-modes').getBoundingClientRect().top >= document.querySelector('.lm-body').getBoundingClientRect().top", 5),
-          "the keyboard gone: directions back at their top, car, bike and walk in view")
+          f"the keyboard gone: directions back at their top, car, bike and walk in view (before: {before}, after: {js(panel_at)})")
 
     # the panel moves in one direction when the keyboard comes or goes (the app resizes the page,
     # as here): its top in each frame of the page, never back. The keyboard comes just after the
@@ -1028,7 +1030,7 @@ try:
         js("document.querySelector('.lm-nav-center')?.click()")
         wait("document.querySelector('.lm-nav-center').hidden && Math.abs(hmMap.getPitch() - 50) < 1", 10)
         # the language of navigation apart from that of the page: Bulgarian while navigating; the page stays in English,
-        # the route and the voice are asked in Bulgarian; "Like the page" brings English back
+        # the route and the voice are asked in Bulgarian; "Automatic" brings English back
         res = "performance.getEntriesByType('resource')"
         js("(() => { const s = document.querySelector('.lm-nav-lang-select'); s.value = 'bg'; s.dispatchEvent(new Event('change')) })()")
         check(wait(f"{res}.some(e => e.name.includes('/api/route') && e.name.includes('lang=bg'))", 20)
@@ -1039,7 +1041,7 @@ try:
         en0 = js(f"{res}.filter(e => e.name.includes('/api/route') && e.name.includes('lang=en')).length")
         js("(() => { const s = document.querySelector('.lm-nav-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })()")
         check(wait(f"{res}.filter(e => e.name.includes('/api/route') && e.name.includes('lang=en')).length > {en0}", 20)
-              and js("localStorage.getItem('hm-nav-lang') === ''"), "Directions and voice like the page: the route in English again")
+              and js("localStorage.getItem('hm-nav-lang') === ''"), "Directions and voice Automatic (like the page): the route in English again")
         js("document.querySelector('.lm-nav-x')?.click()")
         wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
     else:

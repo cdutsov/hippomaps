@@ -167,8 +167,8 @@ const EN = {
   offlineNav: "Navigation goes on along this route. A new route needs the connection.",
   offlineRoute: "No connection for a new route.",
   offlineNavMap: "Navigation goes on along this route, its map saved on this device. A new route needs the connection.",
-  saveRoute: "Save the map of a route",
-  saveRouteNote: "At Start, for navigation without a connection (about 15 MB for 25 km)",
+  saveRoute: "Autosave route for offline navigation",
+  saveRouteNote: "Download map tiles at the start of navigation (~15 MB for 25 km)",
   arrived: "You have arrived.",
   stopReached: "You have reached the stop.",
   noGPS: "Navigation needs your location. Allow it in the settings of the browser, then try again.",
@@ -222,7 +222,6 @@ const EN = {
   languageNote: "Page and names on the map",
   navLanguage: "Directions and voice",
   navLanguageNote: "The steps of a route and the spoken navigation",
-  likePage: "Like the page",
   automatic: "Automatic",
   poweredBy: "Powered by",
   privacy: "Privacy",
@@ -1458,7 +1457,7 @@ langText.append(el("span", "", {}, T.language), el("span", "lm-toggle-note", {},
 langRow.append(langText, langSel);
 // the language of navigation: the steps of directions and the voice; a change applies at once (setNavLang)
 const navLangSel = el("select", "lm-lang-select lm-nav-lang-select", { "aria-label": T.navLanguage });
-for (const [k, name] of [["", T.likePage], ...Object.keys(LOCALES).map((k) => [k, NAV_NAMES[k]])]) {
+for (const [k, name] of [["", T.automatic], ...Object.keys(LOCALES).map((k) => [k, NAV_NAMES[k]])]) {
   const o = el("option", "", { value: k }, name);
   if (k === chosenNavLang) o.selected = true;
   navLangSel.append(o);
@@ -2298,7 +2297,11 @@ document.addEventListener("focusout", (e) => {
   afterKeyboard(() => {
     if (typing()) return;
     if (scrollX || scrollY) scrollTo(0, 0);
-    if (!side.classList.contains("lm-dragging")) setSheet(sheet.state);
+    if (side.classList.contains("lm-dragging")) return;
+    setSheet(sheet.state);
+    // directions back at their top once the sheet has moved: a smooth scroll begun while the suggestions closed and
+    // the sheet changed its height can stop half way
+    setTimeout(() => { if (!typing() && body.scrollTop) routeToTop(true); }, 260);
   });
 }, true);
 // go once the size of the page settles after the keyboard: right away when a field keeps the focus
