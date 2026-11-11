@@ -92,6 +92,12 @@ func config() (server.Config, error) {
 	cfg.SearchesPerIP = num("SEARCHES_PER_IP", cfg.SearchesPerIP)
 	cfg.GeoIPDB = env("GEOIP_DB", "")
 	cfg.StripeKey = env("STRIPE_KEY", "")
+	switch sw := env("SERVICE_WORKER", "on"); sw {
+	case "on", "off":
+		cfg.ServiceWorker = sw == "on"
+	default:
+		err = errors.Join(err, fmt.Errorf("SERVICE_WORKER: on or off: %q", sw))
+	}
 	if !strings.HasPrefix(cfg.Base, "/") {
 		err = errors.Join(err, fmt.Errorf("BASE_PATH: must start with /: %q", cfg.Base))
 	}

@@ -167,6 +167,8 @@ const EN = {
   offlineNav: "Navigation goes on along this route. A new route needs the connection.",
   offlineRoute: "No connection for a new route.",
   offlineNavMap: "Navigation goes on along this route, its map saved on this device. A new route needs the connection.",
+  saveRoute: "Save the map of a route",
+  saveRouteNote: "At Start, for navigation without a connection (about 15 MB for 25 km)",
   arrived: "You have arrived.",
   stopReached: "You have reached the stop.",
   noGPS: "Navigation needs your location. Allow it in the settings of the browser, then try again.",
@@ -393,18 +395,26 @@ addEventListener("online", netAsk);
 if (navigator.onLine === false) setTimeout(() => setOffline(true));
 // the text of a request that failed: no connection, when that is why
 const failText = (t) => (net.down || navigator.onLine === false ? T.offline : t);
-// the service worker (web/sw.js): the page and the map of a route without a connection
+// the service worker (web/sw.js): the page and the map of a route without a connection; none when the server has it
+// off (SERVICE_WORKER=off): one there before goes, with its caches
 if (root.dataset.sw && "serviceWorker" in navigator) navigator.serviceWorker.register(root.dataset.sw, { scope: root.dataset.scope }).catch(() => {});
+else if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
+  window.caches?.keys().then((ks) => ks.filter((k) => k.startsWith("hm-")).forEach((k) => caches.delete(k))).catch(() => {});
+}
 
 // ------------------------------------------------------------------ the map of a route, for the way without a connection
 // At Start (not Preview) the page puts the tiles of the map along the route in the cache hm-route, which the service
 // worker serves first: for each source of the map (vector to zoom 15, terrain to 10) the tiles under the line at its
 // 6 highest zooms, at the 3 highest also those around them (the view of navigation), the box of the route at the 5
 // zooms below (the overview), in the order of the way, at most ROUTE_TILES (about 350 km); 4 at a time, at low
-// priority. About 15 MB for 25 km by car. Not with Data Saver on. A new route adds what it lacks; once all are there,
-// the tiles of other routes go. The cache goes 3 days after the last navigation.
+// priority. About 15 MB for 25 km by car. Not with Data Saver on, nor with the switch of the menu off (hm-save-route).
+// A new route adds what it lacks; once all are there, the tiles of other routes go. The cache goes 3 days after the
+// last navigation.
 const ROUTE_TILES = 3000, ROUTE_CACHE = "hm-route", ROUTE_DAYS = 3;
 const routeCache = { ctl: null, total: 0, done: 0, failed: 0, saved: false };
+const SAVE_ROUTE = !!(root.dataset.sw && "serviceWorker" in navigator && window.caches);
+const saveRouteOn = () => SAVE_ROUTE && (() => { try { return localStorage.getItem("hm-save-route") !== "0"; } catch { return true; } })();
 window.hmRouteCache = routeCache; // for tests/browser.py
 // routeTiles: the addresses of the tiles of a source ({tiles, minzoom, maxzoom}) for a line ([lon, lat]…)
 function routeTiles(line, src, max = ROUTE_TILES) {
@@ -446,7 +456,7 @@ function routeTiles(line, src, max = ROUTE_TILES) {
   return out;
 }
 async function cacheRoute(d) {
-  if (!root.dataset.sw || !navigator.serviceWorker?.controller || !window.caches || !d?.line?.length || navigator.connection?.saveData) return;
+  if (!saveRouteOn() || !navigator.serviceWorker?.controller || !d?.line?.length || navigator.connection?.saveData) return;
   routeCache.ctl?.abort();
   const ctl = routeCache.ctl = new AbortController();
   let cache;
@@ -1457,6 +1467,15 @@ navLangSel.addEventListener("change", () => {
   store.set("hm-nav-lang", navLangSel.value);
   setNavLang(navLangSel.value);
 });
+// the switch of the map of a route (on unless turned off): off, a download stops and the map kept goes
+const saveRouteRow = toggle(T.saveRoute, T.saveRouteNote, saveRouteOn(), (on) => {
+  store.set("hm-save-route", on ? "1" : "0");
+  if (on) return void (nav.on && !nav.sim && cacheRoute(nav.d));
+  routeCache.ctl?.abort();
+  routeCache.saved = false;
+  caches.delete(ROUTE_CACHE).catch(() => {});
+});
+saveRouteRow.classList.add("lm-save-route");
 const navLangRow = el("label", "lm-toggle lm-lang");
 const navLangText = el("span", "lm-toggle-text");
 navLangText.append(el("span", "", {}, T.navLanguage), el("span", "lm-toggle-note", {}, T.navLanguageNote));
@@ -1472,6 +1491,7 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
   ...(TRANSIT ? [transitRow] : []),
   langRow,
   ...(ROUTE ? [navLangRow] : []),
+  ...(ROUTE && SAVE_ROUTE ? [saveRouteRow] : []),
   forgetBtn, about,
   poweredLink, menuFoot, privacyLink);
 root.append(backdrop, menu);

@@ -65,7 +65,7 @@ async function keep(c, url, res) {
 // the map: a tile of the route from the cache of the route; else the network, and for styles, TileJSON, fonts and
 // sprites a copy; without an answer, whatever copy there is
 async function mapFile(e, r, u) {
-  const hit = await (await caches.open(ROUTE)).match(r.url, { ignoreVary: true });
+  const hit = await caches.match(r.url, { cacheName: ROUTE, ignoreVary: true }); // (without making the cache)
   if (hit) return hit;
   try {
     const res = await fetch(r);

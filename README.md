@@ -16,8 +16,9 @@ OpenStreetMap data. Live at https://hippomaps.ch.
   Hungarian, Italian, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Ukrainian; chosen apart from the
   language of the page), with arrows at the turns, re-routing, a 3D traveller and a preview mode
 - **Without a connection** a note over the map says so and the page opens as last loaded; at Start the map along the
-  route is saved on the device (about 15 MB for 25 km by car, `web/sw.js`), so navigation goes on along the route with
-  its map and its spoken sentences, says when it cannot find a new route, and finds one when the connection is back
+  route is saved on the device (about 15 MB for 25 km by car, `web/sw.js`; a switch of the menu turns it off), so
+  navigation goes on along the route with its map and its spoken sentences, says when it cannot find a new route, and
+  finds one when the connection is back
 - **Live traffic** in Switzerland: closures, queues and roadworks on the map and in the route time
 - **Transit lines** (metro, light rail, tram) in their colours
 - **Map**: opens near the visitor (the town of their IP address) until the device tells where they are; a globe with the night side when zoomed out; nine styles, the default day map in the colours of Swiss
@@ -75,6 +76,7 @@ The Docker build runs `go vet` and the tests.
 | `TTS_URL` | | Piper server |
 | `TRAFFIC_URL` | | traffic service |
 | `GEOIP_DB` | | a MaxMind DB file with a location per network (DB-IP City Lite; GeoLite2 City has the same fields): the map opens at the place of the IP address of the visitor, else in Zurich. A new file renamed over it is opened within a minute. `hippomaps geoip FILE ADDRESS…` looks addresses up in a file |
+| `SERVICE_WORKER` | `on` | `off`: `sw.js` becomes a service worker that removes itself and its caches from the browsers that have it (at their next visit), and the page registers none. A rollback of the image does not remove a service worker; this does |
 | `STRIPE_KEY` | | a restricted key of Stripe with Checkout Sessions: Write, for donations (`server/donate.go`; needs `PUBLIC_URL` for the way back), server side only. The payment methods of the account but Klarna and Amazon Pay. 10 checkouts per visitor in 10 minutes |
 | `PICTURES` | `true` | photos and logos from Wikimedia |
 | `PICTURE_CACHE_MB` | `64` | memory for Wikimedia answers and thumbnails |

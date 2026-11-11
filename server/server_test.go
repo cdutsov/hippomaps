@@ -154,6 +154,20 @@ func TestServiceWorker(t *testing.T) {
 	}
 }
 
+// SERVICE_WORKER=off: sw.js removes itself and its caches, and the page registers none
+func TestServiceWorkerOff(t *testing.T) {
+	s := testServer(t, nil, func(cfg *Config) { cfg.Base = "/"; cfg.ServiceWorker = false })
+	w := get(s, "/sw.js")
+	body := w.Body.String()
+	if w.Code != 200 || w.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(body, "unregister()") ||
+		!strings.Contains(body, "caches.delete") || strings.Contains(body, `addEventListener("fetch"`) {
+		t.Errorf("sw.js off: %d %s", w.Code, body)
+	}
+	if page := get(s, "/").Body.String(); strings.Contains(page, "data-sw=") {
+		t.Errorf("page with the service worker off: %s", page)
+	}
+}
+
 func TestPictures(t *testing.T) {
 	f := newFake(t)
 	s := testServer(t, f)

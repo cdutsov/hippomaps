@@ -902,23 +902,36 @@ try:
     # the tiles along the route in its cache (window.hmRouteCache). Without a connection (the page and the service worker:
     # the workers of the map fetch through it) the note says the map is saved, the map along the route loads from the
     # device, tilted as in navigation, and the page opens again.
+    # (the service worker offline through a session of its own; closing the session ends it, also when the service
+    # worker was stopped and started again meanwhile)
     sw_ws = []
 
     def offline_all(on):
-        if not sw_ws:
+        if on:
             for t in json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json")):
                 if t["type"] == "service_worker" and t["url"].startswith(URL):
-                    sw_ws.append(websocket.create_connection(t["webSocketDebuggerUrl"], timeout=30))
-        for w in sw_ws:
-            for i, (m, p) in enumerate([("Network.enable", {}), ("Network.emulateNetworkConditions", {"offline": on, "latency": 0, "downloadThroughput": -1, "uploadThroughput": -1})]):
-                w.send(json.dumps({"id": 900 + i, "method": m, "params": p}))
-                while json.loads(w.recv()).get("id") != 900 + i:
+                    try:
+                        w = websocket.create_connection(t["webSocketDebuggerUrl"], timeout=10)
+                        sw_ws.append(w)
+                        for i, (m, p) in enumerate([("Network.enable", {}), ("Network.emulateNetworkConditions", {"offline": True, "latency": 0, "downloadThroughput": -1, "uploadThroughput": -1})]):
+                            w.send(json.dumps({"id": 900 + i, "method": m, "params": p}))
+                            while json.loads(w.recv()).get("id") != 900 + i:
+                                pass
+                    except Exception as e:
+                        print(f"  (the service worker offline: {e})", flush=True)
+        else:
+            for w in sw_ws:
+                try:
+                    w.close()
+                except Exception:
                     pass
+            sw_ws.clear()
         offline(on)
     js("window.hmOld = 1")
     call("Page.navigate", url=URL + "/?to=47.41150,8.54420&tn=Oerlikon&mode=car")
     check(wait("!window.hmOld && navigator.serviceWorker?.controller", 20), "the service worker controls the page")
     if wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40):
+        check(js("document.querySelector('.lm-save-route input')?.checked === true"), "the switch of the map of a route in the menu, on")
         js("document.querySelector('.lm-nav-start').click()")
         saved = wait("hmRouteCache.saved || hmRouteCache.failed", 120)
         rc = js("JSON.stringify(hmRouteCache, ['total', 'done', 'failed', 'saved'])")
@@ -944,8 +957,19 @@ try:
         call("Page.navigate", url=URL)
         check(wait("!window.hmOld && window.hmMap?.isStyleLoaded()", 30), "without a connection the page opens (the service worker)")
         offline_all(False)
-        for w in sw_ws:
-            w.close()
+        # the switch off: the map kept goes, and Start keeps none
+        wait("window.hmMap?.loaded()", 20)
+        js("(() => { const b = document.querySelector('.lm-save-route input'); b.checked = false; b.dispatchEvent(new Event('change')); })()")
+        gone = wait("caches.open('hm-route').then(c => c.keys()).then(k => k.length === 0)", 10) and js("localStorage.getItem('hm-save-route') === '0'")
+        js("window.hmOld = 1")
+        call("Page.navigate", url=URL + "/?to=47.41150,8.54420&tn=Oerlikon&mode=car")
+        wait("!window.hmOld && document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40)
+        js("document.querySelector('.lm-nav-start').click()")
+        time.sleep(6)
+        none = js("hmRouteCache.total === 0") and js("caches.open('hm-route').then(c => c.keys()).then(k => k.length === 0)")
+        js("document.querySelector('.lm-nav-x')?.click()")
+        js("(() => { const b = document.querySelector('.lm-save-route input'); b.checked = true; b.dispatchEvent(new Event('change')); })()")
+        check(gone and none and js("localStorage.getItem('hm-save-route') === '1'"), "the switch off: the map of the route goes, Start keeps none; on again")
     else:
         check(False, "a route for the map kept for the way")
 

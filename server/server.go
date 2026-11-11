@@ -59,6 +59,9 @@ type Config struct {
 	// GeoIPDB: a MaxMind DB file with a location per network (DB-IP City Lite): the map opens at the
 	// place of the IP address of the visitor until the device tells where it is; empty: at its default place
 	GeoIPDB string
+	// ServiceWorker: the service worker of the page (web/sw.js); false: one that removes itself and its caches from the
+	// browsers that have it (web/sw-off.js), and the page registers none
+	ServiceWorker bool
 	// StripeKey: a restricted key of Stripe that may write Checkout Sessions, for donations (donate.go); empty, or
 	// without PublicURL: no donations
 	StripeKey string
@@ -74,7 +77,7 @@ func DefaultConfig() Config {
 		WikidataAPI: "https://www.wikidata.org/w/api.php", CommonsAPI: "https://commons.wikimedia.org/w/api.php",
 		ThumbHosts: []string{"upload.wikimedia.org", "thumb.wikimedia.org"}, UserAgent: "hippomaps (+https://gitlab.com/cdutsov/hippomaps)",
 		RoutesPerIP: 120, RouteWindow: 10 * time.Minute, ElevationURL: "https://api.overpass.ch", SaysPerIP: 600, SearchesPerIP: 100,
-		StripeAPI: "https://api.stripe.com", Log: slog.Default(),
+		StripeAPI: "https://api.stripe.com", ServiceWorker: true, Log: slog.Default(),
 	}
 }
 
@@ -258,7 +261,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version, "Donate": s.donations(), "Scope": s.scope()}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version, "Donate": s.donations(), "Scope": s.scope(), "SW": s.cfg.ServiceWorker}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}
@@ -284,9 +287,14 @@ func (s *Server) scope() string {
 	return "/"
 }
 
-// serviceWorker serves web/sw.js; the browser asks for it again at each visit (no-cache)
+// serviceWorker serves web/sw.js, or with ServiceWorker off web/sw-off.js; the browser asks for it again at each
+// visit (no-cache)
 func (s *Server) serviceWorker(w http.ResponseWriter, r *http.Request) {
-	b, err := fs.ReadFile(web.Files, "sw.js")
+	name := "sw.js"
+	if !s.cfg.ServiceWorker {
+		name = "sw-off.js"
+	}
+	b, err := fs.ReadFile(web.Files, name)
 	if err != nil {
 		http.NotFound(w, r)
 		return
