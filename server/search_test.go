@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // the page at the root of its own site, the search relayed to overpass-search elsewhere
@@ -96,5 +97,31 @@ func TestSearchLimit(t *testing.T) {
 	n := calls
 	if c := ip(get(s, "/api/search/status", "X-Forwarded-For", "203.0.113.9")); c != 404 || calls != n {
 		t.Errorf("another path: %d, relayed %v", c, calls != n)
+	}
+}
+
+// a search that takes longer than the server gives an answer (WriteTimeout) still gets its answer
+func TestSearchSlow(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(600 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"understood":"Restaurant, in the view"}`)
+	}))
+	t.Cleanup(up.Close)
+	s := testServer(t, nil, func(c *Config) { c.Base = "/"; c.SearchUpstream = up.URL })
+	ts := httptest.NewUnstartedServer(s)
+	ts.Config.WriteTimeout = 200 * time.Millisecond
+	ts.Start()
+	t.Cleanup(ts.Close)
+	for _, u := range []string{"/api/search/search?q=restaurants", "/api/search/search?q=restaurants&lang=de"} {
+		resp, err := http.Get(ts.URL + u)
+		if err != nil {
+			t.Fatalf("%s: %v", u, err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 || !strings.Contains(string(b), "Restaurant, ") {
+			t.Errorf("%s: %d %q", u, resp.StatusCode, b)
+		}
 	}
 }

@@ -36,6 +36,9 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 80*time.Second) // a search may take a minute
 	defer cancel()
+	// the time to write an answer (WriteTimeout of the server in cmd/hippomaps, 40 s) counts from the request:
+	// without more of it the answer of a search that took longer is cut off
+	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(90 * time.Second))
 	u := s.cfg.SearchUpstream + "/" + r.PathValue("rest")
 	if r.URL.RawQuery != "" {
 		u += "?" + r.URL.RawQuery
