@@ -439,12 +439,12 @@ func (s *Server) heights(ctx context.Context, line [][2]float64, km float64) *ro
 	req.Header.Set("User-Agent", s.cfg.UserAgent)
 	resp, err := s.routeClient.Do(req)
 	if err != nil {
-		s.cfg.Log.Warn("elevation", "err", err)
+		s.log.Warn("elevation", "err", err)
 		return nil
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		s.cfg.Log.Warn("elevation", "status", resp.StatusCode)
+		s.log.Warn("elevation", "status", resp.StatusCode)
 		return nil
 	}
 	var v struct {
@@ -460,7 +460,7 @@ func (s *Server) heights(ctx context.Context, line [][2]float64, km float64) *ro
 		} `json:"profile"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&v); err != nil || v.Profile == nil || v.Profile.Min == nil || v.Profile.Max == nil {
-		s.cfg.Log.Warn("elevation", "err", "unreadable answer")
+		s.log.Warn("elevation", "err", "unreadable answer")
 		return nil
 	}
 	e := &routeElev{Up: math.Round(v.Profile.Ascent), Down: math.Round(v.Profile.Descent), Min: math.Round(*v.Profile.Min), Max: math.Round(*v.Profile.Max)}

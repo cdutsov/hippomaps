@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -236,6 +237,19 @@ func TestRouteHeightsDown(t *testing.T) {
 	var last map[string]any
 	v := fakeValhalla(t, &calls, &last)
 	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL; c.ElevationURL = v.URL; c.ElevationKey = "wrong" })
+	w := get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk")
+	if w.Code != 200 || strings.Contains(w.Body.String(), `"elev"`) {
+		t.Errorf("heights down: %d %s", w.Code, w.Body)
+	}
+}
+
+// the same with a Config without a logger (Log nil: the default one), which heights took from the Config
+func TestRouteHeightsDownNoLog(t *testing.T) {
+	var calls atomic.Int32
+	var last map[string]any
+	v := fakeValhalla(t, &calls, &last)
+	s := testServer(t, nil, func(c *Config) { c.RoutingURL = v.URL; c.ElevationURL = v.URL; c.ElevationKey = "wrong"; c.Log = nil })
+	s.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	w := get(s, "/labs/maps/api/route?from=47.3779,8.5403&to=47.38,8.55&mode=walk")
 	if w.Code != 200 || strings.Contains(w.Body.String(), `"elev"`) {
 		t.Errorf("heights down: %d %s", w.Code, w.Body)
