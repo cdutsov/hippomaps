@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // the readings of overpass-search, as it writes them, in German, French and Italian
@@ -144,5 +145,37 @@ func TestLineNotesIn(t *testing.T) {
 		if got := noteIn(c.en, 3); got == c.en {
 			t.Errorf("%q: not in Italian", c.en)
 		}
+	}
+}
+
+// a reading with a long text of the visitor in it: each part is read once (the ways to read it doubled with
+// each ", " and each " in the view"), and one longer than maxUnderstood stays as it came
+func TestUnderstoodInLongText(t *testing.T) {
+	for _, n := range []int{14, 40} {
+		s := "Cafe named “" + strings.Repeat("a, ", n) + "a" + strings.Repeat(" in the view", n) + "”, in the view"
+		if n == 14 && len(s) > maxUnderstood {
+			t.Fatalf("the short text is %d bytes, over maxUnderstood", len(s))
+		}
+		done := make(chan string, 1)
+		go func() { done <- understoodIn(s, 1) }()
+		select {
+		case got := <-done:
+			if n == 40 && got != s {
+				t.Errorf("a reading of %d bytes was changed: %q", len(s), got)
+			}
+			if n == 14 && !strings.HasSuffix(got, "im Kartenausschnitt") {
+				t.Errorf("a reading of %d bytes: %q", len(s), got)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("a reading of %d bytes takes more than 5 s", len(s))
+		}
+	}
+	// the longest text read, with as many parts as fit
+	s := strings.Repeat("a, ", 60) + strings.Repeat(" in the view", 30)
+	s = s[:min(len(s), maxUnderstood-13)] + ", in the view"
+	t0 := time.Now()
+	understoodIn(s, 2)
+	if d := time.Since(t0); d > 2*time.Second {
+		t.Errorf("a reading of %d bytes took %s", len(s), d)
 	}
 }

@@ -220,20 +220,32 @@ var (
 	chainTo  = [3]string{"einem Ort der Kette “$1”", "un lieu de la chaîne “$1”", "un luogo della catena “$1”"}
 )
 
-// whereIn puts where a search looked in language i; "" when it is not a phrase known here
-func whereIn(s string, i int) string {
+// whereIn puts where a search looked in language i; "" when it is not a phrase known here. A text is read in
+// parts, each in several ways (cut at a ", ", without " in the view" at its end); seen keeps the answer of each
+// part, so that each is read once: a search names what the visitor wrote ("named “a, a in the view in the
+// view”"), and without it the ways to read such a text double with each part.
+func whereIn(s string, i int, seen map[string]string) string {
+	if w, ok := seen[s]; ok {
+		return w
+	}
+	w := wherePart(s, i, seen)
+	seen[s] = w
+	return w
+}
+
+func wherePart(s string, i int, seen map[string]string) string {
 	s = withinRe.ReplaceAllString(s, withinTo[i-1])
 	s = inRe.ReplaceAllString(s, inTo[i-1])
 	s = theRe.ReplaceAllString(s, theTo[i-1])
 	s = chainRe.ReplaceAllString(s, chainTo[i-1])
 	// a kind of place before the place: "within 500 m of the old town, inside the boundary of Bern"
 	if a, b, ok := strings.Cut(s, ", "); ok {
-		if wa, wb := whereIn(a, i), whereIn(b, i); wa != "" && wb != "" {
+		if wa, wb := whereIn(a, i, seen), whereIn(b, i, seen); wa != "" && wb != "" {
 			return wa + ", " + wb
 		}
 	}
 	if t, ok := strings.CutSuffix(s, " in the view"); ok {
-		if w := whereIn(t, i); w != "" {
+		if w := whereIn(t, i, seen); w != "" {
 			return w + " " + where[0].to[i-1]
 		}
 	}
@@ -321,8 +333,16 @@ func readingIn(s string, i int) string {
 
 var placeRe = regexp.MustCompile(`^(.+) \((.+)\)$`) // "Bern (Schweiz · city)"
 
+// maxUnderstood is the longest reading put in another language (bytes): those of overpass-search have some
+// dozens of characters, and a longer one carries a long text of the visitor.
+const maxUnderstood = 600
+
 // understoodIn puts the search as read in language i: a reading and where it looked, or a place found
 func understoodIn(s string, i int) string {
+	if len(s) > maxUnderstood {
+		return s
+	}
+	seen := map[string]string{}
 	// the reading ends at the first ", " that begins a known where ("Cafe, Restaurant, in the view")
 	for at := 0; ; {
 		k := strings.Index(s[at:], ", ")
@@ -330,7 +350,7 @@ func understoodIn(s string, i int) string {
 			break
 		}
 		at += k + 2
-		if w := whereIn(s[at:], i); w != "" {
+		if w := whereIn(s[at:], i, seen); w != "" {
 			return readingIn(s[:at-2], i) + ", " + w
 		}
 	}
