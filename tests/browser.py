@@ -1159,6 +1159,16 @@ try:
         check(len(mv) == 1 and mv[0]["ms"] <= 600 and mv[0]["out"] <= 0.05, f"a near place: one short glide, no flight out ({mv})")
     else:
         check(False, "the Restaurants bubble in German: no results")
+    # Forget recent searches in the menu: off once they are forgotten, on again when a search came after
+    def forget_off(then=""):
+        js("document.querySelector('.lm-map-burger').click()")
+        off = js(f"(() => {{ const b = document.querySelector('.lm-forget'), was = b.disabled; {then}; return was; }})()")
+        js("document.querySelector('.lm-backdrop').click()")
+        return off
+    before = forget_off("b.click()")
+    forgotten = forget_off() and js("localStorage.getItem('hm-recent') === '[]'")
+    js("[...document.querySelectorAll('.lm-bubble')].find(b => /Hotels/.test(b.textContent))?.click()")
+    check(before is False and forgotten and forget_off() is False, "Forget recent searches: off once forgotten, on again after the next search")
     js("localStorage.removeItem('hm-lang')")
 
     # the signs along a route by car: speed cameras where a navigation app may show them (the Netherlands), stop signs

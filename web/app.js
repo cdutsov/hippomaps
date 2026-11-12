@@ -1778,6 +1778,7 @@ function nightStyle(st) {
 }
 const openMenu = (open) => {
   menu.hidden = backdrop.hidden = !open;
+  if (open) forgetBtn.disabled = !saved.recent.length; // something to forget (a search since the last time)
   for (const b of [menuBtn, mapMenuBtn]) b.setAttribute("aria-expanded", String(open));
   if (open) closeMenuBtn.focus();
 };
