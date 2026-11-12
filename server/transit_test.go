@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestTransit(t *testing.T) {
@@ -83,5 +84,52 @@ func TestTransitOwnOverpass(t *testing.T) {
 	}
 	if w := get(s, "/labs/maps/api/transit?tile=10/536/358"); w.Code != 200 || !strings.Contains(w.Body.String(), `"ref":"4"`) || calls.Load() != 1 {
 		t.Fatalf("transit: %d %s (%d calls)", w.Code, w.Body, calls.Load())
+	}
+}
+
+// what is no tile of zoom 10: 400 without a query. Overpass fails or answers nonsense: 502 and nothing kept,
+// the next call asks again. The limit of a visitor counts the tiles asked of Overpass, not those in memory.
+func TestTransitFailsAndLimit(t *testing.T) {
+	var calls, mode atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		switch mode.Load() {
+		case 0:
+			w.WriteHeader(504)
+		case 1:
+			io.WriteString(w, `<html>busy</html>`)
+		default:
+			io.WriteString(w, `{"elements":[{"type":"relation","id":3,"tags":{"route":"tram"},"members":[{"type":"way","role":"","geometry":[{"lat":47.37,"lon":8.54}]}]}]}`)
+		}
+	}))
+	t.Cleanup(up.Close)
+	s := testServer(t, nil, func(c *Config) { c.OverpassURL = up.URL })
+	s.transitPerIP = newWindow(3, time.Hour)
+	for _, tile := range []string{"", "10/536", "9/268/179", "10/1024/0", "10/-1/0", "10/a/b", "10/536/358/1", "99/1/1"} {
+		if w := get(s, "/labs/maps/api/transit?tile="+tile); w.Code != 400 {
+			t.Errorf("tile %q: %d", tile, w.Code)
+		}
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("Overpass asked for a bad tile")
+	}
+	for m, want := range []int{502, 502, 200} {
+		mode.Store(int32(m))
+		w := get(s, "/labs/maps/api/transit?tile=10/536/358")
+		if w.Code != want {
+			t.Errorf("Overpass in mode %d: %d %s", m, w.Code, w.Body)
+		}
+		if m == 2 && !strings.Contains(w.Body.String(), `"features":[]`) { // a line of one point is none
+			t.Errorf("a tile without lines: %s", w.Body)
+		}
+	}
+	if calls.Load() != 3 {
+		t.Errorf("calls to Overpass: %d, want 3 (a failure is not kept)", calls.Load())
+	}
+	if w := get(s, "/labs/maps/api/transit?tile=10/536/359"); w.Code != 429 {
+		t.Errorf("a fourth tile from Overpass: %d", w.Code)
+	}
+	if w := get(s, "/labs/maps/api/transit?tile=10/536/358"); w.Code != 200 || calls.Load() != 3 {
+		t.Errorf("the tile in memory, over the limit: %d, %d calls", w.Code, calls.Load())
 	}
 }

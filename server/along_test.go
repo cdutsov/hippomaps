@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -218,5 +219,41 @@ func TestSimplifyZigzag(t *testing.T) {
 	// no tolerance brings these to 3 points (a run keeps its middle): 3 at even steps
 	if pts, _ := simplifyTo(line[:4*simplifyRun], 30, 3); len(pts) != 3 || pts[0] != line[0] || pts[2] != line[4*simplifyRun-1] {
 		t.Errorf("thinned: %d points", len(pts))
+	}
+}
+
+// Overpass fails or answers nonsense: 502 failed; an element without a place is left out; the limit of a
+// visitor is that of directions; a line of more than alongMaxPoints points: 400
+func TestAlongFailsAndLimit(t *testing.T) {
+	var mode atomic.Int32
+	o := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch mode.Load() {
+		case 0:
+			w.WriteHeader(504)
+		case 1:
+			io.WriteString(w, `<html>busy</html>`)
+		default:
+			io.WriteString(w, `{"elements":[{"type":"relation","id":9,"tags":{"amenity":"fuel"}},{"type":"node","id":2,"lat":47.0,"lon":8.01,"tags":{"amenity":"fuel"}}]}`)
+		}
+	}))
+	t.Cleanup(o.Close)
+	s := testServer(t, nil, func(c *Config) { c.RoutingURL = "http://127.0.0.1:1"; c.OverpassURL = o.URL; c.RoutesPerIP = 3 })
+	body := `{"line":[[8,47],[8.05,47],[8.1,47]],"cat":"fuel","mode":"walk"}`
+	for m, want := range []int{502, 502, 200} {
+		mode.Store(int32(m))
+		w := post(s, "/labs/maps/api/along", body)
+		if w.Code != want || (want == 502 && !strings.Contains(w.Body.String(), `"code":"failed"`)) {
+			t.Errorf("Overpass in mode %d: %d %s", m, w.Code, w.Body)
+		}
+		if want == 200 && (!strings.Contains(w.Body.String(), `"id":"node/2"`) || !strings.Contains(w.Body.String(), `"total":1`)) {
+			t.Errorf("places: %s", w.Body)
+		}
+	}
+	if w := post(s, "/labs/maps/api/along", body); w.Code != 429 || !strings.Contains(w.Body.String(), `"too_many"`) {
+		t.Errorf("a fourth search along: %d %s", w.Code, w.Body)
+	}
+	long := `{"line":[` + strings.Repeat("[8,47],", alongMaxPoints) + `[8.1,47]],"cat":"fuel","mode":"car"}`
+	if w := post(s, "/labs/maps/api/along", long); w.Code != 400 {
+		t.Errorf("a line of %d points: %d", alongMaxPoints+1, w.Code)
 	}
 }

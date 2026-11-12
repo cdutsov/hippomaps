@@ -179,3 +179,39 @@ func TestUnderstoodInLongText(t *testing.T) {
 		t.Errorf("a reading of %d bytes took %s", len(s), d)
 	}
 }
+
+// the kind of a place found, in the detail of the place and of a suggestion: the words of the geocoder, else
+// the name of the preset of the kind; a kind not known stays
+func TestDetailIn(t *testing.T) {
+	stop := presetName("highway/bus_stop", 1)
+	if stop == "" || stop == "bus stop" {
+		t.Fatalf("no German name of highway/bus_stop: %q", stop)
+	}
+	for _, c := range []struct{ en, de string }{
+		{"Schweiz · city", "Schweiz · Stadt"},
+		{"Bern, Schweiz · isolated dwelling", "Bern, Schweiz · Einzelhof"},
+		{"Bern, Schweiz · bus stop", "Bern, Schweiz · " + stop},
+		{"bus stop", stop},
+		{"village", "Dorf"},
+		{"Bern, Schweiz", "Bern, Schweiz"},
+		{"Bern · flux capacitor", "Bern · flux capacitor"},
+	} {
+		if got := detailIn(c.en, 1); got != c.de {
+			t.Errorf("%q: %q, want %q", c.en, got, c.de)
+		}
+	}
+	if got := understoodIn("Bahnhof (bus stop)", 1); got != "Bahnhof ("+stop+")" {
+		t.Errorf("a place found: %q", got)
+	}
+	for s, want := range map[string]string{"cafés in Bern": "Cafés in Bern", "benches near Thun": "Sitzbänke bei Thun", "dragons in Bern": "dragons in Bern", "cafés": "cafés"} {
+		if got := tryIn(s, 1); got != want {
+			t.Errorf("try %q: %q, want %q", s, got, want)
+		}
+	}
+	// an answer that is not JSON, a path and a language not known: as they came
+	for _, c := range [][3]string{{"<html>", "search", "de"}, {`{"understood":"Restaurant, in the view"}`, "status", "de"}, {`{"understood":"Restaurant, in the view"}`, "search", "es"}} {
+		if got := translate([]byte(c[0]), c[1], c[2]); string(got) != c[0] {
+			t.Errorf("translate %v: %s", c, got)
+		}
+	}
+}

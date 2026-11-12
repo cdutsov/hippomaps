@@ -330,3 +330,139 @@ func TestPrivacy(t *testing.T) {
 		t.Error("app.js: no link to the privacy policy")
 	}
 }
+
+// Wikimedia fails: 502, and the failure is not kept (the next call asks again); a thumbnail larger than a
+// picture may be: 502; a picture found by another way wins over the failure of the first
+func TestPictureWikimediaFails(t *testing.T) {
+	f := &fakeWikimedia{}
+	var down atomic.Bool
+	f.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.calls.Add(1)
+		q := r.URL.Query()
+		switch {
+		case down.Load():
+			w.WriteHeader(503)
+		case r.URL.Path == "/wd" && q.Get("entity") == "Q5": // an item whose claims fail
+			w.WriteHeader(500)
+		case r.URL.Path == "/wd" && q.Get("list") == "search":
+			io.WriteString(w, `not JSON`)
+		case r.URL.Path == "/wd":
+			io.WriteString(w, `{"claims":{"`+q.Get("property")+`":[{"rank":"normal","mainsnak":{"datavalue":{"value":"Photo.jpg"}}}]}}`)
+		case r.URL.Path == "/commons":
+			file := strings.TrimPrefix(q.Get("titles"), "File:")
+			io.WriteString(w, `{"query":{"pages":[{"imageinfo":[{"thumburl":"`+f.srv.URL+`/thumb/`+url.PathEscape(file)+`","extmetadata":{"Artist":{"value":"Unknown author"},"LicenseShortName":{"value":"`+strings.Repeat("long ", 30)+`"}}}]}]}}`)
+		case r.URL.Path == "/thumb/Huge.jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Write(make([]byte, 2<<20+1))
+		default:
+			w.Header().Set("Content-Type", "image/png; charset=binary")
+			w.Write(png)
+		}
+	}))
+	t.Cleanup(f.srv.Close)
+	s := testServer(t, f)
+	if w := get(s, "/labs/maps/api/picture?wikidata=Q5"); w.Code != 502 {
+		t.Errorf("claims fail: %d", w.Code)
+	}
+	if w := get(s, "/labs/maps/api/picture?osm=relation/5"); w.Code != 502 {
+		t.Errorf("the search of Wikidata answers nonsense: %d", w.Code)
+	}
+	if w := get(s, "/labs/maps/api/picture?commons=File:Huge.jpg"); w.Code != 502 {
+		t.Errorf("a thumbnail of more than 2 MB: %d", w.Code)
+	}
+	// the photo of the place fails, the logo of the chain is there
+	w := get(s, "/labs/maps/api/picture?wikidata=Q5&brand=Q6")
+	if w.Code != 200 || w.Header().Get("X-Picture-Kind") != "logo" || w.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("a logo after a failure: %d %v", w.Code, w.Header())
+	}
+	// no author named, a long licence cut
+	if c, _ := url.QueryUnescape(w.Header().Get("X-Picture-Credit")); !strings.HasPrefix(c, "long long") || !strings.HasSuffix(c, "…") || len([]rune(c)) != 101 {
+		t.Errorf("credit: %q", c)
+	}
+	down.Store(true)
+	n := f.calls.Load()
+	for i := 0; i < 2; i++ {
+		if w := get(s, "/labs/maps/api/picture?wikidata=Q7"); w.Code != 502 {
+			t.Errorf("Wikimedia down: %d", w.Code)
+		}
+	}
+	if c := f.calls.Load() - n; c < 2 {
+		t.Errorf("a failure was kept: %d calls for two requests", c)
+	}
+	down.Store(false)
+	if w := get(s, "/labs/maps/api/picture?wikidata=Q7"); w.Code != 200 {
+		t.Errorf("Wikimedia back: %d", w.Code)
+	}
+}
+
+// all the calls to Wikimedia taken: 503 after 3 s
+func TestPictureBusy(t *testing.T) {
+	f := newFake(t)
+	s := testServer(t, f)
+	for i := 0; i < cap(s.calls); i++ {
+		s.calls <- struct{}{}
+	}
+	t0 := time.Now()
+	if w := get(s, "/labs/maps/api/picture?brand=Q38076"); w.Code != 503 || time.Since(t0) < 2*time.Second || f.calls.Load() != 0 {
+		t.Errorf("busy: %d after %s, %d calls", w.Code, time.Since(t0), f.calls.Load())
+	}
+}
+
+// files named in the tags of a place: the forms of wikimedia_commons and of an image URL on Commons
+func TestCommonsFile(t *testing.T) {
+	for v, want := range map[string]string{
+		"File:Bundeshaus_Bern.jpg": "Bundeshaus Bern.jpg",
+		" File:A b.JPEG ":          "A b.JPEG",
+		"https://commons.wikimedia.org/wiki/File:Z%C3%BCrich_HB.jpg": "Zürich HB.jpg",
+		"http://commons.wikimedia.org/wiki/File:X.png":               "X.png",
+		"https://commons.wikimedia.org/wiki/File:%zz.jpg":            "",
+		"https://commons.wikimedia.org/wiki/Category:Bern":           "",
+		"https://example.org/File:X.png":                             "",
+		"Category:Bern":                                              "",
+		"File:no extension":                                          "",
+		"File:a|b.jpg":                                               "",
+		"File:a/b.jpg":                                               "",
+		"File:" + strings.Repeat("a", 250) + ".jpg":                  "",
+		"X.jpg": "",
+	} {
+		if got := commonsFile(v); got != want {
+			t.Errorf("%q: %q, want %q", v, got, want)
+		}
+	}
+}
+
+// the visitor: the first address the proxy in front names, else the address of the connection
+func TestClientIP(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "198.51.100.4:5123"
+	if ip := clientIP(r); ip != "198.51.100.4" {
+		t.Errorf("from the connection: %q", ip)
+	}
+	r.RemoteAddr = "[2001:db8::7]:5123"
+	if ip, v := clientIP(r), visitor(r); ip != "2001:db8::7" || v != "2001:db8::/64" {
+		t.Errorf("from an IPv6 connection: %q, visitor %q", ip, v)
+	}
+	r.RemoteAddr = "no port"
+	if ip := clientIP(r); ip != "no port" {
+		t.Errorf("an address without a port: %q", ip)
+	}
+	r.Header.Set("X-Forwarded-For", " 203.0.113.7 , 10.0.0.1")
+	if ip := clientIP(r); ip != "203.0.113.7" {
+		t.Errorf("from the proxy: %q", ip)
+	}
+}
+
+// a site of its own: the file that lets the Android app open its links; none without PublicURL
+func TestAssetLinks(t *testing.T) {
+	s := testServer(t, nil, func(c *Config) { c.Base = "/"; c.PublicURL = "https://hippomaps.example" })
+	w := get(s, "/.well-known/assetlinks.json")
+	if w.Code != 200 || w.Header().Get("Content-Type") != "application/json" || !strings.Contains(w.Body.String(), "android_app") {
+		t.Errorf("assetlinks.json: %d %.100s", w.Code, w.Body)
+	}
+	if w := get(testServer(t, nil), "/.well-known/assetlinks.json"); w.Code != 404 {
+		t.Errorf("assetlinks.json without a site: %d", w.Code)
+	}
+	if w := get(s, "/healthz"); w.Code != 200 || w.Body.String() != "ok\n" {
+		t.Errorf("healthz: %d %q", w.Code, w.Body)
+	}
+}

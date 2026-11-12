@@ -98,3 +98,48 @@ func TestSayLanguages(t *testing.T) {
 		t.Errorf("bg: %d %q", w.Code, w.Body)
 	}
 }
+
+// all the calls to the voice taken: 503 at once, the page then speaks with a voice of the browser; a
+// sentence in memory is still served
+func TestSayBusy(t *testing.T) {
+	var calls atomic.Int32
+	tts := fakeTTS(t, &calls)
+	s := testServer(t, nil, func(c *Config) { c.TTSURL = tts.URL })
+	if w := get(s, "/labs/maps/api/say?lang=de&text=Hallo"); w.Code != 200 {
+		t.Fatalf("say: %d", w.Code)
+	}
+	for i := 0; i < cap(s.sayCalls); i++ {
+		s.sayCalls <- struct{}{}
+	}
+	if w := get(s, "/labs/maps/api/say?lang=de&text=Neu"); w.Code != 503 || calls.Load() != 1 {
+		t.Errorf("busy: %d, %d calls", w.Code, calls.Load())
+	}
+	if w := get(s, "/labs/maps/api/say?lang=de&text=Hallo"); w.Code != 200 {
+		t.Errorf("a sentence in memory while busy: %d", w.Code)
+	}
+}
+
+// the voice answers something that is no sound: 502, and it is not kept
+func TestSayNotAudio(t *testing.T) {
+	var calls atomic.Int32
+	tts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		io.WriteString(w, `<html>an error page with status 200</html>`)
+	}))
+	t.Cleanup(tts.Close)
+	s := testServer(t, nil, func(c *Config) { c.TTSURL = tts.URL })
+	for i := 0; i < 2; i++ {
+		if w := get(s, "/labs/maps/api/say?lang=de&text=Hallo"); w.Code != 502 {
+			t.Errorf("no sound: %d %q", w.Code, w.Body)
+		}
+	}
+	if calls.Load() != 2 {
+		t.Errorf("calls: %d, want 2 (not kept)", calls.Load())
+	}
+	down := httptest.NewServer(http.NotFoundHandler())
+	down.Close()
+	s = testServer(t, nil, func(c *Config) { c.TTSURL = down.URL })
+	if w := get(s, "/labs/maps/api/say?lang=de&text=Hallo"); w.Code != 502 {
+		t.Errorf("no voice server: %d", w.Code)
+	}
+}
