@@ -12,11 +12,12 @@ const cut = (from, to) => {
   assert.ok(a > 0 && b > a, from);
   return src.slice(a, b);
 };
-const { morePois, morePoisUnder, earlierMore, nearPois, POI_NOT } = new Function(`${cut("const POI_NOT = [", "// the layer of the style it goes under")}
+const { morePois, morePoisUnder, earlierMore, latePois, nearPois, POI_NOT } = new Function(`${cut("const POI_NOT = [", "// the layer of the style it goes under")}
   ${cut("const morePoisUnder = ", "\n")}
   ${cut("function earlierMore(", "\n}\n")}
 }
-  ${cut("function nearPois(", "\n}\n")}\n}\nreturn { morePois, morePoisUnder, earlierMore, nearPois, POI_NOT };`)();
+  ${cut("const POI_LATE = ", "// on the map, and in a style JSON")}
+  ${cut("function nearPois(", "\n}\n")}\n}\nreturn { morePois, morePoisUnder, earlierMore, latePois, nearPois, POI_NOT };`)();
 
 const kinds = (list) => ["in", ["get", "kind"], ["literal", list]];
 const layer = () => ({
@@ -139,4 +140,21 @@ test("pois_more of a style is shown as early as our layer, once", () => {
   assert.equal(passes(f, { kind: "bank", name: "X", min_zoom: 17 }), false);
   assert.equal(earlierMore({ ...theirs, filter: f }), null);
   assert.equal(earlierMore(undefined), null);
+});
+test("benches: out of the layer of the style, in a layer of their own from zoom 18; the other places as before", () => {
+  const l = layer();
+  l.filter[1][2][1].push("bench");
+  const late = latePois(l);
+  assert.equal(late.layer.id, "lm-pois-late");
+  assert.equal(late.layer.minzoom, 18);
+  assert.equal(passes(late.layer.filter, { kind: "bench" }), true);
+  assert.equal(passes(late.layer.filter, { kind: "cafe", name: "X" }), false);
+  assert.equal(passes(late.filter, { kind: "bench", min_zoom: 17 }), false);
+  assert.equal(passes(late.filter, { kind: "cafe", name: "X", min_zoom: 16 }), true);
+  assert.equal(latePois({ ...l, filter: late.filter }), null); // once
+  assert.equal(latePois(layer()), null); // a style without benches
+  // our layer of the other places and the places two zooms earlier have no benches either
+  const m = morePois({ ...l, filter: late.filter });
+  assert.equal(passes(m.filter, { kind: "bench", name: "Bank am See", min_zoom: 17 }), false);
+  assert.equal(passes(nearPois({ ...l, filter: late.filter }).layer.filter, { kind: "bench", min_zoom: 17 }), false);
 });

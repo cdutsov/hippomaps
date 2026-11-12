@@ -1381,6 +1381,17 @@ try:
         check(g["clinic"] and "dentist" in g["kinds"] and len([k for k in g["kinds"] if k not in ("dentist", "restaurant", "cafe", "supermarket", "school", "park")]) >= 3
               and not street & set(g["kinds"]),
               f"the {style} map at its largest zooms: a dental clinic by its name, POIs of other kinds, no street furniture ({g['kinds']})")
+    # benches: none at zoom 16.5, where the other places are; at zoom 18 they are there
+    def benches(z):
+        js(f"hmMap.jumpTo({{ center: [8.5437, 47.3725], zoom: {z}, pitch: 0, bearing: 0 }})")
+        time.sleep(1)
+        wait("hmMap.loaded() && !hmMap.isMoving()", 20)
+        time.sleep(1)
+        return json.loads(js("JSON.stringify((() => { const f = hmMap.queryRenderedFeatures({ layers: ['pois', 'pois_more', 'lm-pois-near', 'lm-pois-more', 'lm-pois-late'].filter(l => hmMap.getLayer(l)) });"
+                             " return [f.filter(x => x.properties.kind === 'bench').length, f.filter(x => x.properties.kind !== 'bench').length]; })())"))
+    b16, b18 = benches(16.5), benches(18.5)
+    check(b16[0] == 0 and b16[1] > 10 and js("hmMap.getLayer('lm-pois-late')?.minzoom === 18 && !!hmMap.getLayer('lm-pois-late')"),
+          f"benches only at the largest zooms: none at zoom 16.5 beside {b16[1]} places ({b16[0]} benches; at zoom 18.5: {b18[0]})")
     js("document.querySelector('.lm-style[data-style=auto]').click()")
     js("localStorage.removeItem('hm-recent')")
     call("Page.removeScriptToEvaluateOnNewDocument", identifier=mouse.get("identifier", ""))

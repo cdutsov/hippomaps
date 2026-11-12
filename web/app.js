@@ -945,6 +945,11 @@ const POI_NOT = ["crossing", "traffic_signals", "stop", "give_way", "switch", "s
 const POI_FOOD = ["pub", "biergarten", "ice_cream", "food_court", "bakery", "pastry", "confectionery", "deli", "coffee", "nightclub"];
 const POI_DOT = "lm-poi-dot";
 const POI_UNDER = ["roads_labels_minor", "roads_shields", "roads_labels_major"];
+// the layout of the places under the names of the streets (ours, and pois_more of a style): the name where there is
+// room around the icon, the icon alone when there is none, and from zoom 18 the icon also where a street name is:
+// every place with a name is on the map at the largest zooms
+const POI_ROOM = { "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.9, "text-optional": true,
+  "icon-allow-overlap": ["step", ["zoom"], false, 18, true] };
 function morePois(pois, styleMore) {
   const isKinds = (f) => Array.isArray(f) && f[0] === "in" && JSON.stringify(f[1]) === '["get","kind"]' && f[2]?.[0] === "literal";
   const isZoom = (f) => Array.isArray(f) && f[0] === ">=" && JSON.stringify(f[1]) === '["zoom"]' && JSON.stringify(f[2]?.[1]) === '["get","min_zoom"]';
@@ -968,9 +973,7 @@ function morePois(pois, styleMore) {
   // beside a street name the name goes where there is room (right, left, under, over the dot), and the dot stays when
   // there is none: the place is on the map at the largest zooms in any case
   delete layer.layout["text-offset"];
-  // (from zoom 18 the dot also where a street name is: every place with a name is on the map at the largest zooms)
-  Object.assign(layer.layout, { "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.8, "text-optional": true,
-    "icon-allow-overlap": ["step", ["zoom"], false, 18, true] });
+  Object.assign(layer.layout, POI_ROOM);
   const icon = pois.layout?.["icon-image"];
   if (Array.isArray(icon) && icon[0] === "match" && icon[icon.length - 1] === "") layer.layout["icon-image"] = [...icon.slice(0, -1), POI_DOT];
   const colour = pois.paint?.["text-color"];
@@ -996,15 +999,37 @@ function earlierMore(more) {
   const filter = earlier(more?.filter);
   return found ? ["all", [">=", ["zoom"], 15], filter] : null;
 }
+// Benches (POI_LATE) are many and small: out of the layer pois into a layer of their own (lm-pois-late) at the very
+// bottom of the places, under the names of the streets and the other places, from zoom 18. latePois gives that layer
+// and the filter of pois without them; null when pois has no list of kinds or is without them already.
+const POI_LATE = ["bench"];
+function latePois(pois) {
+  const out = ["!", ["in", ["get", "kind"], ["literal", POI_LATE]]];
+  if (!pois?.filter || !JSON.stringify(pois.filter).includes('"bench"') || JSON.stringify(pois.filter).includes(JSON.stringify(out))) return null;
+  const layer = { ...pois, id: "lm-pois-late", minzoom: 18, filter: ["in", ["get", "kind"], ["literal", POI_LATE]] };
+  delete layer.metadata;
+  delete layer.maxzoom;
+  return { layer, filter: ["all", out, pois.filter] };
+}
 // on the map, and in a style JSON (ourStyle)
 function morePoisOnMap() {
   const layers = map.getStyle()?.layers || [];
   if (map.getLayer("lm-pois-more")) return;
+  const pois = layers.find((l) => l.id === "pois"), late = latePois(pois);
+  if (late && !map.getLayer("lm-pois-late")) {
+    map.addLayer(late.layer, morePoisUnder(layers));
+    map.setFilter("pois", late.filter);
+    pois.filter = late.filter;
+  }
   const theirs = layers.find((l) => l.id === "pois_more");
-  const more = morePois(layers.find((l) => l.id === "pois"), theirs);
+  const more = morePois(pois, theirs);
   if (more) map.addLayer(more, morePoisUnder(layers));
   const early = earlierMore(theirs);
-  if (early) map.setFilter("pois_more", early);
+  if (early) {
+    map.setFilter("pois_more", early);
+    map.setLayoutProperty("pois_more", "text-offset", undefined);
+    for (const [k, v] of Object.entries(POI_ROOM)) map.setLayoutProperty("pois_more", k, v);
+  }
 }
 // the day map: the light style of overpass.ch, recoloured here in the manner of Swiss topographic maps. DAY names
 // the colours (steps in OKLCH: land almost white, the greens one hue family from grass through parks to forest so that
@@ -1748,7 +1773,7 @@ function ourStyle(prev, st) {
   const before = new Map();
   let ours = [];
   for (const l of prev.layers || []) {
-    if (l.id === "lm-pois-near" || l.id === "lm-pois-more") continue; // made again from the pois of the new style
+    if (l.id === "lm-pois-near" || l.id === "lm-pois-more" || l.id === "lm-pois-late") continue; // made again from the pois of the new style
     if (l.id.startsWith("lm-")) {
       ours.push(TEXT_COLOUR[l.id] ? { ...l, paint: { ...l.paint, ...textPaint(l.id) } } : l);
       continue;
@@ -1761,10 +1786,20 @@ function ourStyle(prev, st) {
   before.set(null, [...(before.get(null) || []), ...ours]);
   const pois = st.layers.find((l) => l.id === "pois");
   const theirs = st.layers.find((l) => l.id === "pois_more");
+  const late = latePois(pois);
+  if (late) {
+    const at = morePoisUnder(st.layers);
+    before.set(at, [...(before.get(at) || []), late.layer]);
+    pois.filter = late.filter;
+  }
   const more = morePois(pois, theirs);
   if (more) { const at = morePoisUnder(st.layers); before.set(at, [...(before.get(at) || []), more]); }
   const early = earlierMore(theirs);
-  if (early) theirs.filter = early;
+  if (early) {
+    theirs.filter = early;
+    theirs.layout = { ...theirs.layout, ...POI_ROOM };
+    delete theirs.layout["text-offset"];
+  }
   const near = pois && poiTiles?.length && prev.sources?.["lm-pois-near"] && nearPois(pois);
   if (near) {
     st.sources["lm-pois-near"] ||= NEAR_SOURCE;
