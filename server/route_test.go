@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 var routeLine = [][2]float64{{8.5403, 47.3779}, {8.2, 47.2}, {7.4391, 46.949}}
@@ -315,6 +316,27 @@ func TestPhrasesMended(t *testing.T) {
 	}, 0, false, 0)
 	if a.Steps[0].Post != "Продължете 300 метра." || a.Steps[1].Text != "Влезте и вземете 3-тия изход по Aarestrasse." || a.Steps[1].Pre != a.Steps[1].Text {
 		t.Errorf("bg steps: %+v", a.Steps[:2])
+	}
+}
+
+// a leg with thousands of maneuvers (a long way by bike on small roads): the names are looked at where a
+// phrase may be glued, not each name in each phrase (4000 maneuvers took 4 s)
+func TestUnglueLongLeg(t *testing.T) {
+	ms := make([]maneuver, 8000)
+	for i := range ms {
+		ms[i].Streets = []string{"Strasse " + itoa(i), "Weg " + itoa(i)}
+		ms[i].Instruction = "Завийте надясно поStrasse " + itoa(i) + "."
+		ms[i].Pre, ms[i].Alert = ms[i].Instruction+" След това завийте наляво.", ms[i].Instruction
+		ms[i].Sign.Toward = []signElement{{Text: "Stadt " + itoa(i)}}
+	}
+	a := routeAnswer{Line: make([][2]float64, 10), lang: "bg-BG"}
+	t0 := time.Now()
+	a.addSteps(ms, 0, false, 1)
+	if d := time.Since(t0); d > 3*time.Second {
+		t.Errorf("the steps of %d maneuvers took %s", len(ms), d)
+	}
+	if got := a.Steps[7999].Text; got != "Завийте надясно по Strasse 7999." {
+		t.Errorf("the last step: %q", got)
 	}
 }
 

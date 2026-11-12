@@ -554,25 +554,25 @@ func legNames(ms []maneuver) []string {
 // поAarestrasse" in Bulgarian, "a(z)Aarestrasse" in Hungarian, "motZürich" in Swedish): before a name of the leg
 // that starts with a capital letter or a digit, right after a small letter or ")".
 func unglue(s string, names []string) string {
-	for _, n := range names {
-		r, _ := utf8.DecodeRuneInString(n)
-		if n == "" || !(unicode.IsUpper(r) || unicode.IsDigit(r)) || (len(n) < 2 && !unicode.IsDigit(r)) {
+	out, done := "", 0 // s up to done is in out
+	for i, r := range s {
+		if i == 0 || !(unicode.IsUpper(r) || unicode.IsDigit(r)) {
 			continue
 		}
-		for from := 0; ; {
-			i := strings.Index(s[from:], n)
-			if i < 0 {
+		if p, _ := utf8.DecodeLastRuneInString(s[:i]); !(unicode.IsLower(p) || p == ')') {
+			continue
+		}
+		// a capital letter or a digit right after a small letter: glued when a name starts here (the names
+		// are looked at only at such a place: a leg has thousands of them)
+		for _, n := range names {
+			if n != "" && (len(n) >= 2 || unicode.IsDigit(r)) && strings.HasPrefix(s[i:], n) {
+				out += s[done:i] + " "
+				done = i
 				break
 			}
-			i += from
-			if p, _ := utf8.DecodeLastRuneInString(s[:i]); i > 0 && (unicode.IsLower(p) || p == ')') {
-				s = s[:i] + " " + s[i:]
-				i++
-			}
-			from = i + len(n)
 		}
 	}
-	return s
+	return out + s[done:]
 }
 
 // bgRe: a length without its number in the Bulgarian of Valhalla 3.9 (its words for lengths have no
