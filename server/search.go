@@ -28,10 +28,8 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if lim != nil && !lim.allow(clientIP(r), time.Now()) {
-		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Retry-After", "600")
-		w.WriteHeader(http.StatusTooManyRequests)
-		io.WriteString(w, `{"error":{"code":"too_many","message":"Too many searches. Please wait a few minutes."}}`)
+		routeError(w, http.StatusTooManyRequests, "too_many", "Too many searches. Please wait a few minutes.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 80*time.Second) // a search may take a minute
@@ -56,7 +54,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	resp, err := s.searchClient.Do(req)
 	if err != nil {
 		s.log.Warn("search", "err", err)
-		http.Error(w, `{"error":{"code":"failed","message":"The search failed. Please try again."}}`, http.StatusBadGateway)
+		routeError(w, http.StatusBadGateway, "failed", "The search failed. Please try again.")
 		return
 	}
 	defer resp.Body.Close()
@@ -69,7 +67,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	if lang := r.URL.Query().Get("lang"); resp.StatusCode == http.StatusOK && langs[lang] != 0 {
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 		if err != nil {
-			http.Error(w, `{"error":{"code":"failed","message":"The search failed. Please try again."}}`, http.StatusBadGateway)
+			routeError(w, http.StatusBadGateway, "failed", "The search failed. Please try again.")
 			return
 		}
 		w.WriteHeader(resp.StatusCode)

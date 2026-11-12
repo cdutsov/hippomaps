@@ -39,7 +39,7 @@ func (s *Server) traffic(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if c.body == nil || now.Sub(c.at) > 15*time.Minute {
-		http.Error(w, `{"error":{"code":"failed","message":"No traffic information at the moment."}}`, http.StatusBadGateway)
+		routeError(w, http.StatusBadGateway, "failed", "No traffic information at the moment.")
 		return
 	}
 	h := w.Header()

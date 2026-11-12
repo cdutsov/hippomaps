@@ -125,3 +125,40 @@ func TestSearchSlow(t *testing.T) {
 		}
 	}
 }
+
+// overpass-search does not answer: 502 with the error as JSON (it was sent as text/plain)
+func TestSearchUpstreamDown(t *testing.T) {
+	up := httptest.NewServer(http.NotFoundHandler())
+	up.Close()
+	s := testServer(t, nil, func(c *Config) { c.Base = "/"; c.SearchUpstream = up.URL; c.SearchesPerIP = 1 })
+	w := get(s, "/api/search/search?q=x&lang=de")
+	if w.Code != 502 || w.Header().Get("Content-Type") != "application/json" || !strings.Contains(w.Body.String(), `"code":"failed"`) {
+		t.Errorf("search without overpass-search: %d %s %s", w.Code, w.Header().Get("Content-Type"), w.Body)
+	}
+	w = get(s, "/api/search/search?q=x")
+	if w.Code != 429 || w.Header().Get("Content-Type") != "application/json" || w.Header().Get("Retry-After") != "600" {
+		t.Errorf("over the limit: %d %v", w.Code, w.Header())
+	}
+}
+
+// an answer of overpass-search that is not 200, or not JSON, goes back as it came, also with lang
+func TestSearchAnswerAsItCame(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("q") == "bad" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(400)
+			io.WriteString(w, `{"error":{"code":"bad_request","message":"Restaurant, in the view"}}`)
+			return
+		}
+		w.Header().Set("Cache-Control", "max-age=60")
+		io.WriteString(w, `<html>Restaurant, in the view`)
+	}))
+	t.Cleanup(up.Close)
+	s := testServer(t, nil, func(c *Config) { c.Base = "/"; c.SearchUpstream = up.URL })
+	if w := get(s, "/api/search/search?q=bad&lang=de"); w.Code != 400 || !strings.Contains(w.Body.String(), "Restaurant, in the view") {
+		t.Errorf("an error of overpass-search: %d %s", w.Code, w.Body)
+	}
+	if w := get(s, "/api/search/search?q=x&lang=de"); w.Code != 200 || w.Body.String() != `<html>Restaurant, in the view` || w.Header().Get("Cache-Control") != "max-age=60" {
+		t.Errorf("an answer that is not JSON: %d %s", w.Code, w.Body)
+	}
+}
