@@ -52,8 +52,6 @@ const EN = {
   hints: ["restaurants near Lake Zurich", "gas stations along the A3", "bridges over the Rhine in Basel", "castles in Ticino",
     "mountain huts over 2500 m in Valais", "campsites by Lake Geneva", "beer gardens in Munich", "lighthouses in Brittany",
     "vegan restaurants in Zurich", "viewpoints near Lucerne", "drinking water in Geneva", "ice cream along the Limmat"],
-  examples: ["cafés", "Migros", "museums in Bern", "playgrounds near me", "restaurants open now", "hotels along the Limmat in Zurich"],
-  intro: "Search in plain words: a place, a chain, or what and where. A word alone searches the map view.",
   // the start, under the search box: what the search reads, with a short and a longer search of the map view ({0}, {1}),
   // and more searches of what the map shows (ideasFor)
   startText: "hippomaps understands plain language, from short searches like {0} to longer ones like {1}.",
@@ -89,8 +87,6 @@ const EN = {
   close: "Close",
   save: "Save",
   saved: "Saved",
-  starred: "Saved places",
-  recent: "Recent searches",
   forgetRecent: "Forget recent searches",
   // the menu, below Forget recent searches: [ ] marks the link to the source code
   aboutApp: "HippoMaps is [free open-source software]. It doesn't track you or sell your data.",
@@ -186,7 +182,6 @@ const EN = {
   flatMap: "Flat map",
   tiltedMap: "Tilted map",
   arrival: "Arrival",
-  left: "left",
   rerouting: "New route…",
   rerouted: "Route recalculated.",
   gpsLost: "GPS signal lost.",
@@ -211,7 +206,6 @@ const EN = {
   trafficKinds: { closure: "Closed", jam: "Queue", works: "Roadworks", accident: "Accident", obstruction: "Obstruction", weather: "Weather", event: "Event", slow: "Slow traffic" },
   atNight: "at night",
   byDay: "by day",
-  until: (d) => `until ${d}`,
   trafficCredit: "Traffic: Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).",
   delay: (m) => `+${m} min traffic`,
   transit: "Transit",
@@ -295,7 +289,6 @@ const ICON = {
   recent: "M12 21a9 9 0 1 0-9-9M3 12V7M3 12h5M12 7v5l3 2",
   map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
   wheel: "M12 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM11 8v6h5l2 5M8 11a5 5 0 1 0 6 7",
-  food: "M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 0-3 2-3 5s1 4 3 4v9",
   book: "M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4zM5 16a4 4 0 0 1 4-4h10",
   burger: "M4 7h16M4 12h16M4 17h16",
   locate: "M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3",
@@ -540,7 +533,7 @@ try {
 
 // ------------------------------------------------------------------ the map style
 // The style of the map, 3D terrain, 3D buildings and relief shading, kept in the browser. The
-// page is dark with the dark and black styles; the first style follows the theme of the site.
+// page is dark with the dark style and the night of Driving; the first style follows the theme of the site.
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const look = {
   style: T.styles.some(([k]) => k === store.get("hm-style")) ? store.get("hm-style") : "auto",
@@ -550,7 +543,6 @@ const look = {
   traffic: store.get("hm-traffic") === "1", // off at first
   transit: store.get("hm-transit") === "1",
 };
-// the height of the sun in degrees at a place and time (to a few tenths of a degree; NOAA)
 // the sun at a time: its declination, and its hour angle (radians) at longitude 0
 function sunAt(when) {
   const rad = Math.PI / 180, d = when / 864e5 - 10957.5; // days since 2000-01-01 12:00 UTC
@@ -560,6 +552,7 @@ function sunAt(when) {
   const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
   return { dec, ha0: gmst * 15 * rad - ra };
 }
+// the height of the sun in degrees at a place and time (to a few tenths of a degree; NOAA)
 function sunHeight(lon, lat, when = new Date()) {
   const rad = Math.PI / 180, { dec, ha0 } = sunAt(when), ha = ha0 + lon * rad;
   return Math.asin(Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(ha)) / rad;
@@ -604,7 +597,7 @@ const isNight = (lon, lat) => sunHeight(lon, lat) < -0.833; // the sun below the
 let meForSun = NEAR ? [NEAR[1], NEAR[0]] : null;
 const nightNow = () => (meForSun ? isNight(meForSun[0], meForSun[1]) : ((h) => h < 7 || h >= 19)(new Date().getHours()));
 autoDark = nightNow();
-const theme = () => (["dark", "black", "driving-night"].includes(shownStyle()) ? "dark" : "light");
+const theme = () => (["dark", "driving-night"].includes(shownStyle()) ? "dark" : "light");
 document.documentElement.dataset.theme = theme();
 const styleURL = (name = shownStyle()) => {
   const p = new URLSearchParams({ lang: ["de", "fr", "it"].includes(LANG) ? LANG : "en" });
@@ -788,29 +781,19 @@ compassBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hid
   '<path d="M12 3 15.5 12h-7z" fill="#d0312d"/><path d="M12 21 8.5 12h7z" fill="currentColor" opacity=".55"/></g></svg>';
 const locBtn = el("button", "lm-locate", { type: "button", title: T.myLocation, "aria-label": T.myLocation });
 locBtn.innerHTML = svg(ICON.locate, 22);
-// 2D or 3D, the button names the other: on the map the terrain and the tilt; in navigation the map that
-// follows, flat or tilted (hm-nav-2d)
+// 2D or 3D, the button names the other: the terrain and the tilt of the map (not in navigation: the map follows
+// tilted there, and the button is out of view)
 const dimBtn = el("button", "lm-dim", { type: "button" });
 function showDim() {
-  const flat = nav.on ? nav.flat : !look.threeD;
-  dimBtn.textContent = flat ? "3D" : "2D";
-  dimBtn.title = dimBtn.ariaLabel = flat ? T.tiltedMap : T.flatMap;
+  dimBtn.textContent = look.threeD ? "2D" : "3D";
+  dimBtn.title = dimBtn.ariaLabel = look.threeD ? T.flatMap : T.tiltedMap;
 }
-dimBtn.addEventListener("click", () => {
-  if (!nav.on) return setThreeD(!look.threeD);
-  nav.flat = !nav.flat;
-  store.set("hm-nav-2d", nav.flat ? "1" : "0");
-  showDim();
-  if (nav.follow) map.easeTo({ pitch: nav.flat ? 0 : NAV_PITCH, duration: 500 });
-});
+showDim();
+dimBtn.addEventListener("click", () => setThreeD(!look.threeD));
 mapEl.append(areaBtn, compassBtn, dimBtn, locBtn);
 const needle = compassBtn.querySelector(".lm-needle");
-const turnNeedle = () => {
-  needle.style.transform = `rotate(${-map.getBearing()}deg)`;
-  compassBtn.classList.toggle("lm-turned", Math.abs(map.getBearing()) > 0.5 || map.getPitch() > 0.5);
-};
+const turnNeedle = () => { needle.style.transform = `rotate(${-map.getBearing()}deg)`; };
 map.on("rotate", turnNeedle);
-map.on("pitch", turnNeedle);
 map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
@@ -1204,10 +1187,7 @@ map.on("style.load", () => {
   // the area of a tap: its outline dashed in the blue of overpass.ch
   add({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "butt" },
     paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95, "line-dasharray": [3, 2] } }, below);
-  // directions: the line with a casing, the start (white) and the destination (red)
   const line = ["==", ["geometry-type"], "LineString"];
-  // traffic under the route: closures dark red, queues red, slow traffic and roadworks orange
-  const tline = ["==", ["geometry-type"], "LineString"];
   // transit: each line in its colour, metro wider than tram; its number along it when near
   add({ id: "lm-transit-line", type: "line", source: "lm-transit", layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["to-color", ["get", "colour"], "#7a7f87"], "line-opacity": 0.9,
@@ -1216,11 +1196,12 @@ map.on("style.load", () => {
   if (font) add({ id: "lm-transit-ref", type: "symbol", source: "lm-transit", minzoom: 13, filter: ["has", "ref"],
     layout: { "symbol-placement": "line", "text-field": ["get", "ref"], "text-font": font, "text-size": 12, "symbol-spacing": 300 },
     paint: { "text-color": "#fff", "text-halo-color": ["to-color", ["get", "colour"], "#7a7f87"], "text-halo-width": 2.5 } });
-  add({ id: "lm-traffic-line", type: "line", source: "lm-traffic", filter: ["all", tline, ["!=", ["get", "t"], "works"]],
+  // traffic under the route: roads closed dark red, other closures grey, queues red, slow traffic and roadworks orange
+  add({ id: "lm-traffic-line", type: "line", source: "lm-traffic", filter: ["all", line, ["!=", ["get", "t"], "works"]],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#9ca3af", "jam", "#dc2626", "#f08c00"],
       "line-width": ["interpolate", ["linear"], ["zoom"], 7, 2, 14, 6], "line-opacity": 0.85 } }, below);
-  add({ id: "lm-traffic-works", type: "line", source: "lm-traffic", minzoom: 11, filter: ["all", tline, ["==", ["get", "t"], "works"]],
+  add({ id: "lm-traffic-works", type: "line", source: "lm-traffic", minzoom: 11, filter: ["all", line, ["==", ["get", "t"], "works"]],
     paint: { "line-color": "#f08c00", "line-width": 3, "line-dasharray": [2, 1.5], "line-opacity": 0.8 } }, below);
   const tpt = ["==", ["geometry-type"], "Point"];
   add({ id: "lm-traffic-pt", type: "circle", source: "lm-traffic", minzoom: 7, filter: ["all", tpt, ["!=", ["get", "t"], "works"]], paint: {
@@ -1230,6 +1211,7 @@ map.on("style.load", () => {
     "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-color": "#f08c00" } });
   add({ id: "lm-stars", type: "symbol", source: "lm-stars", layout: { "icon-image": "lm-star-icon",
     "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 15, 1], "icon-allow-overlap": true, "icon-ignore-placement": true } });
+  // directions: the line with a casing
   add({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
   add({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
@@ -1343,8 +1325,7 @@ function trafficAt(e) {
   if (!f) return false;
   const it = trafficById.get(f.properties.id);
   const box2 = el("div", "lm-traffic-pop");
-  const kind = it ? (it.kind === "closure" && !it.closed ? "closure" : it.kind) : f.properties.t;
-  const head = el("strong", "", {}, T.trafficKinds[kind] || T.trafficKinds[f.properties.t] || T.traffic);
+  const head = el("strong", "", {}, T.trafficKinds[it?.kind] || T.trafficKinds[f.properties.t] || T.traffic);
   box2.append(head);
   if (it?.when) head.append(` · ${it.when === "duringTheNight" ? T.atNight : T.byDay}`);
   if (it) {
@@ -1425,7 +1406,8 @@ function transitQuery(text) {
     : /metro|métro|subway|underground|u-?bahn/.test(w) ? ["subway", "light_rail", "monorail"] : ["subway", "light_rail", "monorail", "tram"];
   return { kinds, place: m[2].trim() };
 }
-async function transitSearch(q, text) {
+// signal: of the search (run); a newer search or the X aborts it, and this one writes nothing more
+async function transitSearch(q, text, signal) {
   clear();
   showView(listView);
   title.textContent = text;
@@ -1434,10 +1416,11 @@ async function transitSearch(q, text) {
   setTransit(true);
   let place = null;
   try {
-    const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q: q.place, limit: "1", lang: ["de", "fr"].includes(UI) ? UI : "en" })}`);
+    const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q: q.place, limit: "1", lang: ["de", "fr"].includes(UI) ? UI : "en" })}`, { signal });
     place = (await r.json()).features?.[0];
   } catch {}
-  if (!place) return say(T.failed, true);
+  if (signal?.aborted) return;
+  if (!place) return say(failText(T.failed), true);
   const name = place.properties.name || q.place, ext = place.properties.extent; // [west, north, east, south]
   title.textContent = T.transitIn(name);
   const done = new Promise((ok) => map.once("moveend", ok));
@@ -1445,6 +1428,7 @@ async function transitSearch(q, text) {
   else fit(() => glide({ center: place.geometry.coordinates, zoom: 12, padding: pad() }));
   await done;
   const fs = await loadTransit();
+  if (signal?.aborted) return;
   say("");
   // the lines, once each: by kind, then by number
   const seen = new Map();
@@ -1472,11 +1456,12 @@ async function transitSearch(q, text) {
 
 // ------------------------------------------------------------------ the bubbles
 // Over the map: searches of the map view in a tap (fewer on a phone), and Transit, which switches its lines.
-// A bubble searches the words it shows, in the language of the page (also after a change of it)
+// A bubble searches the words it shows, in the language of the page (also after a change of it: data-n is its
+// place in T.bubbles)
 const bubbles = el("div", "lm-bubbles");
-for (const [q, label, wide] of T.bubbles) {
+for (const [n, [q, label, wide]] of T.bubbles.entries()) {
   if (q === "transit" && !TRANSIT) continue;
-  const b = el("button", `lm-bubble${wide ? " lm-wide-only" : ""}${q === "transit" ? " lm-bubble-transit" : ""}`, { type: "button" }, label);
+  const b = el("button", `lm-bubble${wide ? " lm-wide-only" : ""}${q === "transit" ? " lm-bubble-transit" : ""}`, { type: "button", "data-n": n }, label);
   if (q === "transit") {
     b.setAttribute("aria-pressed", String(look.transit));
     b.addEventListener("click", () => setTransit(!look.transit));
@@ -1793,6 +1778,7 @@ function nightStyle(st) {
 }
 const openMenu = (open) => {
   menu.hidden = backdrop.hidden = !open;
+  if (open) forgetBtn.disabled = !saved.recent.length; // something to forget (a search since the last time)
   for (const b of [menuBtn, mapMenuBtn]) b.setAttribute("aria-expanded", String(open));
   if (open) closeMenuBtn.focus();
 };
@@ -2342,7 +2328,8 @@ async function run(text, extra = {}, { push = true, bbox = null, sel = null } = 
     state.text = text;
     state.extra = {};
     if (push) writeURL(null);
-    return transitSearch(tq, text);
+    hereDone(); // the pin of a point looked at before, as for any search
+    return transitSearch(tq, text, ctl.signal);
   }
   const params = new URLSearchParams({ q: text, bbox: bbox || viewBox(), lang: LANG }); // places in the language of the reader ("Tessin")
   for (const k of extraKeys) if (extra[k]) params.set(k, extra[k]);
@@ -2859,9 +2846,8 @@ function show(d, sel) {
   qPre.textContent = d.query || "";
   query.hidden = !d.query;
   setSheet(place ? "peek" : "half");
-  const box = d.results?.bbox;
   const pick = sel && state.byId.get(sel);
-  if (box?.length === 4 && !pick) fitBox(box, place ? 16 : 16.5);
+  if (bb?.length === 4 && !pick) fitBox(bb, place ? 16 : 16.5);
   if (place) {
     count.textContent = "";
     const c = center(place);
@@ -3775,7 +3761,8 @@ function placeField(which) {
   const id = `lm-end-list-${++fieldN}`;
   const box = el("div", "lm-end-box");
   const name = isStop ? T.stop : which === "from" ? T.from : T.to;
-  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : which === "to" ? route.toText || "" : "", placeholder: isStop ? T.stopHint : which === "from" ? T.fromHint : T.toHint,
+  const hint = () => (isStop ? T.stopHint : which === "from" ? T.fromHint : T.toHint); // in the language of the page now
+  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : which === "to" ? route.toText || "" : "", placeholder: hint(),
     "aria-label": isStop ? `${T.stop} ${which + 1}` : name, role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id,
     autocomplete: "off", spellcheck: "false", enterkeyhint: "search", maxlength: "160" });
   // the suggestions: in the field, under what is typed; the rest of the panel moves down for them
@@ -3857,7 +3844,6 @@ function placeField(which) {
   });
   // a tap empties the field to type (the place stays as the hint): selecting its text would open the
   // copy and paste menu of mobile browsers
-  const hint = field.placeholder;
   field.addEventListener("focus", () => {
     const now = endOf(which);
     if (now && field.value === now.label) {
@@ -3872,7 +3858,7 @@ function placeField(which) {
   field.addEventListener("focusout", (e) => { if (!e.relatedTarget?.matches?.(".lm-end-input")) routeFieldOut(); });
   field.addEventListener("blur", () => setTimeout(() => {
     close();
-    field.placeholder = hint;
+    field.placeholder = hint();
     const now = endOf(which);
     if (now && field.value !== now.label) field.value = now.label; // back to the place chosen
     routeToTop();
@@ -4432,8 +4418,7 @@ function preAt(v) {
   const cfg = NAV[route.mode];
   return Math.min(cfg.preMax, Math.max(cfg.preMin, v * cfg.pre));
 }
-// flat: false, navigation follows tilted (its 2D/3D button is gone)
-const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", flat: false, spoken: new Set(), off: 0, rerouting: false };
+const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", spoken: new Set(), off: 0, rerouting: false };
 
 // During navigation the camera eases from fix to fix and never stops, and the traveller asks for a
 // frame every frame: on a 90 or 120 Hz screen the map would draw 90 or 120 times a second. Capped
@@ -4901,7 +4886,7 @@ function navUpdate(p, rawPos, off = false) {
   navDayNight(p, at);
   if (nav.elev) nav.elev.mark((p.along / (total || 1)) * nav.elev.km);
   if (nav.follow) {
-    map.easeTo({ center: at, bearing: heading, pitch: nav.flat ? 0 : NAV_PITCH, zoom: navZoom(at), padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
+    map.easeTo({ center: at, bearing: heading, pitch: NAV_PITCH, zoom: navZoom(at), padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
   }
   drawNavLine(p);
   if (nav.sim && left <= cfg.arrive) navArrive(); // with real fixes onFix decides (arrivedNow)
@@ -4969,7 +4954,7 @@ const mapH = () => mapHeight || (mapHeight = mapEl.clientHeight);
 function navZoom(at) {
   const ms = Math.max(0, nav.sim ? (nav.speed || 0) / 3 : nav.speed || 0);
   const ahead = Math.min(1000, Math.max(120, ms * 25));
-  const px = mapH() * 0.55 * (nav.flat ? 1 : 2);
+  const px = mapH() * 0.55 * 2; // the map above the traveller, twice its ground when tilted
   const slow = route.mode !== "car";
   const target = Math.min(slow ? 19.5 : 18.6, Math.max(slow ? 16 : 15,
     Math.log2(((slow ? 156543 : 78271.5) * Math.cos((at[1] * Math.PI) / 180) * px) / ahead)));
@@ -5167,7 +5152,9 @@ async function reroute(ll, stops = null, { quiet = false } = {}) {
   nav.routing = false;
   setTimeout(() => { nav.rerouting = false; }, 10e3); // not more often than every 10 s
 }
-async function navStart(sim) {
+// All of it at once, in the tap: with a wait in it (for the screen lock, say), an End tapped meanwhile would be
+// followed by the watch of the location and the timers of a navigation that is over, and nothing would stop them
+function navStart(sim) {
   if (!route.answer) return;
   if (!nav.muted) unlockSound();
   preSay(route.answer.steps.slice(0, 2), route.answer.steps);
@@ -5193,7 +5180,6 @@ async function navStart(sim) {
   root.classList.add("lm-navigating");
   nav.offlineSaid = false;
   offlineNote();
-  showDim();
   navBox.hidden = false;
   navCenter.hidden = true;
   navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
@@ -5212,7 +5198,7 @@ async function navStart(sim) {
   });
   nav.avatar.set(nav.d.line[0], bearingOf(nav.d.line[0], nav.d.line[1] || nav.d.line[0]));
   setTimeout(() => map.resize(), 0);
-  await keepAwake();
+  keepAwake();
   if (!sim) { // the map of the route, once the first tiles of navigation are there
     const trip = nav.trip;
     setTimeout(() => { if (nav.on && nav.trip === trip) cacheRoute(nav.d); }, 3000);
@@ -5256,8 +5242,12 @@ async function navStart(sim) {
 async function keepAwake() {
   if (!nav.on || nav.lock || document.visibilityState !== "visible") return;
   try {
-    nav.lock = await navigator.wakeLock?.request("screen");
-    nav.lock?.addEventListener("release", () => { nav.lock = null; });
+    const lock = await navigator.wakeLock?.request("screen");
+    if (!lock) return;
+    // navigation ended while the browser was asked (or a second lock came): the screen may sleep
+    if (!nav.on || nav.lock) return void lock.release().catch(() => {});
+    nav.lock = lock;
+    lock.addEventListener("release", () => { if (nav.lock === lock) nav.lock = null; });
   } catch {}
 }
 document.addEventListener("visibilitychange", keepAwake);
@@ -5284,7 +5274,6 @@ function navStop() {
   navBox.hidden = true;
   root.classList.remove("lm-navigating", "lm-nav-elev-on");
   offlineNote();
-  showDim();
   followMe();
   setTimeout(() => {
     map.resize();
@@ -5497,7 +5486,6 @@ async function navPointOpen(ll, symbol) {
     press(e.originalEvent.clientX, e.originalEvent.clientY);
   });
 }
-showDim();
 navMute.addEventListener("click", () => {
   nav.muted = !nav.muted;
   store.set("hm-mute", nav.muted ? "1" : "0");
@@ -5514,16 +5502,16 @@ navOverview.addEventListener("click", () => {
 navCenter.addEventListener("click", () => { nav.follow = true; navCenter.hidden = true; });
 // The visitor zooms out of tilted navigation: the camera turns from the tilt to looking straight down,
 // tilted at zoom 15 and above, flat at 12 and below; zoomed in again it tilts back. The zoom buttons,
-// the wheel and two fingers; not the camera that follows (no originalEvent), not the 2D map.
+// the wheel and two fingers; not the camera that follows (no originalEvent).
 // The tilt changes once the gesture is over, in a short ease: a change of the camera during a gesture
 // stops it (jumpTo resets the handlers of MapLibre), and a pinch would stall at every step of its zoom.
 const navPitchFor = (z) => NAV_PITCH * Math.min(1, Math.max(0, (z - 12) / 3));
 let navZoomedBy = false; // a zoom of the visitor in navigation, its tilt still to come
-map.on("zoomstart", (e) => { if (e.originalEvent && nav.on && !nav.follow && !nav.flat) navZoomedBy = true; });
+map.on("zoomstart", (e) => { if (e.originalEvent && nav.on && !nav.follow) navZoomedBy = true; });
 map.on("moveend", () => {
   if (!navZoomedBy || map.isMoving()) return;
   navZoomedBy = false;
-  if (!nav.on || nav.follow || nav.flat) return;
+  if (!nav.on || nav.follow) return;
   const p = navPitchFor(map.getZoom());
   if (Math.abs(map.getPitch() - p) > 0.5) map.easeTo({ pitch: p, duration: 400 });
 });
@@ -5541,6 +5529,21 @@ for (const ev of ["pointerdown", "wheel", "touchstart"]) {
 // A new language at once, with what is open kept: the texts built once at the start are found in the
 // page by their old wording and given the new one; the map names, the place, the route and the steps
 // of navigation are asked again in the new language. Navigation goes on from where it is.
+// textSwaps: each text of old with its text in now, for the texts that differ. A text that is two labels with two
+// translations (Fuel: a kind along the route, Carburant, and a bubble, Stations-service) keeps the first, and clash
+// (when given) is told the path of the other: such labels are written again by their key (setLang)
+function textSwaps(old, now, clash) {
+  const swap = new Map();
+  const pair = (a, b, path) => {
+    if (typeof a === "string" && typeof b === "string") {
+      if (a === b) return;
+      if (!swap.has(a)) swap.set(a, b);
+      else if (swap.get(a) !== b) clash?.(path, a);
+    } else if (a && b && typeof a === "object" && typeof b === "object") for (const k of Object.keys(a)) pair(a[k], b[k], path ? `${path}.${k}` : k);
+  };
+  pair(old, now, "");
+  return swap;
+}
 function setLang(chosen) {
   // the strings (functions drop out), without the words of the ideas at the start: those are drawn again, and a word
   // of them written as a label elsewhere ("Restaurants" in German) would turn that label into the word of an idea
@@ -5551,12 +5554,7 @@ function setLang(chosen) {
   STEP_LANG = navLangOf();
   document.documentElement.lang = UI;
   loadTexts();
-  const swap = new Map();
-  const pair = (a, b) => {
-    if (typeof a === "string" && typeof b === "string") { if (a !== b && !swap.has(a)) swap.set(a, b); }
-    else if (a && b && typeof a === "object" && typeof b === "object") for (const k of Object.keys(a)) pair(a[k], b[k]);
-  };
-  pair(old, strings());
+  const swap = textSwaps(old, strings());
   const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n = walk.nextNode(); n; n = walk.nextNode()) {
     const t = n.data.trim(), to = t && swap.get(t);
@@ -5568,6 +5566,9 @@ function setLang(chosen) {
       if (to) e.setAttribute(a, to);
     }
   }
+  // the labels that share a word with another in some language, by their key
+  for (const b of bubbles.children) b.textContent = T.bubbles[b.dataset.n][1];
+  for (const c of document.querySelectorAll(".lm-along-cats [data-cat]")) c.textContent = T.alongCats[c.dataset.cat];
   foot.textContent = footText();
   menuFoot.textContent = menuFootText();
   fillAbout();
@@ -5576,7 +5577,12 @@ function setLang(chosen) {
   hints.splice(0, hints.length, ...(T.hints || []));
   if (!input.value) newHint();
   drawIdeas(); // the ideas at the start in the new language, with the names of the map in it
-  for (const end of [route.from, route.to]) if (end?.me) end.label = T.myPlace;
+  // the names the page gave a start, a stop or the destination (a field shows the name of its place again when it
+  // loses the focus)
+  for (const end of [route.from, route.to, ...route.stops]) {
+    if (end?.me) end.label = T.myPlace;
+    else if (end?.label === old.mapPoint) end.label = T.mapPoint;
+  }
   for (const f of routeView.querySelectorAll("input")) { const to = swap.get(f.value); if (to) f.value = to; }
   restyle(); // the names on the map
   stepsAgain();

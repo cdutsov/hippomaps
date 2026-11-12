@@ -1126,6 +1126,16 @@ try:
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)
     check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 30), "the page in German")
+    # a word that is two labels in one language and two words in the next: each label keeps its own (Tankstellen is a
+    # bubble and a kind along a route in German, Stations-service and Carburant in French; Cafés stays Cafés)
+    def page_lang(lang):
+        js(f"(() => {{ const s = document.querySelector('.lm-lang-select'); s.value = '{lang}'; s.dispatchEvent(new Event('change')) }})()")
+        wait(f"document.documentElement.lang === '{lang}'", 10)
+        return js("[...document.querySelectorAll('.lm-bubble')].map(b => b.textContent).join('|')") or ""
+    fr_bubbles, en_bubbles, de_bubbles = page_lang("fr"), page_lang("en"), page_lang("de")
+    check("Stations-service" in fr_bubbles and "Carburant" not in fr_bubbles and "Fuel" in en_bubbles and "Cafés" in en_bubbles
+          and "Tankstellen" in de_bubbles and "Cafés" in de_bubbles and "Bancomaten" in de_bubbles,
+          f"the bubbles keep their own words through French, English and German ({fr_bubbles}; {en_bubbles}; {de_bubbles})")
     # the start in German: the sentence and the searches of the view, no English in them
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click(); document.querySelector('.lm-input').blur()")
     de_ok = wait("/versteht Alltagssprache/.test(document.querySelector('.lm-start-text')?.textContent || '') && document.querySelectorAll('.lm-start-label').length >= 2", 15)
@@ -1149,6 +1159,16 @@ try:
         check(len(mv) == 1 and mv[0]["ms"] <= 600 and mv[0]["out"] <= 0.05, f"a near place: one short glide, no flight out ({mv})")
     else:
         check(False, "the Restaurants bubble in German: no results")
+    # Forget recent searches in the menu: off once they are forgotten, on again when a search came after
+    def forget_off(then=""):
+        js("document.querySelector('.lm-map-burger').click()")
+        off = js(f"(() => {{ const b = document.querySelector('.lm-forget'), was = b.disabled; {then}; return was; }})()")
+        js("document.querySelector('.lm-backdrop').click()")
+        return off
+    before = forget_off("b.click()")
+    forgotten = forget_off() and js("localStorage.getItem('hm-recent') === '[]'")
+    js("[...document.querySelectorAll('.lm-bubble')].find(b => /Hotels/.test(b.textContent))?.click()")
+    check(before is False and forgotten and forget_off() is False, "Forget recent searches: off once forgotten, on again after the next search")
     js("localStorage.removeItem('hm-lang')")
 
     # the signs along a route by car: speed cameras where a navigation app may show them (the Netherlands), stop signs
