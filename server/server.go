@@ -1,5 +1,9 @@
-// Package server serves the map app: the page, its files, pictures from Wikimedia
-// Commons, and directions from Valhalla. The search itself is the API of overpass-search, which the browser calls.
+// Package server serves the map app: the page and its files, and what the page asks of other services,
+// each in a file of its own: the search of overpass-search (search.go, its words in the language of the
+// page in labels.go), pictures from Wikimedia Commons (picture.go), directions from Valhalla (route.go) with
+// the signs beside the route (marks.go) and the places along it (along.go), spoken sentences (say.go),
+// traffic (traffic.go), transit lines (transit.go), donations (donate.go), and the place of the visitor
+// from the IP address (geoip.go).
 package server
 
 import (
@@ -36,7 +40,6 @@ type Config struct {
 	PublicURL string
 	TilesURL  string // the map tiles API: https://api.overpass.ch
 	MapsKey   string // a key of the tiles API for this page
-	Version   string
 
 	Pictures      bool          // pictures from Wikimedia Commons
 	PicturesPerIP int           // pictures a visitor gets in PictureWindow
@@ -234,7 +237,7 @@ func (s *Server) listed(p string) bool {
 	return p == s.home() || p == b+"/privacy" || p == b+"/de/privacy"
 }
 
-// home is the path of the page
+// home is the path of the page, and the scope of its service worker
 func (s *Server) home() string {
 	if b := strings.TrimRight(s.cfg.Base, "/"); b != "" {
 		return b
@@ -262,7 +265,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Version": s.cfg.Version, "Donate": s.donations(), "Scope": s.scope(), "SW": s.cfg.ServiceWorker}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}
@@ -280,14 +283,6 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf.Bytes())
 }
 
-// scope is the scope of the service worker: the path of the page
-func (s *Server) scope() string {
-	if b := strings.TrimRight(s.cfg.Base, "/"); b != "" {
-		return b
-	}
-	return "/"
-}
-
 // serviceWorker serves web/sw.js, or with ServiceWorker off web/sw-off.js; the browser asks for it again at each
 // visit (no-cache)
 func (s *Server) serviceWorker(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +298,7 @@ func (s *Server) serviceWorker(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Content-Type", "text/javascript; charset=utf-8")
 	h.Set("Cache-Control", "no-cache")
-	h.Set("Service-Worker-Allowed", s.scope())
+	h.Set("Service-Worker-Allowed", s.home()) // its scope: the path of the page
 	w.Write(b)
 }
 

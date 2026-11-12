@@ -144,7 +144,6 @@ func LookupNear(path, ip string) (Near, bool, error) {
 // zeros, a data section of typed values, and the metadata after a marker at the end of the file.
 
 type mmdb struct {
-	file       []byte
 	unmap      func()
 	nodes      uint32
 	recordBits int
@@ -202,7 +201,7 @@ func parseMMDB(b []byte) (*mmdb, error) {
 		return nil, fmt.Errorf("metadata: %w", err)
 	}
 	meta, _ := v.(map[string]any)
-	db := &mmdb{file: b}
+	db := &mmdb{}
 	nodes, ok1 := asUint(meta["node_count"])
 	bits, ok2 := asUint(meta["record_size"])
 	ipv, ok3 := asUint(meta["ip_version"])

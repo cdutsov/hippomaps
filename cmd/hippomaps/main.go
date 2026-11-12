@@ -58,7 +58,6 @@ func listen() string { return env("LISTEN", ":8096") }
 
 func config() (server.Config, error) {
 	cfg := server.DefaultConfig()
-	cfg.Version = Version
 	cfg.Base = env("BASE_PATH", cfg.Base)
 	cfg.SearchAPI = env("SEARCH_API", cfg.SearchAPI)
 	cfg.SearchUpstream = env("SEARCH_UPSTREAM", "")
