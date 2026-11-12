@@ -5151,7 +5151,9 @@ async function reroute(ll, stops = null, { quiet = false } = {}) {
   nav.routing = false;
   setTimeout(() => { nav.rerouting = false; }, 10e3); // not more often than every 10 s
 }
-async function navStart(sim) {
+// All of it at once, in the tap: with a wait in it (for the screen lock, say), an End tapped meanwhile would be
+// followed by the watch of the location and the timers of a navigation that is over, and nothing would stop them
+function navStart(sim) {
   if (!route.answer) return;
   if (!nav.muted) unlockSound();
   preSay(route.answer.steps.slice(0, 2), route.answer.steps);
@@ -5195,7 +5197,7 @@ async function navStart(sim) {
   });
   nav.avatar.set(nav.d.line[0], bearingOf(nav.d.line[0], nav.d.line[1] || nav.d.line[0]));
   setTimeout(() => map.resize(), 0);
-  await keepAwake();
+  keepAwake();
   if (!sim) { // the map of the route, once the first tiles of navigation are there
     const trip = nav.trip;
     setTimeout(() => { if (nav.on && nav.trip === trip) cacheRoute(nav.d); }, 3000);
@@ -5239,8 +5241,12 @@ async function navStart(sim) {
 async function keepAwake() {
   if (!nav.on || nav.lock || document.visibilityState !== "visible") return;
   try {
-    nav.lock = await navigator.wakeLock?.request("screen");
-    nav.lock?.addEventListener("release", () => { nav.lock = null; });
+    const lock = await navigator.wakeLock?.request("screen");
+    if (!lock) return;
+    // navigation ended while the browser was asked (or a second lock came): the screen may sleep
+    if (!nav.on || nav.lock) return void lock.release().catch(() => {});
+    nav.lock = lock;
+    lock.addEventListener("release", () => { if (nav.lock === lock) nav.lock = null; });
   } catch {}
 }
 document.addEventListener("visibilitychange", keepAwake);
