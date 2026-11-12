@@ -1406,7 +1406,8 @@ function transitQuery(text) {
     : /metro|métro|subway|underground|u-?bahn/.test(w) ? ["subway", "light_rail", "monorail"] : ["subway", "light_rail", "monorail", "tram"];
   return { kinds, place: m[2].trim() };
 }
-async function transitSearch(q, text) {
+// signal: of the search (run); a newer search or the X aborts it, and this one writes nothing more
+async function transitSearch(q, text, signal) {
   clear();
   showView(listView);
   title.textContent = text;
@@ -1415,10 +1416,11 @@ async function transitSearch(q, text) {
   setTransit(true);
   let place = null;
   try {
-    const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q: q.place, limit: "1", lang: ["de", "fr"].includes(UI) ? UI : "en" })}`);
+    const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q: q.place, limit: "1", lang: ["de", "fr"].includes(UI) ? UI : "en" })}`, { signal });
     place = (await r.json()).features?.[0];
   } catch {}
-  if (!place) return say(T.failed, true);
+  if (signal?.aborted) return;
+  if (!place) return say(failText(T.failed), true);
   const name = place.properties.name || q.place, ext = place.properties.extent; // [west, north, east, south]
   title.textContent = T.transitIn(name);
   const done = new Promise((ok) => map.once("moveend", ok));
@@ -1426,6 +1428,7 @@ async function transitSearch(q, text) {
   else fit(() => glide({ center: place.geometry.coordinates, zoom: 12, padding: pad() }));
   await done;
   const fs = await loadTransit();
+  if (signal?.aborted) return;
   say("");
   // the lines, once each: by kind, then by number
   const seen = new Map();
@@ -2324,7 +2327,8 @@ async function run(text, extra = {}, { push = true, bbox = null, sel = null } = 
     state.text = text;
     state.extra = {};
     if (push) writeURL(null);
-    return transitSearch(tq, text);
+    hereDone(); // the pin of a point looked at before, as for any search
+    return transitSearch(tq, text, ctl.signal);
   }
   const params = new URLSearchParams({ q: text, bbox: bbox || viewBox(), lang: LANG }); // places in the language of the reader ("Tessin")
   for (const k of extraKeys) if (extra[k]) params.set(k, extra[k]);
