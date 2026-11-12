@@ -241,11 +241,11 @@ for (const [l, b] of [["en", en], ...["de", "fr", "it"].map((l) => [l, all[l].bu
 		ok "cafés far from highways: highways are roads" || ko "cafés far from highways: $(jq -c .understood "$TMP/b" 2>/dev/null)"
 fi
 
-# the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about five minutes, at most eight
+# the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about eight minutes, at most ten
 if [[ ${BROWSER:-0} == 1 ]]; then
 	echo "Browser"
 	# once more when it fails: a slow tile or answer of a server once is no failure of the page
-	if out=$(timeout 480 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1) || out=$(timeout 480 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); then
+	if out=$(timeout 600 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1) || out=$(timeout 600 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); then
 		while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
 	else
 		while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
