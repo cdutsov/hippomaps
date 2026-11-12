@@ -1453,11 +1453,12 @@ async function transitSearch(q, text) {
 
 // ------------------------------------------------------------------ the bubbles
 // Over the map: searches of the map view in a tap (fewer on a phone), and Transit, which switches its lines.
-// A bubble searches the words it shows, in the language of the page (also after a change of it)
+// A bubble searches the words it shows, in the language of the page (also after a change of it: data-n is its
+// place in T.bubbles)
 const bubbles = el("div", "lm-bubbles");
-for (const [q, label, wide] of T.bubbles) {
+for (const [n, [q, label, wide]] of T.bubbles.entries()) {
   if (q === "transit" && !TRANSIT) continue;
-  const b = el("button", `lm-bubble${wide ? " lm-wide-only" : ""}${q === "transit" ? " lm-bubble-transit" : ""}`, { type: "button" }, label);
+  const b = el("button", `lm-bubble${wide ? " lm-wide-only" : ""}${q === "transit" ? " lm-bubble-transit" : ""}`, { type: "button", "data-n": n }, label);
   if (q === "transit") {
     b.setAttribute("aria-pressed", String(look.transit));
     b.addEventListener("click", () => setTransit(!look.transit));
@@ -3755,7 +3756,8 @@ function placeField(which) {
   const id = `lm-end-list-${++fieldN}`;
   const box = el("div", "lm-end-box");
   const name = isStop ? T.stop : which === "from" ? T.from : T.to;
-  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : which === "to" ? route.toText || "" : "", placeholder: isStop ? T.stopHint : which === "from" ? T.fromHint : T.toHint,
+  const hint = () => (isStop ? T.stopHint : which === "from" ? T.fromHint : T.toHint); // in the language of the page now
+  const field = el("input", "lm-end-input", { type: "search", value: v ? v.label : which === "to" ? route.toText || "" : "", placeholder: hint(),
     "aria-label": isStop ? `${T.stop} ${which + 1}` : name, role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id,
     autocomplete: "off", spellcheck: "false", enterkeyhint: "search", maxlength: "160" });
   // the suggestions: in the field, under what is typed; the rest of the panel moves down for them
@@ -3837,7 +3839,6 @@ function placeField(which) {
   });
   // a tap empties the field to type (the place stays as the hint): selecting its text would open the
   // copy and paste menu of mobile browsers
-  const hint = field.placeholder;
   field.addEventListener("focus", () => {
     const now = endOf(which);
     if (now && field.value === now.label) {
@@ -3852,7 +3853,7 @@ function placeField(which) {
   field.addEventListener("focusout", (e) => { if (!e.relatedTarget?.matches?.(".lm-end-input")) routeFieldOut(); });
   field.addEventListener("blur", () => setTimeout(() => {
     close();
-    field.placeholder = hint;
+    field.placeholder = hint();
     const now = endOf(which);
     if (now && field.value !== now.label) field.value = now.label; // back to the place chosen
     routeToTop();
@@ -5517,6 +5518,21 @@ for (const ev of ["pointerdown", "wheel", "touchstart"]) {
 // A new language at once, with what is open kept: the texts built once at the start are found in the
 // page by their old wording and given the new one; the map names, the place, the route and the steps
 // of navigation are asked again in the new language. Navigation goes on from where it is.
+// textSwaps: each text of old with its text in now, for the texts that differ. A text that is two labels with two
+// translations (Fuel: a kind along the route, Carburant, and a bubble, Stations-service) keeps the first, and clash
+// (when given) is told the path of the other: such labels are written again by their key (setLang)
+function textSwaps(old, now, clash) {
+  const swap = new Map();
+  const pair = (a, b, path) => {
+    if (typeof a === "string" && typeof b === "string") {
+      if (a === b) return;
+      if (!swap.has(a)) swap.set(a, b);
+      else if (swap.get(a) !== b) clash?.(path, a);
+    } else if (a && b && typeof a === "object" && typeof b === "object") for (const k of Object.keys(a)) pair(a[k], b[k], path ? `${path}.${k}` : k);
+  };
+  pair(old, now, "");
+  return swap;
+}
 function setLang(chosen) {
   // the strings (functions drop out), without the words of the ideas at the start: those are drawn again, and a word
   // of them written as a label elsewhere ("Restaurants" in German) would turn that label into the word of an idea
@@ -5527,12 +5543,7 @@ function setLang(chosen) {
   STEP_LANG = navLangOf();
   document.documentElement.lang = UI;
   loadTexts();
-  const swap = new Map();
-  const pair = (a, b) => {
-    if (typeof a === "string" && typeof b === "string") { if (a !== b && !swap.has(a)) swap.set(a, b); }
-    else if (a && b && typeof a === "object" && typeof b === "object") for (const k of Object.keys(a)) pair(a[k], b[k]);
-  };
-  pair(old, strings());
+  const swap = textSwaps(old, strings());
   const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n = walk.nextNode(); n; n = walk.nextNode()) {
     const t = n.data.trim(), to = t && swap.get(t);
@@ -5544,6 +5555,9 @@ function setLang(chosen) {
       if (to) e.setAttribute(a, to);
     }
   }
+  // the labels that share a word with another in some language, by their key
+  for (const b of bubbles.children) b.textContent = T.bubbles[b.dataset.n][1];
+  for (const c of document.querySelectorAll(".lm-along-cats [data-cat]")) c.textContent = T.alongCats[c.dataset.cat];
   foot.textContent = footText();
   menuFoot.textContent = menuFootText();
   fillAbout();
@@ -5552,7 +5566,12 @@ function setLang(chosen) {
   hints.splice(0, hints.length, ...(T.hints || []));
   if (!input.value) newHint();
   drawIdeas(); // the ideas at the start in the new language, with the names of the map in it
-  for (const end of [route.from, route.to]) if (end?.me) end.label = T.myPlace;
+  // the names the page gave a start, a stop or the destination (a field shows the name of its place again when it
+  // loses the focus)
+  for (const end of [route.from, route.to, ...route.stops]) {
+    if (end?.me) end.label = T.myPlace;
+    else if (end?.label === old.mapPoint) end.label = T.mapPoint;
+  }
   for (const f of routeView.querySelectorAll("input")) { const to = swap.get(f.value); if (to) f.value = to; }
   restyle(); // the names on the map
   stepsAgain();

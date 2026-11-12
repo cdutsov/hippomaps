@@ -1126,6 +1126,16 @@ try:
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)
     check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 30), "the page in German")
+    # a word that is two labels in one language and two words in the next: each label keeps its own (Tankstellen is a
+    # bubble and a kind along a route in German, Stations-service and Carburant in French; Cafés stays Cafés)
+    def page_lang(lang):
+        js(f"(() => {{ const s = document.querySelector('.lm-lang-select'); s.value = '{lang}'; s.dispatchEvent(new Event('change')) }})()")
+        wait(f"document.documentElement.lang === '{lang}'", 10)
+        return js("[...document.querySelectorAll('.lm-bubble')].map(b => b.textContent).join('|')") or ""
+    fr_bubbles, en_bubbles, de_bubbles = page_lang("fr"), page_lang("en"), page_lang("de")
+    check("Stations-service" in fr_bubbles and "Carburant" not in fr_bubbles and "Fuel" in en_bubbles and "Cafés" in en_bubbles
+          and "Tankstellen" in de_bubbles and "Cafés" in de_bubbles and "Bancomaten" in de_bubbles,
+          f"the bubbles keep their own words through French, English and German ({fr_bubbles}; {en_bubbles}; {de_bubbles})")
     # the start in German: the sentence and the searches of the view, no English in them
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click(); document.querySelector('.lm-input').blur()")
     de_ok = wait("/versteht Alltagssprache/.test(document.querySelector('.lm-start-text')?.textContent || '') && document.querySelectorAll('.lm-start-label').length >= 2", 15)
