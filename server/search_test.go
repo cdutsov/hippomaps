@@ -162,3 +162,30 @@ func TestSearchAnswerAsItCame(t *testing.T) {
 		t.Errorf("an answer that is not JSON: %d %s", w.Code, w.Body)
 	}
 }
+
+// the limits count an IPv6 visitor by the /64 of the address: another address of the same network is the
+// same visitor, another network is not; an IPv4 address counts as it is
+func TestLimitPerNetwork(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{}`) }))
+	t.Cleanup(up.Close)
+	s := testServer(t, nil, func(c *Config) { c.Base = "/"; c.SearchUpstream = up.URL; c.SearchesPerIP = 2 })
+	for i, c := range []struct {
+		ip   string
+		want int
+	}{
+		{"2001:db8:1:2::1", 200}, {"2001:db8:1:2:aaaa:bbbb:cccc:dddd", 200}, {"2001:db8:1:2::3", 429},
+		{"2001:db8:1:3::1", 200},
+		{"203.0.113.7", 200}, {"203.0.113.8", 200}, {"203.0.113.7", 200}, {"203.0.113.7", 429}, {"::ffff:203.0.113.8", 200}, {"::ffff:203.0.113.8", 200},
+	} {
+		if w := get(s, "/api/search/search?q=x", "X-Forwarded-For", c.ip); w.Code != c.want {
+			t.Errorf("search %d from %s: %d, want %d", i, c.ip, w.Code, c.want)
+		}
+	}
+	for ip, want := range map[string]string{"2001:db8:1:2::1": "2001:db8:1:2::/64", "203.0.113.7": "203.0.113.7", "not an address": "not an address"} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.Header.Set("X-Forwarded-For", ip+", 198.51.100.1")
+		if got := visitor(r); got != want {
+			t.Errorf("visitor %s: %s, want %s", ip, got, want)
+		}
+	}
+}

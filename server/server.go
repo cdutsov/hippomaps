@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"path"
 	"strings"
@@ -388,6 +389,18 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// visitor is the key of the limits per visitor: the address, or of an IPv6 address the /64 it is in (a
+// visitor has every address of their network, and may take another for each request).
+func visitor(r *http.Request) string {
+	ip := clientIP(r)
+	if a, err := netip.ParseAddr(ip); err == nil && a.Is6() && !a.Is4In6() {
+		if p, err := a.WithZone("").Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return ip
 }
 
 // window counts calls per key in a fixed window.

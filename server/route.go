@@ -223,7 +223,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		routeError(w, http.StatusBadRequest, "too_far", "The points are too far apart for this mode.")
 		return
 	}
-	if !s.routesPerIP.allow(clientIP(r), time.Now()) {
+	if !s.routesPerIP.allow(visitor(r), time.Now()) {
 		routeError(w, http.StatusTooManyRequests, "too_many", "Too many directions in a short time. Please wait a few minutes.")
 		return
 	}

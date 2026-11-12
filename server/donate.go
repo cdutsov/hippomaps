@@ -46,7 +46,7 @@ func (s *Server) donate(w http.ResponseWriter, r *http.Request) {
 	if donationName[lang] == "" {
 		lang = "en"
 	}
-	if !s.donatesPerIP.allow(clientIP(r), time.Now()) {
+	if !s.donatesPerIP.allow(visitor(r), time.Now()) {
 		http.Error(w, "too many", http.StatusTooManyRequests)
 		return
 	}

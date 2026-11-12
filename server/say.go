@@ -50,7 +50,7 @@ func (s *Server) say(w http.ResponseWriter, r *http.Request) {
 		sendAudio(w, b, format)
 		return
 	}
-	if !s.saysPerIP.allow(clientIP(r), time.Now()) {
+	if !s.saysPerIP.allow(visitor(r), time.Now()) {
 		http.Error(w, "too many", http.StatusTooManyRequests)
 		return
 	}

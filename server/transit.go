@@ -37,7 +37,7 @@ func (s *Server) transit(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, b)
 		return
 	}
-	if !s.transitPerIP.allow(clientIP(r), time.Now()) {
+	if !s.transitPerIP.allow(visitor(r), time.Now()) {
 		http.Error(w, "too many", http.StatusTooManyRequests)
 		return
 	}

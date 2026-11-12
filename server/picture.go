@@ -106,7 +106,7 @@ func (s *Server) picture(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if !s.perIP.allow(clientIP(r), time.Now()) {
+	if !s.perIP.allow(visitor(r), time.Now()) {
 		http.Error(w, "too many pictures", http.StatusTooManyRequests)
 		return
 	}

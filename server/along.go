@@ -88,7 +88,7 @@ func (s *Server) along(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !s.routesPerIP.allow(clientIP(r), time.Now()) {
+	if !s.routesPerIP.allow(visitor(r), time.Now()) {
 		routeError(w, http.StatusTooManyRequests, "too_many", "Too many searches in a short time. Please wait a few minutes.")
 		return
 	}

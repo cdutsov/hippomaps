@@ -27,7 +27,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if lim != nil && !lim.allow(clientIP(r), time.Now()) {
+	if lim != nil && !lim.allow(visitor(r), time.Now()) {
 		w.Header().Set("Retry-After", "600")
 		routeError(w, http.StatusTooManyRequests, "too_many", "Too many searches. Please wait a few minutes.")
 		return
