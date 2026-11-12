@@ -943,9 +943,11 @@ function morePois(pois) {
   const text = JSON.stringify(pois?.filter || null);
   if (!pois || text.includes('"has","name"')) return null;
   let found = false;
+  // the list of kinds the layer draws; a list it leaves out (["!", ["in", kind, …]]: the Outdoor style draws those
+  // kinds in a layer of its own) stays as it is
   const wider = (f) => isKinds(f)
     ? (found = true, ["any", f, ["all", ["has", "name"], ["!", ["in", ["get", "kind"], ["literal", POI_NOT]]]]])
-    : Array.isArray(f) ? f.map(wider) : f;
+    : Array.isArray(f) && f[0] !== "!" ? f.map(wider) : f;
   const filter = wider(pois.filter);
   if (!found) return null;
   const out = { filter, layout: { "symbol-sort-key": ["coalesce", ["get", "min_zoom"], 17] }, paint: {} };
@@ -1802,7 +1804,7 @@ const pageHeight = () => root.clientHeight || innerHeight;
 const sheetHeights = (H = pageHeight()) => ({
   // peek: the search box and the title under it, with the buttons of a place found; the search box alone while nothing is under it
   peek: Math.min(form.offsetTop + form.offsetHeight + (title.textContent || notes.textContent ? 64 : ideaRow() || 14) + (root.querySelector(".lm-place-acts:not(:empty)") ? 44 : 0), H * 0.4),
-  half: Math.max(Math.round(H * 0.48), Math.min(Math.round(H * 0.7), routeNeed())),
+  half: Math.max(Math.round(H * 0.48), Math.min(Math.round(H * 0.85), routeNeed())),
   full: H - 56,
 });
 // the height directions with a route need on a phone: from the top of the sheet down to Start, 0 without a route
@@ -2215,8 +2217,39 @@ form.addEventListener("submit", (e) => {
     input.blur();
     scrollTo(0, 0);
   }
-  if (text) run(text, chosen && chosen.text.trim() === text ? chosen.extra : {});
+  const pt = coordsOf(text);
+  if (pt) { // coordinates: that point, not a place the numbers are found in
+    here({ lng: pt[0], lat: pt[1] });
+    fit(() => glide({ center: pt, zoom: Math.max(map.getZoom(), 15), padding: pad() }));
+  } else if (text) run(text, chosen && chosen.text.trim() === text ? chosen.extra : {});
 });
+// coordsOf reads coordinates a visitor wrote, the latitude first unless letters say otherwise: "47.3769, 8.5417",
+// "47.3769 8.5417", "N 46° 56.9' E 7° 26.8'", "46°56'54\"N 7°26'48\"E". [lon, lat], or null for any other text (two
+// whole numbers without a degree sign or a letter are no coordinates: "8 10")
+function coordsOf(text) {
+  const t = String(text || "").trim().replace(/[′’‘]/g, "'").replace(/[″”“]/g, '"').replace(/''/g, '"');
+  const num = String.raw`(-?\d+(?:\.\d+)?)\s*(°)?\s*(?:(\d+(?:\.\d+)?)\s*')?\s*(?:(\d+(?:\.\d+)?)\s*")?`, sep = String.raw`(?:\s*[,;]\s*|\s+)`;
+  // the letters before the numbers, after them, or none: [letter, degrees, °, minutes, seconds] twice
+  let m = new RegExp(`^([NSEWO])\\s*${num}${sep}([NSEWO])\\s*${num}$`, "i").exec(t);
+  if (!m) {
+    const after = new RegExp(`^${num}\\s*([NSEWO])${sep}${num}\\s*([NSEWO])$`, "i").exec(t);
+    const none = after ? null : new RegExp(`^${num}()${sep}${num}()$`).exec(t);
+    const x = after || none;
+    if (!x) return null;
+    m = [x[0], x[5], x[1], x[2], x[3], x[4], x[10], x[6], x[7], x[8], x[9]];
+  }
+  const read = (i) => {
+    const letter = (m[i] || "").toUpperCase().replace("O", "E"), neg = m[i + 1].startsWith("-");
+    const v = Math.abs(+m[i + 1]) + (+m[i + 3] || 0) / 60 + (+m[i + 4] || 0) / 3600;
+    return { letter, v: neg || letter === "S" || letter === "W" ? -v : v, exact: !!letter || !!m[i + 2] || m[i + 1].includes(".") };
+  };
+  const a = read(1), b = read(6);
+  if (!a.exact || !b.exact) return null;
+  const lonFirst = /[EW]/.test(a.letter);
+  if (a.letter && b.letter && /[NS]/.test(a.letter) === /[NS]/.test(b.letter)) return null;
+  const [lat, lon] = lonFirst ? [b.v, a.v] : [a.v, b.v];
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? [lon, lat] : null;
+}
 
 // ------------------------------------------------------------------ searching
 let runCtl = null;
@@ -3717,6 +3750,8 @@ function placesOverAreas(fs) {
 }
 // geoFind: the places and addresses for a text from the geocoder, near the map view: {label, detail, ll}
 async function geoFind(q, signal) {
+  const pt = coordsOf(q);
+  if (pt) return [{ label: `${pt[1].toFixed(5)}, ${pt[0].toFixed(5)}`, detail: "", ll: pt }]; // coordinates written: that point
   const c = map.getCenter();
   const r = await fetch(`${root.dataset.tiles}/v1/${root.dataset.key}/geocode/api?${new URLSearchParams({ q, limit: "6", lang: geoLang(),
     lat: c.lat.toFixed(4), lon: c.lng.toFixed(4) })}`, { signal });
@@ -5643,8 +5678,8 @@ map.once("load", () => {
     }
     if (from) setFrom({ ll: from, label: u.get("fn") || T.mapPoint }); // before the location: it fills only a start still missing
   } else if (at) { // a shared place
-    fit(() => map.jumpTo({ center: at, zoom: Math.max(map.getZoom(), 16) }));
     here({ lng: at[0], lat: at[1] }, u.get("n") || "");
+    fit(() => map.jumpTo({ center: at, zoom: Math.max(map.getZoom(), 16), padding: pad() })); // above the panel on a phone
   } else if (!linkedView) showMe(true);
 });
 if (!root.dataset.key) say("The map is not configured on this server: MAPS_KEY is missing.", true);
