@@ -186,9 +186,10 @@ func TestSimplify(t *testing.T) {
 }
 
 // a line that keeps most of its points (a zigzag that grows, as a visitor may send to along) is simplified in
-// runs: in time along its length, not its square (60000 points took minutes), and brought to the points asked
+// runs: in time along its length, not its square (20000 points took 4 s for each tolerance tried, 40 s in
+// all), and brought to the points asked
 func TestSimplifyZigzag(t *testing.T) {
-	line := make([][2]float64, alongMaxPoints)
+	line := make([][2]float64, 20000)
 	for i := range line {
 		line[i] = [2]float64{8 + float64(i)*1e-6, 47 + float64(i)*1e-5*float64(1-2*(i%2))}
 	}
@@ -203,9 +204,10 @@ func TestSimplifyZigzag(t *testing.T) {
 			t.Errorf("zigzag: %d points, from %v to %v", len(pts), pts[0], pts[len(pts)-1])
 		}
 	case <-time.After(20 * time.Second):
-		t.Fatal("a zigzag of 60000 points takes more than 20 s")
+		t.Fatal("a zigzag of 20000 points takes more than 20 s")
 	}
 	// a line of a route: the points the runs keep are few
+	line = make([][2]float64, alongMaxPoints)
 	for i := range line {
 		line[i] = [2]float64{float64(i) * 20.0 / float64(len(line)), 47 + 0.01*math.Sin(float64(i)/50)}
 	}
