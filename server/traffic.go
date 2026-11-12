@@ -32,7 +32,8 @@ func (s *Server) traffic(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if (c.body == nil || now.Sub(c.at) > time.Minute) && now.Sub(c.try) > 10*time.Second {
 		c.try = now
-		if b, err := s.fetchTraffic(r.Context()); err == nil {
+		// asked for all visitors: the one whose request starts it may leave meanwhile
+		if b, err := s.fetchTraffic(context.WithoutCancel(r.Context())); err == nil {
 			c.body, c.at = b, now
 		} else {
 			s.log.Warn("traffic", "err", err)

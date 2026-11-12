@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -76,5 +77,22 @@ func TestTrafficDown(t *testing.T) {
 	s.trafficCache.try = s.trafficCache.try.Add(-11e9)
 	if w := get(s, "/labs/maps/api/traffic"); w.Code != 502 || calls.Load() != 2 {
 		t.Errorf("an answer that is not JSON: %d after %d calls", w.Code, calls.Load())
+	}
+}
+
+// the visitor whose request asks the service leaves: the answer is still fetched, for the others
+func TestTrafficVisitorLeaves(t *testing.T) {
+	var calls atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		io.WriteString(w, `{"items":[],"flow":[]}`)
+	}))
+	t.Cleanup(up.Close)
+	s := testServer(t, nil, func(c *Config) { c.TrafficURL = up.URL })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/labs/maps/api/traffic", nil).WithContext(ctx))
+	if w := get(s, "/labs/maps/api/traffic"); w.Code != 200 || calls.Load() != 1 {
+		t.Errorf("traffic after a visitor who left: %d, %d calls", w.Code, calls.Load())
 	}
 }
