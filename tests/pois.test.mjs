@@ -91,3 +91,13 @@ test("the POIs two zooms earlier (nearPois) keep the wider filter", () => {
   assert.equal(passes(near.filter, { kind: "dentist", name: "X", min_zoom: 17 }), true);
   assert.equal(morePois({ ...l, filter: near.filter }), null);
 });
+// the Outdoor style: its layer pois leaves the kinds of its own layers (peaks, huts, viewpoints) out with a second
+// list of kinds; that list stays as it is, or every POI with a name goes with it
+test("a style that leaves kinds to another layer (Outdoor: peaks, huts): its POIs with a name are drawn, those kinds are not", () => {
+  const l = layer();
+  l.filter = ["all", l.filter, ["!", kinds(["peak", "alpine_hut", "viewpoint"])]];
+  const m = morePois(l);
+  for (const kind of ["restaurant", "cafe", "dentist", "hotel"]) assert.equal(passes(m.filter, { kind, name: "X", min_zoom: 17 }), true, kind);
+  assert.equal(passes(m.filter, { kind: "park", min_zoom: 15 }), true);
+  for (const kind of ["peak", "alpine_hut", "viewpoint"]) assert.equal(passes(m.filter, { kind, name: "X", min_zoom: 15 }), false, kind);
+});
