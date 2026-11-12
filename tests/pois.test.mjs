@@ -1,5 +1,6 @@
 // The POIs of the map (morePois in web/app.js): the layer pois of a style of overpass.ch draws a list of kinds; the page
-// widens it to every POI with a name but the things of the street, gives a kind without an icon a dot and a colour.
+// adds a layer under the names of the streets for every other POI with a name but the things of the street, with a dot
+// for a kind without an icon and a colour.
 //   docker run --rm -v "$PWD":/w:ro -w /w node:24.21.0-alpine3.23 node --test tests/pois.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,8 +12,11 @@ const cut = (from, to) => {
   assert.ok(a > 0 && b > a, from);
   return src.slice(a, b);
 };
-const { morePois, nearPois, POI_NOT } = new Function(`${cut("const POI_NOT = [", "// on the map, and in a style JSON")}
-  ${cut("function nearPois(", "\n}\n")}\n}\nreturn { morePois, nearPois, POI_NOT };`)();
+const { morePois, morePoisUnder, earlierMore, nearPois, POI_NOT } = new Function(`${cut("const POI_NOT = [", "// the layer of the style it goes under")}
+  ${cut("const morePoisUnder = ", "\n")}
+  ${cut("function earlierMore(", "\n}\n")}
+}
+  ${cut("function nearPois(", "\n}\n")}\n}\nreturn { morePois, morePoisUnder, earlierMore, nearPois, POI_NOT };`)();
 
 const kinds = (list) => ["in", ["get", "kind"], ["literal", list]];
 const layer = () => ({
@@ -43,28 +47,43 @@ const passes = (f, p) => {
   return ev(f);
 };
 
-test("a POI of any kind with a name is drawn: a dentist, a pharmacy, a bank, a hotel, a kind never seen", () => {
+test("a POI of any other kind with a name is in the added layer: a dentist, a pharmacy, a bank, a hotel, a kind never seen", () => {
   const m = morePois(layer());
+  assert.equal(m.id, "lm-pois-more");
   for (const kind of ["dentist", "pharmacy", "bank", "hotel", "bakery", "a_kind_of_tomorrow"]) {
     assert.equal(passes(layer().filter, { kind, name: "X", min_zoom: 17 }), false, kind);
     assert.equal(passes(m.filter, { kind, name: "X", min_zoom: 17 }), true, kind);
   }
 });
-test("the kinds of the style as before, with a name or without; other kinds without a name not", () => {
+test("the kinds of the style stay in the layer of the style alone; other kinds without a name are in neither", () => {
   const m = morePois(layer());
-  assert.equal(passes(m.filter, { kind: "park", min_zoom: 15 }), true);
-  assert.equal(passes(m.filter, { kind: "cafe", name: "X", min_zoom: 16 }), true);
+  assert.equal(passes(m.filter, { kind: "park", min_zoom: 15 }), false);
+  assert.equal(passes(m.filter, { kind: "cafe", name: "X", min_zoom: 16 }), false);
+  assert.equal(passes(layer().filter, { kind: "cafe", name: "X", min_zoom: 16 }), true);
   assert.equal(passes(m.filter, { kind: "dentist", min_zoom: 17 }), false);
-  assert.equal(passes(m.filter, { kind: "dentist", name: "X", min_zoom: 30 }), false); // the zoom of the tiles still counts
+});
+test("from zoom 15, two zooms before the tiles say", () => {
+  const m = morePois(layer());
+  assert.equal(m.minzoom, 15);
+  assert.equal(passes(m.filter, { kind: "dentist", name: "X", min_zoom: 21 }), true); // 19 >= 21 - 2
+  assert.equal(passes(m.filter, { kind: "dentist", name: "X", min_zoom: 22 }), false);
 });
 test("things of the street, of the railway and areas of land use stay out, with a name too", () => {
   const m = morePois(layer());
-  for (const kind of ["crossing", "traffic_signals", "tree", "stop", "platform", "vacant", "residential", "street_lamp"]) {
+  for (const kind of ["crossing", "traffic_signals", "tree", "stop", "platform", "vacant", "residential", "street_lamp", "zone"]) { // (zone: "Subzone 12" of the parking of Sofia)
     assert.ok(POI_NOT.includes(kind), kind);
     assert.equal(passes(m.filter, { kind, name: "X", min_zoom: 16 }), false, kind);
   }
 });
-test("a kind without an icon in the sprite gets the dot; the icons of the style stay", () => {
+test("a list of kinds the style leaves out (Outdoor: its huts and peaks have a layer of their own) is left out here too", () => {
+  const l = layer();
+  l.filter = ["all", l.filter[1], ["!", kinds(["peak", "alpine_hut"])], l.filter[2]];
+  const m = morePois(l);
+  assert.equal(passes(m.filter, { kind: "alpine_hut", name: "X", min_zoom: 15 }), false);
+  assert.equal(passes(m.filter, { kind: "dentist", name: "X", min_zoom: 17 }), true);
+  assert.deepEqual(l.filter[2], ["!", kinds(["peak", "alpine_hut"])]); // the layer of the style as it was
+});
+test("a kind without an icon in the sprite gets the dot", () => {
   const icon = morePois(layer()).layout["icon-image"];
   assert.equal(icon.at(-1), "lm-poi-dot");
   assert.deepEqual(icon.slice(0, -1), layer().layout["icon-image"].slice(0, -1));
@@ -73,31 +92,51 @@ test("the colour of the text: other kinds as the public buildings, food as the r
   const c = morePois(layer()).paint["text-color"];
   assert.equal(c.at(-1), "#606");
   assert.ok(c[5][2][1].includes("bakery") && c[5][2][1].includes("restaurant"));
-  assert.deepEqual(c.slice(0, 5), layer().paint["text-color"].slice(0, 5));
 });
 test("where POIs are dense, those the tiles hold from a lower zoom come first", () => {
   assert.deepEqual(morePois(layer()).layout["symbol-sort-key"], ["coalesce", ["get", "min_zoom"], 17]);
 });
-test("a layer widened once is left as it is (a style comes through twice); a layer without a list of kinds too", () => {
-  const l = layer(), m = morePois(l);
-  assert.equal(morePois({ ...l, filter: m.filter }), null);
+test("the added layer lies under the names of the streets, which come before it; without such a layer under pois", () => {
+  const ids = (...a) => a.map((id) => ({ id }));
+  assert.equal(morePoisUnder(ids("earth", "roads_oneway", "roads_labels_minor", "roads_shields", "roads_labels_major", "pois")), "roads_labels_minor");
+  assert.equal(morePoisUnder(ids("earth", "roads_labels_major", "pois")), "roads_labels_major");
+  assert.equal(morePoisUnder(ids("earth", "pois")), "pois");
+});
+test("the layer of the style is not changed; a layer without a list of kinds gets no added layer", () => {
+  const l = layer(), before = JSON.stringify(l);
+  morePois(l);
+  assert.equal(JSON.stringify(l), before);
   assert.equal(morePois({ ...l, filter: [">=", ["zoom"], 15] }), null);
   assert.equal(morePois(undefined), null);
 });
-test("the POIs two zooms earlier (nearPois) keep the wider filter", () => {
-  const l = layer(), m = morePois(l);
-  const near = nearPois({ ...l, filter: m.filter, layout: { ...l.layout, ...m.layout } });
-  assert.equal(passes(near.layer.filter, { kind: "dentist", name: "X", min_zoom: 21 }), true); // 19 >= 21 - 2
-  assert.equal(passes(near.filter, { kind: "dentist", name: "X", min_zoom: 17 }), true);
-  assert.equal(morePois({ ...l, filter: near.filter }), null);
+test("made from a layer pois already shown two zooms earlier (nearPois), the added layer is the same", () => {
+  const l = layer(), near = nearPois(l);
+  const m = morePois({ ...l, filter: near.filter });
+  assert.equal(passes(m.filter, { kind: "dentist", name: "X", min_zoom: 21 }), true);
+  assert.equal(passes(m.filter, { kind: "cafe", name: "X", min_zoom: 16 }), false);
 });
-// the Outdoor style: its layer pois leaves the kinds of its own layers (peaks, huts, viewpoints) out with a second
-// list of kinds; that list stays as it is, or every POI with a name goes with it
-test("a style that leaves kinds to another layer (Outdoor: peaks, huts): its POIs with a name are drawn, those kinds are not", () => {
+test("the name of an added POI goes where there is room around its dot, and the dot stays without it", () => {
   const l = layer();
-  l.filter = ["all", l.filter, ["!", kinds(["peak", "alpine_hut", "viewpoint"])]];
+  l.layout["text-offset"] = [1.1, 0];
   const m = morePois(l);
-  for (const kind of ["restaurant", "cafe", "dentist", "hotel"]) assert.equal(passes(m.filter, { kind, name: "X", min_zoom: 17 }), true, kind);
-  assert.equal(passes(m.filter, { kind: "park", min_zoom: 15 }), true);
-  for (const kind of ["peak", "alpine_hut", "viewpoint"]) assert.equal(passes(m.filter, { kind, name: "X", min_zoom: 15 }), false, kind);
+  assert.deepEqual(m.layout["text-variable-anchor"], ["left", "right", "top", "bottom"]);
+  assert.equal(m.layout["text-optional"], true);
+  assert.deepEqual(m.layout["icon-allow-overlap"], ["step", ["zoom"], false, 18, true]); // the dot in any case from zoom 18
+  assert.equal(m.layout["text-offset"], undefined);
+  assert.deepEqual(l.layout["text-offset"], [1.1, 0]); // the layer of the style as it was
+});
+test("a style with places of more kinds under the names of the streets (pois_more of overpass.ch): those kinds are not ours, ours go under it", () => {
+  const theirs = { id: "pois_more", filter: ["all", kinds(["dentist", "hotel"]), [">=", ["zoom"], ["+", ["get", "min_zoom"], 0]]] };
+  const m = morePois(layer(), theirs);
+  assert.equal(passes(m.filter, { kind: "dentist", name: "X", min_zoom: 17 }), false);
+  assert.equal(passes(m.filter, { kind: "money_lender", name: "X", min_zoom: 17 }), true);
+  assert.equal(morePoisUnder([{ id: "earth" }, { id: "pois_more" }, { id: "roads_labels_minor" }, { id: "pois" }]), "pois_more");
+});
+test("pois_more of a style is shown as early as our layer, once", () => {
+  const theirs = { id: "pois_more", filter: ["all", kinds(["dentist", "hotel"]), [">=", ["zoom"], ["+", ["get", "min_zoom"], 0]]] };
+  const f = earlierMore(theirs);
+  assert.equal(passes(f, { kind: "dentist", name: "X", min_zoom: 21 }), true);
+  assert.equal(passes(f, { kind: "bank", name: "X", min_zoom: 17 }), false);
+  assert.equal(earlierMore({ ...theirs, filter: f }), null);
+  assert.equal(earlierMore(undefined), null);
 });

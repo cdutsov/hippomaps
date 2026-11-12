@@ -159,10 +159,12 @@ try:
         check(js(f"(() => {{ const c = hmMap.getCenter(); return Math.abs(c.lat - {lat}) < 0.001 && Math.abs(c.lng - {lon}) < 0.001 && Math.abs(hmMap.getZoom() - {z}) < 0.01; }})()"),
               f"the location not given, the map opens at the place of the IP address ({what}{near})" if near else "the location not given and no place of the IP address: the map opens in Zurich")
         check(js("!document.querySelector('.maplibregl-ctrl-attrib a[href=\"https://db-ip.com\"]')"), "no credit of DB-IP on the map")
-        # the map credits OpenStreetMap; the side panel and the menu only the voices and the traffic
+        # the map credits OpenStreetMap; the side panel and the menu link the licences and spell out no credit
         check(js("!!document.querySelector('.maplibregl-ctrl-attrib a[href=\"https://www.openstreetmap.org/copyright\"]')"), "the map credits OpenStreetMap")
-        check(js("![...document.querySelectorAll('.lm-foot, .lm-menu-foot')].some(e => /OpenStreetMap|Wikimedia|name-suggestion/.test(e.textContent))"),
-              "no credit of OpenStreetMap, the pictures or the chains in the side panel and the menu")
+        check(js("(() => { const f = document.querySelector('.lm-foot'), a = f.querySelector('a.lm-licences'), m = document.querySelector('.lm-menu a.lm-licences');"
+                 " return f.textContent === 'Licences' && !!a && !!m && /\\/licences$/.test(new URL(a.href).pathname) && /\\/licences$/.test(new URL(m.href).pathname)"
+                 " && !/Piper|FEDRO|CC BY|OpenStreetMap|Wikimedia/.test(document.querySelector('.lm-side').textContent + document.querySelector('.lm-menu').textContent); })()"),
+              "no credits spelled out in the side panel and the menu: a small link to the licences in each")
         return near
     if not first_visit(""):
         # no place for this machine (a server without the database, or reached from a private address through
@@ -339,6 +341,8 @@ try:
           "another language while navigating: the same page, navigation goes on, the route asked in German")
     check(js("(() => { const a = document.querySelector('.lm-menu-privacy'); return !!a && a.textContent === 'Datenschutz' && new URL(a.href).pathname.endsWith('/de/privacy'); })()"),
           "the menu links the privacy policy, in German for German")
+    check(js("[...document.querySelectorAll('a.lm-licences')].length === 2 && [...document.querySelectorAll('a.lm-licences')].every(a => a.textContent === 'Lizenzen' && new URL(a.href).pathname.endsWith('/de/licences'))"),
+          "the links to the licences in German for German")
     check(js("(() => { const p = document.querySelector('.lm-about-text'); return !!p && p.textContent.startsWith('HippoMaps ist freie Open-Source-Software,') && p.querySelectorAll('a').length === 1; })()"),
           "the free software text in German, with its link")
     check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/de/'"), "Powered by overpass.ch links overpass.ch, in German for German")
@@ -836,6 +840,93 @@ try:
         check(wait("document.querySelector('.lm-input').value !== 'Bahnhofstrasse' || !document.querySelector('.lm-suggest:not([hidden])')", 5), "a tap on a suggestion picks it")
     else:
         check(False, "suggestions for Bahnhofstrasse")
+    # directions before the location is known (a car park under ground): the start is Your location, Start can be
+    # tapped, and navigation starts by itself with the first location
+    call("Emulation.setGeolocationOverride")  # no position
+    js("window.hmOld = 1")
+    call("Page.navigate", url=URL + "/?to=47.36690,8.54500&tn=Bellevue&mode=car")
+    wait("!window.hmOld && window.hmMap?.loaded() && !document.querySelector('.lm-route').hidden", 40)
+    waiting = wait("document.querySelector('.lm-nav-wait .lm-nav-start') && document.querySelector('.lm-end-from input')?.value === 'Your location'", 15)
+    got = js("JSON.stringify([document.querySelector('.lm-end-from input')?.value, document.querySelector('.lm-route-msg')?.textContent, document.querySelector('.lm-nav-wait .lm-nav-start')?.textContent])")
+    check(waiting and "Waiting for your location" in got and '"Start"' in got, f"directions without a location yet: from Your location, the message, Start to tap ({got})")
+    tap(".lm-nav-wait .lm-nav-start")
+    check(wait("document.querySelector('.lm-nav-wait .lm-nav-start')?.getAttribute('aria-pressed') === 'true' && /Starts when/.test(document.querySelector('.lm-nav-wait .lm-nav-start').textContent)", 5)
+          and js("!document.getElementById('app').classList.contains('lm-navigating')"), "Start tapped ahead: it waits for the location")
+    time.sleep(1)
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+    check(wait("document.getElementById('app').classList.contains('lm-navigating')", 40), "the location found: navigation starts by itself")
+    js("document.querySelector('.lm-nav-x')?.click()")
+    wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+
+    # a name tapped on the map zoomed out: its name stays the title of the panel (or its page opens), the suburb or the
+    # municipality around it does not take its place
+    call("Page.navigate", url="about:blank")  # (a new page: an address that differs in its hash alone would not load again)
+    call("Page.navigate", url=URL + "/#map=12.6/47.3779/8.5403")
+    wait("window.hmMap?.loaded() && Math.abs(hmMap.getZoom() - 12.6) < 0.01", 40)
+    time.sleep(1.5)
+    poi = js("(() => { const m = document.querySelector('.lm-map').getBoundingClientRect(), side = document.querySelector('.lm-side').getBoundingClientRect().top;"
+             " for (const f of hmMap.queryRenderedFeatures({ layers: ['pois', 'pois_more', 'lm-pois-near', 'lm-pois-more'].filter(l => hmMap.getLayer(l)) })) {"
+             "   const p = hmMap.project(f.geometry.coordinates), n = f.properties.name;"
+             "   if (n && p.x > 40 && p.x < m.width - 40 && p.y > 90 && p.y + m.top < side - 40) return [n, p.x + m.left, p.y + m.top]; } return null; })()")
+    if poi:
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": poi[1] + 4, "y": poi[2] + 3}])
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        opened = wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 10)
+        wait("!document.querySelector('.lm-detail').hidden || document.querySelector('.lm-here-note')?.hidden || (document.querySelector('.lm-here-note') && !/…$/.test(document.querySelector('.lm-here-note').textContent))", 30)
+        time.sleep(0.5)
+        names = js("JSON.stringify([...document.querySelectorAll('.lm-here:not([hidden]) .lm-dname, .lm-detail:not([hidden]) .lm-dname, .lm-detail:not([hidden]) h2')].map(e => e.textContent))")
+        first = js("document.querySelector('.lm-here:not([hidden]) .lm-dname')?.textContent || ''")
+        check(opened and (not first or first == poi[0] or poi[0] in names), f"a name tapped at zoom 12.6 ({poi[0]}): it stays the title of the panel ({names})")
+        # tapped beside the name (5 px off): one marker, on the place, none where the finger was
+        marks = js("JSON.stringify((() => { const d = (id) => hmMap.getStyle().sources[id]?.data?.features || [], at = (f) => { const g = f.geometry, c = g.type === 'Point' ? g.coordinates : null; return c && hmMap.project(c); };"
+                   " return [...d('lm-pin'), ...d('lm-selected')].map(at).filter(Boolean).map((p) => [Math.round(p.x), Math.round(p.y)]); })())")
+        m = json.loads(marks)
+        tapped = (poi[1] - js("document.querySelector('.lm-map').getBoundingClientRect().left"), poi[2] - js("document.querySelector('.lm-map').getBoundingClientRect().top"))
+        check(len(m) <= 1 or all(abs(a[0] - m[0][0]) < 3 and abs(a[1] - m[0][1]) < 3 for a in m), f"a name tapped: one place marked, not the place and the finger ({marks}, tapped {tapped})")
+        js("(document.querySelector('.lm-here:not([hidden]) .lm-card-x, .lm-detail:not([hidden]) .lm-card-x'))?.click()")
+    else:
+        check(False, "a POI with a name on the map at zoom 12.6")
+
+    # a chain searched (Migros: the search looks in 50 by 50 km around the view): the map goes to the nearest and a
+    # quarter beyond, not out to all of them
+    call("Page.navigate", url="about:blank")  # (a new page: an address that differs in its hash alone would not load again)
+    call("Page.navigate", url=URL + "/#map=15/47.3779/8.5403")
+    wait("!window.hmOld && window.hmMap?.loaded()", 40)
+    time.sleep(1)
+    js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Migros'; document.querySelector('.lm-form').requestSubmit() })()")
+    found = wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '')", 60)
+    wait("!hmMap.isMoving()", 10)
+    time.sleep(1.5)
+    got = js("JSON.stringify((() => { const b = hmMap.getBounds(), c = hmMap.getCenter(); return { zoom: +hmMap.getZoom().toFixed(1), km: Math.round((b.getNorth() - b.getSouth()) * 111), "
+             "in: hmMap.queryRenderedFeatures({ layers: ['lm-point', 'lm-dot'].filter((l) => hmMap.getLayer(l)) }).length, count: document.querySelector('.lm-count').textContent, at: [+c.lat.toFixed(3), +c.lng.toFixed(3)] }; })())")
+    g = json.loads(got)
+    check(found and g["zoom"] >= 13 and g["km"] <= 8 and g["in"] >= 1 and abs(g["at"][0] - 47.378) < 0.02 and abs(g["at"][1] - 8.540) < 0.03,
+          f"a chain searched in Zurich: the map at the nearest shops around the visitor, not out over 50 km ({got})")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click(); document.querySelector('.lm-input').blur()")
+
+    # a tablet (wider than a phone, a keyboard on the screen): a place picked in a field of directions gives up the
+    # focus, so the keyboard goes
+    call("Emulation.setDeviceMetricsOverride", width=1024, height=768, deviceScaleFactor=2, mobile=True)
+    call("Page.navigate", url="about:blank")  # (a new page: an address that differs in its hash alone would not load again)
+    call("Page.navigate", url=URL + "/#map=15/47.3779/8.5403")
+    wait("!window.hmOld && window.hmMap?.loaded()", 40)
+    if js("matchMedia('(pointer: coarse)').matches && !matchMedia('(max-width: 760px)').matches"):
+        js("document.querySelector('.lm-dir-btn').click()")
+        wait("!document.querySelector('.lm-route').hidden", 5)
+        js("window.hmBlurs = 0; document.addEventListener('focusout', (e) => { if (e.target.matches?.('.lm-end-input')) hmBlurs++; }, true)")
+        js("document.querySelector('.lm-end-to input').focus()")
+        call("Input.insertText", text="Bahnhof Enge Zürich")
+        js("(() => { const f = document.querySelector('.lm-end-to input'); if (document.activeElement !== f) { f.focus(); f.dispatchEvent(new Event('input')); } })()")
+        if wait("[...document.querySelectorAll('.lm-end-list:not([hidden]) .lm-opt-label')].some(e => /Enge/.test(e.textContent))", 20):
+            n0 = js("hmBlurs")
+            tap(".lm-end-to .lm-end-list:not([hidden]) .lm-opt")
+            check(wait(f"hmBlurs > {n0} && !document.activeElement?.matches?.('input, textarea')", 5), "on a tablet a place picked in directions: the field gives up the focus (the keyboard goes)")
+        else:
+            check(False, "suggestions in directions on a tablet")
+    else:
+        check(False, "a tablet in the test: a coarse pointer, wider than a phone")
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+
     # a route found on a phone, small and large: car, bike and walk stay in view above start and destination (the
     # panel not scrolled), the time and Start in view under them: the sheet as high as they need
     for w, h in ((360, 640), (390, 844)):
@@ -1279,14 +1370,14 @@ try:
     # the POIs of every kind with a name, not only those of the list of the style: a dental clinic in Sofia by its
     # name, other kinds around it, nothing of the street furniture; in the dark style too
     js("hmMap.jumpTo({ center: [23.3126298, 42.707687], zoom: 18, pitch: 0, bearing: 0 })")
-    pois = ("JSON.stringify((() => { const f = hmMap.queryRenderedFeatures({ layers: ['pois', 'lm-pois-near'].filter(l => hmMap.getLayer(l)) }).map(x => x.properties);"
+    pois = ("JSON.stringify((() => { const f = hmMap.queryRenderedFeatures({ layers: ['pois', 'pois_more', 'lm-pois-near', 'lm-pois-more'].filter(l => hmMap.getLayer(l)) }).map(x => x.properties);"
             " return { clinic: f.some(x => /Щирков/.test(x.name || '')), kinds: [...new Set(f.map(x => x.kind))].sort(), unnamed: f.filter(x => !x.name).map(x => x.kind) }; })())")
     for style in ("light", "dark"):
         js(f"document.querySelector('.lm-style[data-style={style}]').click()")
         wait(f"document.documentElement.dataset.theme === '{style}'", 15)
         wait("hmMap.loaded() && !hmMap.isMoving() && " + pois.replace("JSON.stringify(", "(", 1) + ".clinic", 30)
         g = json.loads(js(pois))
-        street = {"crossing", "traffic_signals", "tree", "street_lamp", "waste_basket", "vacant", "stop", "platform"}
+        street = {"crossing", "traffic_signals", "tree", "street_lamp", "waste_basket", "vacant", "stop", "platform", "zone"}
         check(g["clinic"] and "dentist" in g["kinds"] and len([k for k in g["kinds"] if k not in ("dentist", "restaurant", "cafe", "supermarket", "school", "park")]) >= 3
               and not street & set(g["kinds"]),
               f"the {style} map at its largest zooms: a dental clinic by its name, POIs of other kinds, no street furniture ({g['kinds']})")

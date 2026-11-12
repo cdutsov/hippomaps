@@ -75,6 +75,7 @@ const EN = {
     near: (c, x) => `${c} near ${x}`,
     huts: (m) => `mountain huts over ${m} m`,
     fallback: "hotels along the Limmat in Zurich",
+    fallbackShort: "cafés in Zurich",
   },
   searching: "Searching…",
   locating: "Finding your location…",
@@ -197,6 +198,7 @@ const EN = {
   stopReached: "You have reached the stop.",
   noGPS: "Navigation needs your location. Allow it in the settings of the browser, then try again.",
   waitGPS: "Waiting for your location…",
+  startsWhenFound: "Starts when your location is found",
   then: "Then",
   exit: "Exit",
   speedLimit: (v) => `Speed limit ${v}`,
@@ -206,7 +208,6 @@ const EN = {
   trafficKinds: { closure: "Closed", jam: "Queue", works: "Roadworks", accident: "Accident", obstruction: "Obstruction", weather: "Weather", event: "Event", slow: "Slow traffic" },
   atNight: "at night",
   byDay: "by day",
-  trafficCredit: "Traffic: Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).",
   delay: (m) => `+${m} min traffic`,
   transit: "Transit",
   transitNote: "Metro, light rail and tram lines in their colours",
@@ -240,7 +241,6 @@ const EN = {
   shading: "Relief shading",
   shadingNote: "Light and shadow of the mountains",
   styles: [["auto", "Day and night"], ["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"]],
-  voiceCredit: "Voices by Piper; under CC BY: the French voice from the SIWIS database and Hi-Fi TTS, the Italian from serena-synthetic-it-27h (Marco Baccarani), the Estonian from the speech corpus of Estonian news sentences and LibriTTS-R.",
   language: "Language",
   languageNote: "Page and names on the map",
   navLanguage: "Directions and voice",
@@ -248,6 +248,7 @@ const EN = {
   automatic: "Automatic",
   poweredBy: "Powered by",
   privacy: "Privacy",
+  licences: "Licences",
   clear: "Clear",
   search: "Search",
   sheet: "Show or hide the list",
@@ -730,8 +731,11 @@ const showView = (v) => {
   if (v === listView) setTimeout(foldIfEmpty); // after the caller has filled or cleared the list
 };
 // the credits of the voices and the traffic; the map credits OpenStreetMap itself, each picture its source
-const footText = () => [root.dataset.say && T.voiceCredit, root.dataset.traffic && T.trafficCredit].filter(Boolean).join(" ");
-const foot = el("div", "lm-foot", {}, footText());
+// the credits (voices, traffic, map data, libraries) are a page of their own, linked small under the panel and in the menu
+const licencesHref = () => root.dataset.privacy.replace(/\/privacy$/, UI === "de" ? "/de/licences" : "/licences");
+const foot = el("div", "lm-foot");
+const footLink = el("a", "lm-licences", { href: licencesHref() }, T.licences);
+foot.append(footLink);
 foot.hidden = !foot.textContent;
 side.append(sheetBtn, top, form, status, body, foot);
 
@@ -925,58 +929,82 @@ function nearPois(pois) {
   return { layer, filter: ["all", ["any", ["<", ["zoom"], 14], [">=", ["zoom"], 15]], filter] };
 }
 // The styles of overpass.ch draw the POIs of a list of kinds (restaurants, a few kinds of shops, schools, ...); the
-// tiles hold the others too: a dentist, a pharmacy, a bank, a hotel, a bakery. morePois gives what the layer pois
-// needs to draw every POI with a name, but for the kinds of POI_NOT (things of the street and of the railway, areas
-// of land use, names drawn by another layer): the filter, a dot for a kind without an icon in the sprite, the colour
-// of the text (food with the restaurants, the rest with the public buildings), and the POIs the tiles hold from a
-// lower zoom first where they are dense. null when the layer has them already or is not as expected.
+// tiles hold the others too: a dentist, a pharmacy, a bank, a hotel, a bakery. morePois makes a layer of its own
+// (lm-pois-more) from the layer pois for every other POI with a name, but for the kinds of POI_NOT (things of the
+// street and of the railway, areas of land use, names drawn by another layer): a dot for a kind without an icon in
+// the sprite, the colour of the text (food with the restaurants, the rest with the public buildings), those the tiles
+// hold from a lower zoom first where they are dense, from zoom 15 and two zooms before the tiles say (as the POIs of
+// the style, nearPois). The layer lies under the names of the streets (POI_UNDER), which so come before it; the POIs
+// of the style stay above them. null when the layer pois is not as expected.
 const POI_NOT = ["crossing", "traffic_signals", "stop", "give_way", "switch", "signal", "railway_crossing", "level_crossing",
   "tram_crossing", "tram_level_crossing", "buffer_stop", "milestone", "turning_circle", "street_lamp", "tree", "vacant", "yes",
   "other", "place", "parking_entrance", "parking_space", "loading_dock", "elevator", "platform", "pedestrian", "footway",
   "primary", "railway", "yard", "waste_basket", "waste_disposal", "vending_machine", "bicycle_parking", "motorcycle_parking",
   "post_box", "telephone", "information", "ticket_validator", "residential", "industrial", "commercial", "retail",
-  "administrative", "construction", "grass", "wood"];
+  "administrative", "construction", "grass", "wood", "zone", "neighbourhood", "quarter", "suburb", "city_block", "locality"];
 const POI_FOOD = ["pub", "biergarten", "ice_cream", "food_court", "bakery", "pastry", "confectionery", "deli", "coffee", "nightclub"];
 const POI_DOT = "lm-poi-dot";
-function morePois(pois) {
+const POI_UNDER = ["roads_labels_minor", "roads_shields", "roads_labels_major"];
+function morePois(pois, styleMore) {
   const isKinds = (f) => Array.isArray(f) && f[0] === "in" && JSON.stringify(f[1]) === '["get","kind"]' && f[2]?.[0] === "literal";
-  const text = JSON.stringify(pois?.filter || null);
-  if (!pois || text.includes('"has","name"')) return null;
+  const isZoom = (f) => Array.isArray(f) && f[0] === ">=" && JSON.stringify(f[1]) === '["zoom"]' && JSON.stringify(f[2]?.[1]) === '["get","min_zoom"]';
+  if (!pois?.filter) return null;
+  // the kinds a style draws itself under the names of the streets (pois_more of overpass.ch: with icons) are not ours
+  const theirs = [];
+  const collect = (f) => { if (isKinds(f)) theirs.push(...f[2][1]); else if (Array.isArray(f) && f[0] !== "!") f.forEach(collect); };
+  collect(styleMore?.filter);
   let found = false;
-  // the list of kinds the layer draws; a list it leaves out (["!", ["in", kind, …]]: the Outdoor style draws those
-  // kinds in a layer of its own) stays as it is
-  const wider = (f) => isKinds(f)
-    ? (found = true, ["any", f, ["all", ["has", "name"], ["!", ["in", ["get", "kind"], ["literal", POI_NOT]]]]])
-    : Array.isArray(f) && f[0] !== "!" ? f.map(wider) : f;
-  const filter = wider(pois.filter);
+  // the list of kinds the layer draws turned round: the other kinds with a name; a list it leaves out (["!", ["in",
+  // kind, …]]: the Outdoor style draws those kinds in a layer of its own) stays as it is
+  const others = (f) => isKinds(f)
+    ? (found = true, ["all", ["!", f], ["has", "name"], ["!", ["in", ["get", "kind"], ["literal", [...POI_NOT, ...theirs]]]]])
+    : isZoom(f) ? [">=", ["zoom"], ["-", ["get", "min_zoom"], 2]]
+    : Array.isArray(f) && f[0] !== "!" ? f.map(others) : f;
+  const filter = others(pois.filter);
   if (!found) return null;
-  const out = { filter, layout: { "symbol-sort-key": ["coalesce", ["get", "min_zoom"], 17] }, paint: {} };
+  const layer = { ...pois, id: "lm-pois-more", minzoom: 15, filter, layout: { ...pois.layout, "symbol-sort-key": ["coalesce", ["get", "min_zoom"], 17] }, paint: { ...pois.paint } };
+  delete layer.metadata;
+  delete layer.maxzoom;
+  // beside a street name the name goes where there is room (right, left, under, over the dot), and the dot stays when
+  // there is none: the place is on the map at the largest zooms in any case
+  delete layer.layout["text-offset"];
+  // (from zoom 18 the dot also where a street name is: every place with a name is on the map at the largest zooms)
+  Object.assign(layer.layout, { "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.8, "text-optional": true,
+    "icon-allow-overlap": ["step", ["zoom"], false, 18, true] });
   const icon = pois.layout?.["icon-image"];
-  if (Array.isArray(icon) && icon[0] === "match" && icon[icon.length - 1] === "") out.layout["icon-image"] = [...icon.slice(0, -1), POI_DOT];
+  if (Array.isArray(icon) && icon[0] === "match" && icon[icon.length - 1] === "") layer.layout["icon-image"] = [...icon.slice(0, -1), POI_DOT];
   const colour = pois.paint?.["text-color"];
   if (Array.isArray(colour) && colour[0] === "case") {
     const of = (kind) => { for (let i = 1; i + 1 < colour.length; i += 2) if (isKinds(colour[i]) && colour[i][2][1].includes(kind)) return i; return 0; };
     const food = of("restaurant"), civic = of("townhall") || of("building");
     const c = colour.map((x, i) => (i === food && food ? ["in", ["get", "kind"], ["literal", [...x[2][1], ...POI_FOOD]]] : x));
     if (civic) c[c.length - 1] = colour[civic + 1];
-    out.paint["text-color"] = c;
+    layer.paint["text-color"] = c;
   }
-  return out;
+  return layer;
+}
+// the layer of the style it goes under: pois_more of the style, else the first of the names of the streets, else pois
+const morePoisUnder = (layers) => layers.find((l) => l.id === "pois_more" || POI_UNDER.includes(l.id))?.id || "pois";
+// pois_more of a style, shown as early as our layer: from zoom 15 and two zooms before the tiles say; null when it
+// is so already or not as expected
+function earlierMore(more) {
+  const isZoom = (f) => Array.isArray(f) && f[0] === ">=" && JSON.stringify(f[1]) === '["zoom"]' && JSON.stringify(f[2]?.[1]) === '["get","min_zoom"]';
+  let found = false;
+  const earlier = (f) => (isZoom(f) && JSON.stringify(f[2]) !== '["-",["get","min_zoom"],2]'
+    ? (found = true, [">=", ["zoom"], ["-", ["get", "min_zoom"], 2]])
+    : Array.isArray(f) ? f.map(earlier) : f);
+  const filter = earlier(more?.filter);
+  return found ? ["all", [">=", ["zoom"], 15], filter] : null;
 }
 // on the map, and in a style JSON (ourStyle)
 function morePoisOnMap() {
-  const more = morePois(map.getStyle()?.layers.find((l) => l.id === "pois"));
-  if (!more) return;
-  map.setFilter("pois", more.filter);
-  for (const [k, v] of Object.entries(more.layout)) map.setLayoutProperty("pois", k, v);
-  for (const [k, v] of Object.entries(more.paint)) map.setPaintProperty("pois", k, v);
-}
-function morePoisStyle(pois) {
-  const more = morePois(pois);
-  if (!more) return;
-  pois.filter = more.filter;
-  pois.layout = { ...pois.layout, ...more.layout };
-  pois.paint = { ...pois.paint, ...more.paint };
+  const layers = map.getStyle()?.layers || [];
+  if (map.getLayer("lm-pois-more")) return;
+  const theirs = layers.find((l) => l.id === "pois_more");
+  const more = morePois(layers.find((l) => l.id === "pois"), theirs);
+  if (more) map.addLayer(more, morePoisUnder(layers));
+  const early = earlierMore(theirs);
+  if (early) map.setFilter("pois_more", early);
 }
 // the day map: the light style of overpass.ch, recoloured here in the manner of Swiss topographic maps. DAY names
 // the colours (steps in OKLCH: land almost white, the greens one hue family from grass through parks to forest so that
@@ -1602,12 +1630,10 @@ langSel.addEventListener("change", () => {
   store.set("hm-lang", langSel.value);
   setLang(langSel.value);
 });
-const menuFootText = () => (TRAFFIC ? T.trafficCredit : "");
-const menuFoot = el("p", "lm-menu-foot", {}, menuFootText());
-menuFoot.hidden = !menuFoot.textContent;
 // the privacy policy, in German for German, else in English
 const privacyHref = () => root.dataset.privacy.replace(/\/privacy$/, UI === "de" ? "/de/privacy" : "/privacy");
 const privacyLink = el("a", "lm-menu-privacy", { href: privacyHref() }, T.privacy);
+const licencesLink = el("a", "lm-menu-privacy lm-licences", { href: licencesHref() }, T.licences);
 // overpass.ch, its German pages for German
 const overpassHref = () => UI === "de" ? "https://overpass.ch/de/" : "https://overpass.ch/";
 const poweredLink = poweredBy();
@@ -1652,7 +1678,7 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
   ...(ROUTE ? [navLangRow] : []),
   ...(ROUTE && SAVE_ROUTE ? [saveRouteRow] : []),
   forgetBtn, about,
-  poweredLink, menuFoot, privacyLink);
+  poweredLink, privacyLink, licencesLink);
 root.append(backdrop, menu);
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
 function poweredBy() {
@@ -1722,7 +1748,7 @@ function ourStyle(prev, st) {
   const before = new Map();
   let ours = [];
   for (const l of prev.layers || []) {
-    if (l.id === "lm-pois-near") continue; // made again from the pois of the new style
+    if (l.id === "lm-pois-near" || l.id === "lm-pois-more") continue; // made again from the pois of the new style
     if (l.id.startsWith("lm-")) {
       ours.push(TEXT_COLOUR[l.id] ? { ...l, paint: { ...l.paint, ...textPaint(l.id) } } : l);
       continue;
@@ -1734,7 +1760,11 @@ function ourStyle(prev, st) {
   }
   before.set(null, [...(before.get(null) || []), ...ours]);
   const pois = st.layers.find((l) => l.id === "pois");
-  morePoisStyle(pois);
+  const theirs = st.layers.find((l) => l.id === "pois_more");
+  const more = morePois(pois, theirs);
+  if (more) { const at = morePoisUnder(st.layers); before.set(at, [...(before.get(at) || []), more]); }
+  const early = earlierMore(theirs);
+  if (early) theirs.filter = early;
   const near = pois && poiTiles?.length && prev.sources?.["lm-pois-near"] && nearPois(pois);
   if (near) {
     st.sources["lm-pois-near"] ||= NEAR_SOURCE;
@@ -1798,6 +1828,9 @@ document.addEventListener("dblclick", (e) => { if (!mapEl.contains(e.target)) e.
 // The side bar is a sheet over the lower part of the map, at one of three heights: peek
 // (the search box and the title), half, full. It is dragged by its handle and its title.
 const phone = () => matchMedia("(max-width: 760px)").matches;
+// a device with a keyboard on the screen (a phone, a tablet: wider than the layout of a phone): a field that is done
+// gives up the focus, so the keyboard goes
+const softKeys = () => phone() || matchMedia("(pointer: coarse)").matches;
 const sheet = { state: "half" };
 // The heights are parts of the page (lm) as it is laid out now, with the keyboard or without.
 const pageHeight = () => root.clientHeight || innerHeight;
@@ -2113,19 +2146,19 @@ const pick = (i) => {
   if (!s) return;
   if (s.kind === "star") {
     closeList();
-    if (phone()) input.blur();
+    if (softKeys()) input.blur();
     return openStar(s.star);
   }
   if (s.kind === "recent") {
     input.value = s.text;
     closeList();
-    if (phone()) input.blur();
+    if (softKeys()) input.blur();
     return run(s.text, s.extra);
   }
   input.value = s.text;
   chosen = null;
   closeList();
-  if (phone()) input.blur();
+  if (softKeys()) input.blur();
   run(s.text, placeOf(s));
 };
 const accept = (s) => {
@@ -2213,7 +2246,7 @@ form.addEventListener("submit", (e) => {
   suggestCtl?.abort();
   closeList();
   const text = input.value.trim();
-  if (phone()) { // the keyboard goes, and the map is in view again (Safari may leave the page scrolled)
+  if (softKeys()) { // the keyboard goes, and the map is in view again (Safari may leave the page scrolled)
     input.blur();
     scrollTo(0, 0);
   }
@@ -2264,8 +2297,8 @@ const locate = () => {
   if (!navigator.geolocation) return Promise.resolve("");
   return new Promise((done) =>
     navigator.geolocation.getCurrentPosition(
-      (pos) => { done(meAt(pos)); watchMe(); },
-      () => done(""),
+      (pos) => { state.locBlocked = false; done(meAt(pos)); watchMe(); },
+      (err) => { state.locBlocked = err.code === 1; done(""); }, // blocked, or none in time (under ground)
       { timeout: 8000, maximumAge: 300e3 },
     ));
 };
@@ -2552,26 +2585,28 @@ function ideasFor(v, I, hour, pick) {
   const opens = hour >= 5 && hour < 10 ? ["bakery", "cafe"] : hour < 14 ? ["restaurant", "cafe"] : hour < 17 ? ["cafe", "icecream"]
     : hour < 23 ? ["restaurant", "bar"] : ["bar", "pharmacy"];
   const o = cat(opens, "open");
-  const short = !v.far && o ? I.open(o.w, o.k) : "";
+  // few places with a name in view (the open sea, a mountain side): no kinds of places of the view, they find nothing
+  const bare = v.places != null && v.places < 3;
+  const short = !v.far && !bare && o ? I.open(o.w, o.k) : "";
   const r = v.river, t = v.town;
   // the longer search: two places in one sentence, else a kind of place in the town, else an example of the language
   let long = "";
   const c2 = cat(["cafe", "restaurant", "bar"], `long:${r || ""}:${t || ""}`);
   if (r && v.riverLake && !v.far && I.alongLake) long = I.alongLake(c2.w, r);
-  else if (r && t && I.alongIn) long = I.alongIn(c2.w, r, t);
+  else if (r && t && v.riverTown !== false && I.alongIn) long = I.alongIn(c2.w, r, t);
   else if (v.lake && t && !v.far && I.lakeIn) long = I.lakeIn(c2.w, t);
   else if (t && v.city && has("vegan")) long = I.town(I.cats.vegan, t);
   else long = I.fallback;
   const list = [];
   const add = (s) => { if (s && s !== long && s !== short && !list.includes(s)) list.push(s); };
   if (r) {
-    const c = cat(["cafe", "bar", "restaurant", "bench", "playground", "icecream", "water"], `along:${r}`);
+    const c = cat(["cafe", "bar", "restaurant", "playground"], `along:${r}`);
     add(I.along(c.w, r));
     add(I.bridges(r));
   }
   if (!v.far) {
     if (v.lake) { const c = cat(["picnic", "viewpoint", "playground", "restaurant", "cafe"], "lake"); add(I.lake(c.w)); }
-    if (v.sea) { const c = cat(["restaurant", "bar", "cafe"], "sea"); add(I.sea(c.w)); }
+    if (v.sea && !bare) { const c = cat(["restaurant", "bar", "cafe"], "sea"); add(I.sea(c.w)); }
     else if (v.beach) { const c = cat(["bar", "cafe", "icecream"], "beach"); add(I.beach(c.w)); }
     if (v.huts) add(I.huts(v.huts));
   }
@@ -2581,8 +2616,8 @@ function ideasFor(v, I, hour, pick) {
     add(I.town(c.w, t));
   }
   // a view without names: kinds of places that are found in most views
-  if (!v.far) for (const k of ["viewpoint", "picnic", "water"]) if (list.length < 3 && has(k)) add(I.cats[k]);
-  return { short, long, list: list.slice(0, 4) };
+  if (!v.far && !bare) for (const k of ["viewpoint", "picnic", "water"]) if (list.length < 3 && has(k)) add(I.cats[k]);
+  return { short, long, list: list.slice(0, 4), bare };
 }
 // viewThings: what the map view shows, from the tiles loaded (querySourceFeatures) and from what is drawn (the water)
 const VIEW_GRID = 10;
@@ -2646,18 +2681,23 @@ function viewThings() {
     const at = f.geometry.coordinates;
     if (!inView(at, 0.5)) continue;
     const score = (p.population_rank || 0) - 3 * km(at, mid) / Math.max(1, span);
-    if (!town || score > town.score) town = { name: nameOf(p), rank: p.population_rank || 0, score };
+    if (!town || score > town.score) town = { name: nameOf(p), rank: p.population_rank || 0, score, at };
   }
   if (town && town.rank >= 4) {
     v.town = town.name.split(" / ")[0].replace(/\s*\(.*?\)/g, "");
     v.city = town.rank >= 9;
+    // the river flows through the town: a point of it within 2 km of the middle of the town (the Reuss in a view of
+    // Zurich zoomed out is no river of Zurich)
+    v.riverTown = !!river && river.pts.some((m) => km(m, town.at) <= 2);
   }
   // a sight, else a station of two words or more (a station called as its town is the town), in the name of the place,
   // and a beach, all in view and shown from zoom 13; mountains over 2,200 m: huts over 2,000 m
   let sight = null, station = null, top = 0;
+  v.places = 0; // places with a name in view: with few of them (the open sea, a mountain side) kinds of places find nothing
   for (const f of src("pois")) {
     const p = f.properties;
     if (f.geometry.type !== "Point" || !inView(f.geometry.coordinates)) continue;
+    if (p.name && p.kind !== "peak") v.places++;
     if (p.kind === "peak" && +p.elevation > top) top = +p.elevation;
     if (!p.name || (p.min_zoom || 99) > 13) continue;
     const d = km(f.geometry.coordinates, mid), nm = p.name.trim(); // as written there: "Clock Tower" is any clock tower, Zytglogge one
@@ -2695,7 +2735,7 @@ function drawIdeas() {
   };
   startText.innerHTML = "";
   T.startText.split(/(\{[01]\})/).forEach((part) => {
-    if (part === "{0}") startText.append(d.short ? ex(d.short) : ex(I.cats.restaurant));
+    if (part === "{0}") startText.append(ex(d.short || (d.bare ? I.fallbackShort : "") || I.cats.restaurant));
     else if (part === "{1}") startText.append(ex(d.long));
     else if (part) startText.append(part);
   });
@@ -2716,7 +2756,7 @@ function drawIdeas() {
 }
 function runIdea(text) {
   closeList();
-  if (phone()) input.blur();
+  if (softKeys()) input.blur();
   run(text, {});
 }
 // the view moved, the tiles came: the ideas of the new view (only while the start is shown)
@@ -2880,7 +2920,7 @@ function show(d, sel) {
   query.hidden = !d.query;
   setSheet(place ? "peek" : "half");
   const pick = sel && state.byId.get(sel);
-  if (bb?.length === 4 && !pick) fitBox(bb, place ? 16 : 16.5);
+  if (bb?.length === 4 && !pick) fitBox(aroundView(d) && nearBox(found.map(center), fromHere()) || bb, place ? 16 : 16.5);
   if (place) {
     count.textContent = "";
     const c = center(place);
@@ -2910,6 +2950,23 @@ function show(d, sel) {
   if (d.open) openNow(d.open);
   else if (found.some((f) => f.properties.opening_hours)) loadHours().then(() => markHours());
   if (pick) select(pick, { push: false });
+}
+// A search around the view (a chain or a name alone: the search looks in 50 by 50 km around the view, and says so in a
+// comment of its query): the map goes to the nearest result, not out to all of them. From the visitor when they are
+// in the view, else from the middle of it.
+const aroundView = (d) => /^\/\/ .*around the centre of the view$/m.test(d.query || "");
+const fromHere = () => {
+  const b = map.getBounds(), me = state.me?.at2;
+  return me && b.contains(me) ? me : map.getCenter().toArray();
+};
+// nearBox: the box around a point that holds the nearest of the places and a quarter more each way; null without one
+function nearBox(places, from, more = 1.25) {
+  const k = Math.cos((from[1] * Math.PI) / 180);
+  let best = Infinity;
+  for (const c of places) if (c) best = Math.min(best, Math.hypot((c[0] - from[0]) * k, c[1] - from[1]));
+  if (!Number.isFinite(best)) return null;
+  const r = Math.max(best * more, 0.002); // degrees of latitude; 200 m at least
+  return [from[0] - r / k, from[1] - r, from[0] + r / k, from[1] + r];
 }
 // pad keeps what the map fits to out from under the sheet on a phone. It leaves at least 60 pixels
 // of map each way: with more padding than map MapLibre does not move at all ("Map cannot fit")
@@ -3148,6 +3205,8 @@ async function openNow(o) {
 function showList() {
   state.selected = null;
   setSource("selected", empty);
+  // back at the point tapped: its pin again (it went for the marker of the place)
+  if (state.from === "here" && state.herePoint) setSource("pin", one({ type: "Feature", geometry: { type: "Point", coordinates: state.herePoint.ll }, properties: {} }));
   showView(state.from === "here" ? hereView : listView);
 }
 function select(f, { push = true, fly = true } = {}) {
@@ -3312,7 +3371,12 @@ function onTap(e) {
   }
   const fromRoute = !routeView.hidden || route.keep; // the place's card goes back to the route
   if (hit) select(hit, { fly: false });
-  else here(e.lngLat, symbolAt(e.point), fromRoute);
+  else {
+    // a name of the map tapped (or just beside it): the point is the place of that name, not where the finger was,
+    // so the pin stands on it and not next to it
+    const sym = symbolPoint(e.point);
+    here(sym ? { lng: sym.ll[0], lat: sym.ll[1] } : e.lngLat, sym?.name || "", fromRoute);
+  }
   keepInView(e.lngLat);
 }
 // keepInView moves the map on a phone when the sheet, risen with the place tapped, covers it:
@@ -3342,11 +3406,13 @@ function resultAt(pt) {
   return bestD <= r * 1.42 ? best : null;
 }
 // symbolAt is the name of a symbol of the map (a shop, a stop) under a point
-function symbolAt(pt) {
+function symbolPoint(pt) {
   const layers = (map.getStyle()?.layers || []).filter((l) => l.type === "symbol" && /poi|pois/i.test(l.id)).map((l) => l.id);
   const f = layers.length ? map.queryRenderedFeatures([[pt.x - 6, pt.y - 6], [pt.x + 6, pt.y + 6]], { layers })[0] : null;
-  return f?.properties?.name || "";
+  const name = f?.properties?.name || "";
+  return name ? { name, ll: f.geometry.type === "Point" ? f.geometry.coordinates : map.unproject(pt).toArray() } : null;
 }
+const symbolAt = (pt) => symbolPoint(pt)?.name || "";
 function hereDone() {
   hereCtl?.abort();
   state.herePoint = null;
@@ -3442,7 +3508,12 @@ async function here(ll, symbol, backToRoute = false) {
   const area = d.area, zoom = map.getZoom();
   setSource("area", d.lines || empty);
   const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-  if (area && (zoom < 14 || !d.place)) {
+  if (symbol && symbol !== area?.label) {
+    // a name tapped on the map stays the title (its page follows when it is among the places found): the area or the
+    // address around it comes under it, not in its place
+    sub.textContent = [d.place && d.place.label !== symbol ? d.place.label : "", coords].filter(Boolean).join(" · ");
+    if (area) sub.after(el("p", "lm-dsub lm-in-area", {}, T.inArea(area.label, area.detail)));
+  } else if (area && (zoom < 14 || !d.place)) {
     h.textContent = area.label;
     sub.textContent = [area.detail, coords].filter(Boolean).join(" · ");
     if (d.place && d.place.label !== area.label) sub.after(el("p", "lm-dsub", {}, d.place.label));
@@ -3479,7 +3550,10 @@ async function here(ll, symbol, backToRoute = false) {
   }
   // the symbol tapped: its page at once
   const hit = symbol && fs.find((f) => fold(f.properties.name || "") === fold(symbol));
-  if (hit) select(hit, { push: false, fly: false });
+  if (hit) {
+    setSource("pin", empty); // one marker: that of the place
+    select(hit, { push: false, fly: false });
+  }
 }
 
 // ------------------------------------------------------------------ directions
@@ -3496,6 +3570,7 @@ function routeButton(go) {
 }
 function routeDone() {
   unfollowMe();
+  waitGo(false);
   route.ctl?.abort();
   alongDone();
   setSource("route", empty);
@@ -3522,7 +3597,7 @@ function drawEnds(line) {
   if (!line) setSource("routetraffic", empty);
   const fs = [];
   if (line) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: line }, properties: {} }, ...(route.answer?.marks || []).map(markFeature));
-  if (route.from) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.from.ll }, properties: { end: "from" } });
+  if (route.from?.ll) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.from.ll }, properties: { end: "from" } });
   route.stops.forEach((x, i) => { if (x) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { end: "stop", n: String(i + 1) } }); });
   if (route.to) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } });
   setSource("route", { type: "FeatureCollection", features: fs });
@@ -3597,17 +3672,58 @@ async function directions(to, go = false, text = "") {
   route.toText = text;
   route.stops = [];
   route.alongCat = "";
-  route.go = go;
-  route.from = state.me ? { ll: state.me.at2, label: T.myPlace, me: true } : null;
+  // from the location of the visitor, also when it is not known yet (ll null: a car park under ground, the browser
+  // still asking): the route comes with the first location (followMe), and Start can be tapped before (waitStart)
+  route.from = state.me ? { ll: state.me.at2, label: T.myPlace, me: true } : navigator.geolocation ? { ll: null, label: T.myPlace, me: true } : null;
+  waitGo(go && !!route.from?.me);
   hereDone();
   showView(routeView);
   setSheet("half");
   renderRoute();
-  if (!route.from) { // ask the browser once; the visitor can tap the map instead
-    const me = await locate();
-    if (me && !route.from && !routeView.hidden) setFrom({ ll: state.me.at2, label: T.myPlace, me: true });
+  if (route.from && !route.from.ll) {
+    const from = route.from, me = await locate();
+    if (me && route.from === from && !from.ll && !routeView.hidden) { from.ll = state.me.at2; findRoute(); }
+    else if (!me && state.locBlocked && route.from === from && !routeView.hidden) noLocation(); // blocked: the start is asked for
     if (!route.to && !routeView.hidden) routeView.querySelector(".lm-end-to input")?.focus(); // the fields were drawn again
   } else findRoute();
+}
+// Start tapped before the location is known: navigation starts by itself with the first location (findRoute, route.go).
+// Until then the screen stays on (keepAwake) and the sound is unlocked by that tap.
+function waitGo(on) {
+  route.go = nav.waiting = on;
+  if (on) {
+    if (!nav.muted) unlockSound();
+    keepAwake();
+  } else if (!nav.on) {
+    nav.lock?.release?.().catch(() => {});
+    nav.lock = null;
+  }
+}
+// the location is blocked for the page: no start from it; the visitor sets the start (a tap on the map, the field)
+function noLocation() {
+  if (!(route.from?.me && !route.from.ll)) return;
+  route.from = null;
+  waitGo(false);
+  renderRoute();
+}
+// the start is the location of the visitor and it is not known yet: the message, and Start to tap ahead
+function waitStart() {
+  routeView.querySelector(".lm-nav-wait")?.remove();
+  if (!(route.from?.me && !route.from.ll && route.to?.ll) || nav.on) return false;
+  routeMsg.textContent = T.waitGPS;
+  const go = el("div", "lm-nav-go lm-nav-wait");
+  const b = el("button", "lm-nav-start", { type: "button", "aria-pressed": String(!!route.go) });
+  const draw = () => {
+    b.innerHTML = svg(ICON.navigate, 20);
+    b.append(route.go ? T.startsWhenFound : T.start);
+    b.setAttribute("aria-pressed", String(!!route.go));
+  };
+  draw();
+  b.addEventListener("click", () => { waitGo(!route.go); draw(); });
+  go.append(b);
+  routeSum.after(go);
+  if (sheet.state === "half") setSheet("half");
+  return true;
 }
 // Directions from (or to) the location of the visitor follow it while they are open: the first
 // location may be old or rough, and the phone may move before Start. A new route when the location
@@ -3620,7 +3736,13 @@ function followMe() {
     if (!wanted()) return unfollowMe();
     meAt(pos);
     const end = route.from?.me ? route.from : route.to;
-    const c = state.me.at2, [ax, ay] = flat(end.ll, c[1]), [bx, by] = flat(c, c[1]);
+    const c = state.me.at2;
+    if (!end.ll) { // the location found at last: the route at once (and navigation, if Start was tapped ahead)
+      end.ll = c;
+      end.acc = pos.coords.accuracy || 0;
+      return void findRoute();
+    }
+    const [ax, ay] = flat(end.ll, c[1]), [bx, by] = flat(c, c[1]);
     // the first fix of the watch counts at 30 m: the location taken before may be old or rough
     const acc = pos.coords.accuracy || 0;
     if (Math.hypot(ax - bx, ay - by) <= (end.acc == null ? PLAN_MOVE_M : Math.max(PLAN_MOVE_M, Math.min(acc, 200)))) return;
@@ -3631,7 +3753,9 @@ function followMe() {
       route.moved = Date.now();
       if (wanted() && route.from && route.to) findRoute({ quiet: !!route.answer });
     }, Math.max(0, (route.moved || 0) + PLAN_EVERY_MS - Date.now()));
-  }, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 60000 });
+  }, (err) => { // blocked: the message says so (no location in time comes again and again under ground: the watch goes on)
+    if (err.code === 1 && wanted()) noLocation();
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 60000 });
 }
 function unfollowMe() {
   if (route.watch != null) navigator.geolocation.clearWatch(route.watch);
@@ -3717,6 +3841,7 @@ function renderRoute() {
   routeView.append(back, routeHead, routeMsg, routeSum, stepsBox);
   drawEnds(null);
   if (route.from?.me || route.to?.me) followMe(); else unfollowMe();
+  waitStart();
 }
 // ------------------------------------------------------------------ start and destination
 // Each is a field that suggests places and addresses from the geocoder of overpass.ch (Photon,
@@ -3827,6 +3952,7 @@ function placeField(which) {
     const it = items[i];
     if (!it) return;
     close();
+    if (softKeys()) field.blur(); // the keyboard goes (a tablet keeps it for a field taken out of the page while in focus)
     routeFieldOut(); // down at once, while the keyboard goes: one movement
     let place = it;
     if (it.me) {
@@ -3910,6 +4036,7 @@ function placeField(which) {
 // stays if that fails), and the map keeps its view
 async function findRoute({ quiet = false } = {}) {
   if (!route.from || !route.to) return;
+  if (waitStart() || !route.from.ll || !route.to.ll) return; // the location of the visitor not known yet
   route.ctl?.abort();
   const ctl = route.ctl = new AbortController();
   const ll = (v) => `${v.ll[1].toFixed(5)},${v.ll[0].toFixed(5)}`;
@@ -3988,10 +4115,10 @@ async function findRoute({ quiet = false } = {}) {
   drawEnds(d.line);
   drawRouteTraffic(d);
   if (route.go && route.from?.me) {
-    route.go = false;
+    nav.waiting = route.go = false;
     return navStart(false);
   }
-  route.go = false;
+  waitGo(false);
   const b = extent({ type: "LineString", coordinates: d.line });
   if (b && !quiet) fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 16 }));
 }
@@ -5275,12 +5402,12 @@ function navStart(sim) {
 // the screen stays on while navigating; the browser drops the lock when the page is hidden, so it
 // is asked again when the page comes back. With the screen locked a browser does not navigate.
 async function keepAwake() {
-  if (!nav.on || nav.lock || document.visibilityState !== "visible") return;
+  if (!(nav.on || nav.waiting) || nav.lock || document.visibilityState !== "visible") return;
   try {
     const lock = await navigator.wakeLock?.request("screen");
     if (!lock) return;
     // navigation ended while the browser was asked (or a second lock came): the screen may sleep
-    if (!nav.on || nav.lock) return void lock.release().catch(() => {});
+    if (!(nav.on || nav.waiting) || nav.lock) return void lock.release().catch(() => {});
     nav.lock = lock;
     lock.addEventListener("release", () => { if (nav.lock === lock) nav.lock = null; });
   } catch {}
@@ -5604,10 +5731,9 @@ function setLang(chosen) {
   // the labels that share a word with another in some language, by their key
   for (const b of bubbles.children) b.textContent = T.bubbles[b.dataset.n][1];
   for (const c of document.querySelectorAll(".lm-along-cats [data-cat]")) c.textContent = T.alongCats[c.dataset.cat];
-  foot.textContent = footText();
-  menuFoot.textContent = menuFootText();
   fillAbout();
   privacyLink.href = privacyHref();
+  footLink.href = licencesLink.href = licencesHref();
   poweredLink.href = overpassHref();
   hints.splice(0, hints.length, ...(T.hints || []));
   if (!input.value) newHint();

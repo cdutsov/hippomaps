@@ -144,5 +144,5 @@ Map data © OpenStreetMap contributors (ODbL). Pictures from Wikimedia Commons u
 Federal Roads Office (FEDRO) Traffic Data Platform (TDP). Places of IP addresses: IP Geolocation by DB-IP (CC BY 4.0, not in the
 repository; the privacy policy credits it with a link). Voices (Piper, not in the repository): under CC BY the French from the SIWIS
 database and Hi-Fi TTS, the Italian from serena-synthetic-it-27h (Marco Baccarani), the Estonian from the speech corpus of Estonian
-news sentences and LibriTTS-R; the others CC0 or public domain; the page credits them (voiceCredit). None from the research-only
+news sentences and LibriTTS-R; the others CC0 or public domain; the licences page credits them (`/licences`, linked small under the side panel and in the menu). None from the research-only
 lessac voice.

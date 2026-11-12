@@ -122,7 +122,8 @@ type Server struct {
 
 	trafficCache  trafficCache
 	searchClient  *http.Client
-	searchesPerIP *window // search and query: they run on Overpass
+	searchesPerIP *window // search: it runs on Overpass
+	queriesPerIP  *window // query: how a search is read, asked by the page before each search
 	herePerIP     *window // taps on the map
 
 	geo *geoIP // nil without GeoIPDB
@@ -138,7 +139,7 @@ func New(cfg Config) *Server {
 		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
 		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4),
 		transitPerIP: newWindow(300, 10*time.Minute), transitCalls: make(chan struct{}, 2),
-		searchesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), herePerIP: newWindow(3*cfg.SearchesPerIP, cfg.RouteWindow),
+		searchesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), queriesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), herePerIP: newWindow(3*cfg.SearchesPerIP, cfg.RouteWindow),
 		donatesPerIP: newWindow(10, 10*time.Minute)}
 	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
 	s.cfg.TrafficURL = strings.TrimRight(cfg.TrafficURL, "/")
@@ -163,7 +164,7 @@ func New(cfg Config) *Server {
 		return nil
 	})
 	s.page = template.Must(template.New("index.html").Funcs(template.FuncMap{"asset": s.asset}).ParseFS(web.Files, "index.html"))
-	s.privacyPages = template.Must(template.New("privacy").Funcs(template.FuncMap{"asset": s.asset}).ParseFS(web.Files, "privacy.html", "privacy-de.html"))
+	s.privacyPages = template.Must(template.New("privacy").Funcs(template.FuncMap{"asset": s.asset}).ParseFS(web.Files, "privacy.html", "privacy-de.html", "licences.html", "licences-de.html"))
 	base := strings.TrimRight(cfg.Base, "/")
 	if base == "" { // the page at the root of its own site (hippomaps.ch)
 		s.mux.HandleFunc("GET /{$}", s.index)
@@ -176,6 +177,9 @@ func New(cfg Config) *Server {
 	// the privacy policy (the app links it from its menu; Google Play asks for its address)
 	s.mux.HandleFunc("GET "+base+"/privacy", s.privacy("privacy.html"))
 	s.mux.HandleFunc("GET "+base+"/de/privacy", s.privacy("privacy-de.html"))
+	// the licences and sources (voices, traffic, map data, libraries): the page links it small
+	s.mux.HandleFunc("GET "+base+"/licences", s.privacy("licences.html"))
+	s.mux.HandleFunc("GET "+base+"/de/licences", s.privacy("licences-de.html"))
 	s.mux.Handle("GET "+base+"/static/", http.StripPrefix(base+"/static/", http.HandlerFunc(s.static)))
 	// the service worker (web/sw.js): the page and the map of a route without a connection; next to the page, with
 	// the page in its scope
@@ -231,10 +235,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-// listed: the page and the privacy policy, the pages of the sitemap
+// listed: the page, the privacy policy and the licences, the pages of the sitemap
 func (s *Server) listed(p string) bool {
 	b := strings.TrimRight(s.cfg.Base, "/")
-	return p == s.home() || p == b+"/privacy" || p == b+"/de/privacy"
+	return p == s.home() || p == b+"/privacy" || p == b+"/de/privacy" || p == b+"/licences" || p == b+"/de/licences"
 }
 
 // home is the path of the page, and the scope of its service worker
@@ -253,7 +257,7 @@ func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+"\n"+`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>%[1]s/</loc></url><url><loc>%[1]s/privacy</loc></url><url><loc>%[1]s/de/privacy</loc></url></urlset>`+"\n",
+	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+"\n"+`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>%[1]s/</loc></url><url><loc>%[1]s/privacy</loc></url><url><loc>%[1]s/de/privacy</loc></url><url><loc>%[1]s/licences</loc></url><url><loc>%[1]s/de/licences</loc></url></urlset>`+"\n",
 		html.EscapeString(strings.TrimRight(s.cfg.PublicURL, "/")))
 }
 
@@ -302,7 +306,7 @@ func (s *Server) serviceWorker(w http.ResponseWriter, r *http.Request) {
 	w.Write(b)
 }
 
-// privacy serves the privacy policy in one language: a page of text, no script
+// privacy serves a page of text, no script: the privacy policy or the licences, in one language
 func (s *Server) privacy(name string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var buf bytes.Buffer
@@ -419,6 +423,13 @@ func (w *window) allow(key string, now time.Time) bool {
 	}
 	w.n[key]++
 	return w.n[key] <= w.max
+}
+
+// full says whether key has used up the window, without counting
+func (w *window) full(key string, now time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return now.Sub(w.start) < w.every && w.n[key] >= w.max
 }
 
 // memo keeps values for a time, up to a size; when full, the oldest go first.

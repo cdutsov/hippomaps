@@ -12,14 +12,22 @@ import (
 // address of the visitor in X-Forwarded-For (its limits count per visitor, and the server in front
 // of it trusts this one). The answer goes back as it came, with its status.
 //
-// Each visitor gets SearchesPerIP searches (search, query) in RouteWindow and three times as many
-// taps on the map (here); completions while typing are not counted. Other paths are not relayed.
+// Each visitor gets SearchesPerIP searches (search) in RouteWindow and three times as many taps on the map (here);
+// completions while typing are not counted. The page asks how a search is read (query) before each search: that
+// counts apart, as many again, so a search of the page is one search; with the searches used up it is refused too.
+// Other paths are not relayed.
 // With lang=de, fr or it the English words of the answer are put in that language (labels.go).
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	var lim *window
+	now, who := time.Now(), visitor(r)
 	switch r.PathValue("rest") {
-	case "search", "query":
+	case "search":
 		lim = s.searchesPerIP
+	case "query":
+		lim = s.queriesPerIP
+		if s.searchesPerIP.full(who, now) {
+			lim = s.searchesPerIP // refused as a search is
+		}
 	case "here":
 		lim = s.herePerIP
 	case "complete":
@@ -27,7 +35,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if lim != nil && !lim.allow(visitor(r), time.Now()) {
+	if lim != nil && !lim.allow(who, now) {
 		w.Header().Set("Retry-After", "600")
 		routeError(w, http.StatusTooManyRequests, "too_many", "Too many searches. Please wait a few minutes.")
 		return

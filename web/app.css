@@ -294,8 +294,8 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
   box-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
 .lm-toggle input:checked { background: var(--accent); }
 .lm-toggle input:checked::after { left: 21px; }
-.lm-menu-foot { color: var(--muted); font-size: .72rem; margin-top: 1.2rem; }
-.lm-menu-privacy { display: inline-block; color: var(--muted); font-size: .72rem; margin-top: .4rem; }
+.lm-menu-privacy { display: inline-block; color: var(--muted); font-size: .72rem; margin-top: 1.2rem; margin-right: .9rem; }
+.lm-foot .lm-licences { color: var(--muted); }
 @media (max-width: 760px) {
   .lm-map-burger { display: grid; position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 3; border-radius: 50%;
     background: var(--bg); color: var(--fg); box-shadow: var(--shadow); }
@@ -329,6 +329,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-nav-start { display: inline-flex; align-items: center; gap: .4rem; border: 0; border-radius: 20px; background: var(--accent); color: var(--bg);
   font: inherit; font-weight: 600; padding: .5rem 1.2rem; cursor: pointer; }
 .lm-nav-start:hover { filter: brightness(1.08); }
+.lm-nav-wait .lm-nav-start[aria-pressed=true] { font-size: .95rem; background: var(--muted); box-shadow: none; }
 /* boats and car trains on a route by car, above Start */
 .lm-ferries { margin: .1rem 1rem .6rem; padding: .45rem .75rem .55rem; border-radius: var(--r-card); background: var(--warm-soft); }
 .lm-ferry { display: flex; align-items: center; gap: .55rem; width: 100%; border: 0; background: none; padding: .25rem 0; text-align: left;

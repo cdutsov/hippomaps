@@ -80,6 +80,19 @@ func TestSearchLimit(t *testing.T) {
 	if w := get(s, "/api/search/search?q=x", "X-Forwarded-For", "203.0.113.7"); !strings.Contains(w.Body.String(), `"too_many"`) {
 		t.Errorf("answer over the limit: %s", w.Body)
 	}
+	// a search of the page asks query, then search: one search of the visitor, not two
+	for i, want := range []int{200, 200, 200, 200, 429} {
+		p := []string{"query", "search"}[i%2]
+		if c := ip(get(s, "/api/search/"+p+"?q=x", "X-Forwarded-For", "203.0.113.9")); c != want {
+			t.Errorf("a search of the page, call %d (%s): %d, want %d", i, p, c, want)
+		}
+	}
+	// query alone has its own count, as many
+	for i, want := range []int{200, 200, 429} {
+		if c := ip(get(s, "/api/search/query?q=x", "X-Forwarded-For", "203.0.113.10")); c != want {
+			t.Errorf("query %d: %d, want %d", i, c, want)
+		}
+	}
 	if c := ip(get(s, "/api/search/search?q=x", "X-Forwarded-For", "203.0.113.8")); c != 200 {
 		t.Errorf("another visitor: %d", c)
 	}

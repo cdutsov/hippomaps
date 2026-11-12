@@ -331,6 +331,52 @@ func TestPrivacy(t *testing.T) {
 	}
 }
 
+// The licences and sources: English and German, with the credits the page itself no longer spells out (the voices
+// under CC BY, the traffic data of FEDRO in its wording, OpenStreetMap, DB-IP); no script; in the sitemap; the page
+// links them and holds no credit text of its own.
+func TestLicences(t *testing.T) {
+	s := testServer(t, nil)
+	for p, want := range map[string]string{"/labs/maps/licences": "Licences and sources", "/labs/maps/de/licences": "Lizenzen und Quellen"} {
+		w := get(s, p)
+		body := w.Body.String()
+		if w.Code != 200 || !strings.Contains(body, want) || strings.Contains(body, "<script") {
+			t.Fatalf("%s: %d %s", p, w.Code, body)
+		}
+		for _, credit := range []string{"SIWIS", "Hi-Fi TTS", "serena-synthetic-it-27h (Marco Baccarani)", "LibriTTS-R", "CC BY",
+			"Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).", "OpenStreetMap", "ODbL",
+			`<a href="https://db-ip.com">IP Geolocation by DB-IP</a>`, "GNU General Public License", "MapLibre GL JS (BSD-3-Clause)"} {
+			if !strings.Contains(body, credit) {
+				t.Errorf("%s: no %q", p, credit)
+			}
+		}
+		if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") {
+			t.Errorf("%s: csp %s", p, csp)
+		}
+	}
+	for _, p := range []string{"/labs/maps/static/licences.html", "/labs/maps/static/licences-de.html"} {
+		if w := get(s, p); w.Code == 200 {
+			t.Errorf("%s served as a file", p)
+		}
+	}
+	own := testServer(t, nil, func(c *Config) { c.Base = ""; c.PublicURL = "https://hippomaps.example" })
+	if !own.listed("/licences") || !own.listed("/de/licences") {
+		t.Error("listed")
+	}
+	if w := get(own, "/sitemap.xml"); !strings.Contains(w.Body.String(), "<loc>https://hippomaps.example/de/licences</loc>") {
+		t.Errorf("sitemap: %s", w.Body.String())
+	}
+	app, _ := fs.ReadFile(web.Files, "app.js")
+	i18n, _ := fs.ReadFile(web.Files, "i18n.js")
+	if !strings.Contains(string(app), `"/de/licences"`) || !strings.Contains(string(app), "licencesLink") {
+		t.Error("app.js: no link to the licences")
+	}
+	for _, text := range []string{"SIWIS", "Federal Roads Office"} {
+		if strings.Contains(string(app), text) || strings.Contains(string(i18n), text) {
+			t.Errorf("the page still spells out a credit (%s): it belongs on the licences page", text)
+		}
+	}
+}
+
 // Wikimedia fails: 502, and the failure is not kept (the next call asks again); a thumbnail larger than a
 // picture may be: 502; a picture found by another way wins over the failure of the first
 func TestPictureWikimediaFails(t *testing.T) {

@@ -72,6 +72,14 @@ for pr in "privacy|Privacy policy" "de/privacy|Datenschutzerklärung"; do
 done
 code=$(get "$PAGE/sitemap.xml")
 grep -qF "<loc>$PAGE/de/privacy</loc>" "$TMP/b" && ok "the privacy policy in the sitemap" || ko "the sitemap does not list the privacy policy"
+grep -qF "<loc>$PAGE/de/licences</loc>" "$TMP/b" && ok "the licences in the sitemap" || ko "the sitemap does not list the licences"
+# the licences and sources (the page links them small and spells out no credit itself): the voices under CC BY, the
+# traffic data in the wording of FEDRO, OpenStreetMap, DB-IP; English and German
+for pr in "licences|Licences and sources" "de/licences|Lizenzen und Quellen"; do
+	code=$(get "$PAGE/${pr%%|*}")
+	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -qF 'serena-synthetic-it-27h (Marco Baccarani)' "$TMP/b" && grep -qF 'Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).' "$TMP/b" &&
+		grep -qF 'OpenStreetMap' "$TMP/b" && grep -qF 'IP Geolocation by DB-IP' "$TMP/b" && ok "the licences /${pr%%|*}: voices, traffic, map data, DB-IP" || ko "/${pr%%|*}: HTTP $code"
+done
 # the app for Android opens links of the site: its signing key in assetlinks.json
 code=$(get "$PAGE/.well-known/assetlinks.json")
 [[ $code == 200 ]] && jq -e '.[0].target.package_name == "ch.hippomaps.app" and (.[0].target.sha256_cert_fingerprints | length) > 0' "$TMP/b" >/dev/null && ok "assetlinks.json for the app" || ko "assetlinks.json: HTTP $code"

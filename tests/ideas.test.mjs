@@ -93,3 +93,28 @@ test("the article of a river: German an der / am, French de la / du / de l', Ita
   assert.equal(it.bridges("Limmat"), "ponti sulla Limmat");
   assert.equal(it.open("farmacie", "pharmacy"), "farmacie aperte");
 });
+
+test("a river beside the town, not through it: no search along the river in the town (the Reuss in a view of Zurich)", () => {
+  const d = ideasFor({ river: "Reuss", riverTown: false, town: "Zurich", city: true }, EN.idea, 12, first);
+  assert.equal(d.long, "vegan restaurants in Zurich");
+  assert.ok(![d.long, ...d.list].some((x) => /Reuss in Zurich/.test(x)), JSON.stringify(d));
+  assert.equal(ideasFor({ river: "Limmat", riverTown: true, town: "Zurich", city: true }, EN.idea, 12, first).long, "cafés along the Limmat in Zurich");
+});
+test("a view with few places with a name (the open sea, a mountain side): no kinds of places of the view", () => {
+  const sea = ideasFor({ sea: true, places: 0 }, EN.idea, 20, first);
+  assert.deepEqual([sea.short, sea.list, sea.bare], ["", [], true]);
+  assert.equal(sea.long, EN.idea.fallback);
+  const side = ideasFor({ places: 1, huts: 2000 }, EN.idea, 12, first);
+  assert.deepEqual([side.short, side.list], ["", ["mountain huts over 2000 m"]]);
+  // a coast with places: the sea and the hour as before
+  const coast = ideasFor({ sea: true, places: 40 }, EN.idea, 20, first);
+  assert.equal(coast.short, "open restaurants");
+  assert.ok(coast.list.includes("restaurants by the sea"));
+  for (const lang of Object.keys(all)) assert.ok(all[lang].idea.fallbackShort, lang);
+});
+test("along a river: places a river bank has (no benches or drinking water, which few rivers have mapped)", () => {
+  for (let i = 0; i < 4; i++) {
+    const d = ideasFor({ river: "Paillon" }, EN.idea, 12, (o) => o[i % o.length]);
+    assert.ok(/^(cafés|bars|restaurants|playgrounds) along the Paillon$/.test(d.list[0]), d.list[0]);
+  }
+});
