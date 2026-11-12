@@ -781,21 +781,15 @@ compassBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hid
   '<path d="M12 3 15.5 12h-7z" fill="#d0312d"/><path d="M12 21 8.5 12h7z" fill="currentColor" opacity=".55"/></g></svg>';
 const locBtn = el("button", "lm-locate", { type: "button", title: T.myLocation, "aria-label": T.myLocation });
 locBtn.innerHTML = svg(ICON.locate, 22);
-// 2D or 3D, the button names the other: on the map the terrain and the tilt; in navigation the map that
-// follows, flat or tilted (hm-nav-2d)
+// 2D or 3D, the button names the other: the terrain and the tilt of the map (not in navigation: the map follows
+// tilted there, and the button is out of view)
 const dimBtn = el("button", "lm-dim", { type: "button" });
 function showDim() {
-  const flat = nav.on ? nav.flat : !look.threeD;
-  dimBtn.textContent = flat ? "3D" : "2D";
-  dimBtn.title = dimBtn.ariaLabel = flat ? T.tiltedMap : T.flatMap;
+  dimBtn.textContent = look.threeD ? "2D" : "3D";
+  dimBtn.title = dimBtn.ariaLabel = look.threeD ? T.flatMap : T.tiltedMap;
 }
-dimBtn.addEventListener("click", () => {
-  if (!nav.on) return setThreeD(!look.threeD);
-  nav.flat = !nav.flat;
-  store.set("hm-nav-2d", nav.flat ? "1" : "0");
-  showDim();
-  if (nav.follow) map.easeTo({ pitch: nav.flat ? 0 : NAV_PITCH, duration: 500 });
-});
+showDim();
+dimBtn.addEventListener("click", () => setThreeD(!look.threeD));
 mapEl.append(areaBtn, compassBtn, dimBtn, locBtn);
 const needle = compassBtn.querySelector(".lm-needle");
 const turnNeedle = () => { needle.style.transform = `rotate(${-map.getBearing()}deg)`; };
@@ -4418,8 +4412,7 @@ function preAt(v) {
   const cfg = NAV[route.mode];
   return Math.min(cfg.preMax, Math.max(cfg.preMin, v * cfg.pre));
 }
-// flat: false, navigation follows tilted (its 2D/3D button is gone)
-const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", flat: false, spoken: new Set(), off: 0, rerouting: false };
+const nav = { on: false, sim: false, follow: true, muted: store.get("hm-mute") === "1", spoken: new Set(), off: 0, rerouting: false };
 
 // During navigation the camera eases from fix to fix and never stops, and the traveller asks for a
 // frame every frame: on a 90 or 120 Hz screen the map would draw 90 or 120 times a second. Capped
@@ -4887,7 +4880,7 @@ function navUpdate(p, rawPos, off = false) {
   navDayNight(p, at);
   if (nav.elev) nav.elev.mark((p.along / (total || 1)) * nav.elev.km);
   if (nav.follow) {
-    map.easeTo({ center: at, bearing: heading, pitch: nav.flat ? 0 : NAV_PITCH, zoom: navZoom(at), padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
+    map.easeTo({ center: at, bearing: heading, pitch: NAV_PITCH, zoom: navZoom(at), padding: navPad(), duration: nav.sim ? 480 : 900, easing: (t) => t });
   }
   drawNavLine(p);
   if (nav.sim && left <= cfg.arrive) navArrive(); // with real fixes onFix decides (arrivedNow)
@@ -4955,7 +4948,7 @@ const mapH = () => mapHeight || (mapHeight = mapEl.clientHeight);
 function navZoom(at) {
   const ms = Math.max(0, nav.sim ? (nav.speed || 0) / 3 : nav.speed || 0);
   const ahead = Math.min(1000, Math.max(120, ms * 25));
-  const px = mapH() * 0.55 * (nav.flat ? 1 : 2);
+  const px = mapH() * 0.55 * 2; // the map above the traveller, twice its ground when tilted
   const slow = route.mode !== "car";
   const target = Math.min(slow ? 19.5 : 18.6, Math.max(slow ? 16 : 15,
     Math.log2(((slow ? 156543 : 78271.5) * Math.cos((at[1] * Math.PI) / 180) * px) / ahead)));
@@ -5179,7 +5172,6 @@ async function navStart(sim) {
   root.classList.add("lm-navigating");
   nav.offlineSaid = false;
   offlineNote();
-  showDim();
   navBox.hidden = false;
   navCenter.hidden = true;
   navMute.innerHTML = svg(nav.muted ? ICON.muted : ICON.sound, 22);
@@ -5270,7 +5262,6 @@ function navStop() {
   navBox.hidden = true;
   root.classList.remove("lm-navigating", "lm-nav-elev-on");
   offlineNote();
-  showDim();
   followMe();
   setTimeout(() => {
     map.resize();
@@ -5483,7 +5474,6 @@ async function navPointOpen(ll, symbol) {
     press(e.originalEvent.clientX, e.originalEvent.clientY);
   });
 }
-showDim();
 navMute.addEventListener("click", () => {
   nav.muted = !nav.muted;
   store.set("hm-mute", nav.muted ? "1" : "0");
@@ -5500,16 +5490,16 @@ navOverview.addEventListener("click", () => {
 navCenter.addEventListener("click", () => { nav.follow = true; navCenter.hidden = true; });
 // The visitor zooms out of tilted navigation: the camera turns from the tilt to looking straight down,
 // tilted at zoom 15 and above, flat at 12 and below; zoomed in again it tilts back. The zoom buttons,
-// the wheel and two fingers; not the camera that follows (no originalEvent), not the 2D map.
+// the wheel and two fingers; not the camera that follows (no originalEvent).
 // The tilt changes once the gesture is over, in a short ease: a change of the camera during a gesture
 // stops it (jumpTo resets the handlers of MapLibre), and a pinch would stall at every step of its zoom.
 const navPitchFor = (z) => NAV_PITCH * Math.min(1, Math.max(0, (z - 12) / 3));
 let navZoomedBy = false; // a zoom of the visitor in navigation, its tilt still to come
-map.on("zoomstart", (e) => { if (e.originalEvent && nav.on && !nav.follow && !nav.flat) navZoomedBy = true; });
+map.on("zoomstart", (e) => { if (e.originalEvent && nav.on && !nav.follow) navZoomedBy = true; });
 map.on("moveend", () => {
   if (!navZoomedBy || map.isMoving()) return;
   navZoomedBy = false;
-  if (!nav.on || nav.follow || nav.flat) return;
+  if (!nav.on || nav.follow) return;
   const p = navPitchFor(map.getZoom());
   if (Math.abs(map.getPitch() - p) > 0.5) map.easeTo({ pitch: p, duration: 400 });
 });

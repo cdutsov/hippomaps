@@ -25,7 +25,7 @@ test("the tilt waits for the end of the gesture: no camera change while the visi
   // during a gesture (zoom events) nothing moves the camera: jumpTo and setPitch stop the handlers of MapLibre
   assert.doesNotMatch(h, /map\.on\("zoom",/);
   assert.doesNotMatch(h, /setPitch|jumpTo/);
-  // a zoom of the visitor (originalEvent) in navigation, not following, not 2D; the tilt after it, eased
-  assert.match(h, /map\.on\("zoomstart", \(e\) => \{ if \(e\.originalEvent && nav\.on && !nav\.follow && !nav\.flat\)/);
+  // a zoom of the visitor (originalEvent) in navigation, not following; the tilt after it, eased
+  assert.match(h, /map\.on\("zoomstart", \(e\) => \{ if \(e\.originalEvent && nav\.on && !nav\.follow\)/);
   assert.match(h, /map\.on\("moveend",[\s\S]*map\.isMoving\(\)[\s\S]*map\.easeTo\(\{ pitch: p/);
 });
