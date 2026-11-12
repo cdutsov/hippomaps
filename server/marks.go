@@ -204,12 +204,7 @@ func (s *Server) routeMarks(ctx context.Context, line [][2]float64, edges []trac
 		return nil
 	}
 	// the cameras near the line: the line with fewer points, the radius larger by as much
-	tol := 10.0
-	pts := simplify(line, tol)
-	for len(pts) > marksQueryPts {
-		tol *= 2
-		pts = simplify(line, tol)
-	}
+	pts, tol := simplifyTo(line, 10, marksQueryPts)
 	var coords strings.Builder
 	for i, p := range pts {
 		if i > 0 {

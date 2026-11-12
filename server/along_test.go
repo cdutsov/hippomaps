@@ -3,10 +3,12 @@ package server
 import (
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func post(h http.Handler, u, body string) *httptest.ResponseRecorder {
@@ -180,5 +182,39 @@ func TestSimplify(t *testing.T) {
 	got := simplify(line, 30)
 	if len(got) != 4 || got[1] != line[2] {
 		t.Errorf("simplify: %v", got)
+	}
+}
+
+// a line that keeps most of its points (a zigzag that grows, as a visitor may send to along) is simplified in
+// runs: in time along its length, not its square (60000 points took minutes), and brought to the points asked
+func TestSimplifyZigzag(t *testing.T) {
+	line := make([][2]float64, alongMaxPoints)
+	for i := range line {
+		line[i] = [2]float64{8 + float64(i)*1e-6, 47 + float64(i)*1e-5*float64(1-2*(i%2))}
+	}
+	done := make(chan [][2]float64, 1)
+	go func() {
+		pts, _ := simplifyTo(line, 30, alongQueryPts)
+		done <- pts
+	}()
+	select {
+	case pts := <-done:
+		if len(pts) < 2 || len(pts) > alongQueryPts || pts[0] != line[0] || pts[len(pts)-1] != line[len(line)-1] {
+			t.Errorf("zigzag: %d points, from %v to %v", len(pts), pts[0], pts[len(pts)-1])
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("a zigzag of 60000 points takes more than 20 s")
+	}
+	// a line of a route: the points the runs keep are few
+	for i := range line {
+		line[i] = [2]float64{float64(i) * 20.0 / float64(len(line)), 47 + 0.01*math.Sin(float64(i)/50)}
+	}
+	pts, tol := simplifyTo(line, 30, alongQueryPts)
+	if len(pts) > alongQueryPts || tol > 1000 {
+		t.Errorf("a line of 1500 km: %d points with a tolerance of %.0f m", len(pts), tol)
+	}
+	// no tolerance brings these to 3 points (a run keeps its middle): 3 at even steps
+	if pts, _ := simplifyTo(line[:4*simplifyRun], 30, 3); len(pts) != 3 || pts[0] != line[0] || pts[2] != line[4*simplifyRun-1] {
+		t.Errorf("thinned: %d points", len(pts))
 	}
 }

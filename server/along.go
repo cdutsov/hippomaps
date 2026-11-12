@@ -126,10 +126,7 @@ func (s *Server) along(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) alongQuery(ctx context.Context, line [][2]float64, filter string, radius float64) ([]alongPlace, int, error) {
-	pts := simplify(line, 30)
-	for tol := 60.0; len(pts) > alongQueryPts; tol *= 2 {
-		pts = simplify(line, tol)
-	}
+	pts, _ := simplifyTo(line, 30, alongQueryPts)
 	var coords strings.Builder
 	for i, p := range pts {
 		if i > 0 {
@@ -266,8 +263,33 @@ func project(line [][2]float64, cum []float64, p [2]float64) (at, off float64) {
 	return at, off
 }
 
+// simplifyTo is line with at most n points: simplified with the tolerance tol (metres), doubled until they
+// are as few; the tolerance used comes back. A line that no tolerance brings to n points (simplifyRun keeps
+// points of a very long one) gives n of its points at even steps.
+func simplifyTo(line [][2]float64, tol float64, n int) ([][2]float64, float64) {
+	pts := simplify(line, tol)
+	for len(pts) > n && tol < 1e8 { // beyond the size of the earth every point is within the tolerance
+		tol *= 2
+		pts = simplify(line, tol)
+	}
+	if len(pts) > n {
+		out := make([][2]float64, n)
+		for i := range out {
+			out[i] = pts[i*(len(pts)-1)/(n-1)]
+		}
+		pts = out
+	}
+	return pts, tol
+}
+
+// simplifyRun is the longest run of points simplify looks at as one: a longer run is halved and its middle
+// point kept. Douglas-Peucker looks at every point of a run for each point it keeps, so a line that keeps
+// most of its points (a zigzag, which a visitor may send to along) takes the square of its length in time;
+// in runs it takes at most simplifyRun times its length. A line of a route keeps a few points more.
+const simplifyRun = 512
+
 // simplify drops the points of line that are less than tol metres off the line through the others
-// (Douglas-Peucker).
+// (Douglas-Peucker, in runs of at most simplifyRun points).
 func simplify(line [][2]float64, tol float64) [][2]float64 {
 	if len(line) < 3 {
 		return line
@@ -280,6 +302,12 @@ func simplify(line [][2]float64, tol float64) [][2]float64 {
 		ij := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		i, j := ij[0], ij[1]
+		if j-i > simplifyRun {
+			mid := (i + j) / 2
+			keep[mid] = true
+			stack = append(stack, [2]int{i, mid}, [2]int{mid, j})
+			continue
+		}
 		ax, ay := flatXY(line[i], lat0)
 		bx, by := flatXY(line[j], lat0)
 		dx, dy := bx-ax, by-ay
