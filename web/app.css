@@ -214,7 +214,6 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-end-dot { width: 12px; height: 12px; border-radius: 50%; border: 3px solid #111827; background: #fff; }
 .lm-end-to .lm-end-dot { border-color: #fff; background: #d0312d; box-shadow: 0 0 0 1px #d0312d; }
 .lm-end-name { color: var(--muted); font-size: .8rem; }
-.lm-end-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lm-end-box { position: relative; min-width: 0; }
 .lm-end-input { width: 100%; border: 0; background: none; color: var(--fg); font: inherit; padding: .1rem 0; outline: none; text-overflow: ellipsis; }
 .lm-end-input::placeholder { color: var(--muted); }
@@ -226,7 +225,6 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-end-stop > .lm-end-list { margin-right: -.2rem; }
 .lm-end > .lm-end-list .lm-opt { gap: calc(.5rem - 2px); padding: .55rem .6rem .55rem calc(.6rem - 2px); }
 .lm-ends:has(.lm-end-list:not([hidden])) .lm-swap { visibility: hidden; }
-.lm-end-none { color: var(--muted); }
 .lm-swap { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
 .lm-swap:disabled { opacity: .4; cursor: default; }
 .lm-route-acts { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
@@ -288,10 +286,6 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-swatch-outdoor { background: linear-gradient(135deg, #dfe9c8 40%, #b9d39a 40% 62%, #e9e3d3 62%); }
 .lm-swatch-relief { background: linear-gradient(135deg, #8fbf7a, #d9c38f 45%, #b49a7a 70%, #fff); }
 .lm-swatch-driving { background: linear-gradient(135deg, #f4f1ea 45%, #f2a541 45% 55%, #f4f1ea 55%); }
-.lm-swatch-marine { background: linear-gradient(135deg, #f1ead4 35%, #b8dcef 35% 60%, #7fb6da 60%); }
-.lm-swatch-white { background: #fff; }
-.lm-swatch-grayscale { background: linear-gradient(135deg, #e6e6e6 55%, #c4c4c4 55% 70%, #e6e6e6 70%); }
-.lm-swatch-black { background: linear-gradient(135deg, #111 55%, #2b2b2b 55% 70%, #111 70%); }
 .lm-toggle { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .lm-toggle-text { display: flex; flex-direction: column; }
 .lm-toggle-note { color: var(--muted); font-size: .8rem; }

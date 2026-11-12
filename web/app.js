@@ -533,7 +533,7 @@ try {
 
 // ------------------------------------------------------------------ the map style
 // The style of the map, 3D terrain, 3D buildings and relief shading, kept in the browser. The
-// page is dark with the dark and black styles; the first style follows the theme of the site.
+// page is dark with the dark style and the night of Driving; the first style follows the theme of the site.
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const look = {
   style: T.styles.some(([k]) => k === store.get("hm-style")) ? store.get("hm-style") : "auto",
@@ -543,7 +543,6 @@ const look = {
   traffic: store.get("hm-traffic") === "1", // off at first
   transit: store.get("hm-transit") === "1",
 };
-// the height of the sun in degrees at a place and time (to a few tenths of a degree; NOAA)
 // the sun at a time: its declination, and its hour angle (radians) at longitude 0
 function sunAt(when) {
   const rad = Math.PI / 180, d = when / 864e5 - 10957.5; // days since 2000-01-01 12:00 UTC
@@ -553,6 +552,7 @@ function sunAt(when) {
   const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
   return { dec, ha0: gmst * 15 * rad - ra };
 }
+// the height of the sun in degrees at a place and time (to a few tenths of a degree; NOAA)
 function sunHeight(lon, lat, when = new Date()) {
   const rad = Math.PI / 180, { dec, ha0 } = sunAt(when), ha = ha0 + lon * rad;
   return Math.asin(Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(ha)) / rad;
@@ -597,7 +597,7 @@ const isNight = (lon, lat) => sunHeight(lon, lat) < -0.833; // the sun below the
 let meForSun = NEAR ? [NEAR[1], NEAR[0]] : null;
 const nightNow = () => (meForSun ? isNight(meForSun[0], meForSun[1]) : ((h) => h < 7 || h >= 19)(new Date().getHours()));
 autoDark = nightNow();
-const theme = () => (["dark", "black", "driving-night"].includes(shownStyle()) ? "dark" : "light");
+const theme = () => (["dark", "driving-night"].includes(shownStyle()) ? "dark" : "light");
 document.documentElement.dataset.theme = theme();
 const styleURL = (name = shownStyle()) => {
   const p = new URLSearchParams({ lang: ["de", "fr", "it"].includes(LANG) ? LANG : "en" });
@@ -798,12 +798,8 @@ dimBtn.addEventListener("click", () => {
 });
 mapEl.append(areaBtn, compassBtn, dimBtn, locBtn);
 const needle = compassBtn.querySelector(".lm-needle");
-const turnNeedle = () => {
-  needle.style.transform = `rotate(${-map.getBearing()}deg)`;
-  compassBtn.classList.toggle("lm-turned", Math.abs(map.getBearing()) > 0.5 || map.getPitch() > 0.5);
-};
+const turnNeedle = () => { needle.style.transform = `rotate(${-map.getBearing()}deg)`; };
 map.on("rotate", turnNeedle);
-map.on("pitch", turnNeedle);
 map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
@@ -1197,10 +1193,7 @@ map.on("style.load", () => {
   // the area of a tap: its outline dashed in the blue of overpass.ch
   add({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "butt" },
     paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95, "line-dasharray": [3, 2] } }, below);
-  // directions: the line with a casing, the start (white) and the destination (red)
   const line = ["==", ["geometry-type"], "LineString"];
-  // traffic under the route: closures dark red, queues red, slow traffic and roadworks orange
-  const tline = ["==", ["geometry-type"], "LineString"];
   // transit: each line in its colour, metro wider than tram; its number along it when near
   add({ id: "lm-transit-line", type: "line", source: "lm-transit", layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["to-color", ["get", "colour"], "#7a7f87"], "line-opacity": 0.9,
@@ -1209,11 +1202,12 @@ map.on("style.load", () => {
   if (font) add({ id: "lm-transit-ref", type: "symbol", source: "lm-transit", minzoom: 13, filter: ["has", "ref"],
     layout: { "symbol-placement": "line", "text-field": ["get", "ref"], "text-font": font, "text-size": 12, "symbol-spacing": 300 },
     paint: { "text-color": "#fff", "text-halo-color": ["to-color", ["get", "colour"], "#7a7f87"], "text-halo-width": 2.5 } });
-  add({ id: "lm-traffic-line", type: "line", source: "lm-traffic", filter: ["all", tline, ["!=", ["get", "t"], "works"]],
+  // traffic under the route: roads closed dark red, other closures grey, queues red, slow traffic and roadworks orange
+  add({ id: "lm-traffic-line", type: "line", source: "lm-traffic", filter: ["all", line, ["!=", ["get", "t"], "works"]],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#9ca3af", "jam", "#dc2626", "#f08c00"],
       "line-width": ["interpolate", ["linear"], ["zoom"], 7, 2, 14, 6], "line-opacity": 0.85 } }, below);
-  add({ id: "lm-traffic-works", type: "line", source: "lm-traffic", minzoom: 11, filter: ["all", tline, ["==", ["get", "t"], "works"]],
+  add({ id: "lm-traffic-works", type: "line", source: "lm-traffic", minzoom: 11, filter: ["all", line, ["==", ["get", "t"], "works"]],
     paint: { "line-color": "#f08c00", "line-width": 3, "line-dasharray": [2, 1.5], "line-opacity": 0.8 } }, below);
   const tpt = ["==", ["geometry-type"], "Point"];
   add({ id: "lm-traffic-pt", type: "circle", source: "lm-traffic", minzoom: 7, filter: ["all", tpt, ["!=", ["get", "t"], "works"]], paint: {
@@ -1223,6 +1217,7 @@ map.on("style.load", () => {
     "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-color": "#f08c00" } });
   add({ id: "lm-stars", type: "symbol", source: "lm-stars", layout: { "icon-image": "lm-star-icon",
     "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 15, 1], "icon-allow-overlap": true, "icon-ignore-placement": true } });
+  // directions: the line with a casing
   add({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
   add({ id: "lm-route-line", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
@@ -1336,8 +1331,7 @@ function trafficAt(e) {
   if (!f) return false;
   const it = trafficById.get(f.properties.id);
   const box2 = el("div", "lm-traffic-pop");
-  const kind = it ? (it.kind === "closure" && !it.closed ? "closure" : it.kind) : f.properties.t;
-  const head = el("strong", "", {}, T.trafficKinds[kind] || T.trafficKinds[f.properties.t] || T.traffic);
+  const head = el("strong", "", {}, T.trafficKinds[it?.kind] || T.trafficKinds[f.properties.t] || T.traffic);
   box2.append(head);
   if (it?.when) head.append(` · ${it.when === "duringTheNight" ? T.atNight : T.byDay}`);
   if (it) {
@@ -2852,9 +2846,8 @@ function show(d, sel) {
   qPre.textContent = d.query || "";
   query.hidden = !d.query;
   setSheet(place ? "peek" : "half");
-  const box = d.results?.bbox;
   const pick = sel && state.byId.get(sel);
-  if (box?.length === 4 && !pick) fitBox(box, place ? 16 : 16.5);
+  if (bb?.length === 4 && !pick) fitBox(bb, place ? 16 : 16.5);
   if (place) {
     count.textContent = "";
     const c = center(place);
