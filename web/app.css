@@ -91,7 +91,7 @@ button { font: inherit; color: inherit; }
 .lm-chipname { color: var(--muted); font-size: .8rem; margin-right: .1rem; }
 .lm-chip { border: 1px solid var(--line); background: var(--bg); border-radius: 16px; padding: .3rem .75rem; font-size: .85rem; cursor: pointer; }
 .lm-chip:hover { background: var(--hot); border-color: var(--accent); }
-.lm-count { margin: .6rem 1rem .2rem; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.lm-count, .lm-start-head { margin: .6rem 1rem .2rem; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
 .lm-count:empty { display: none; }
 
 .lm-results { list-style: none; margin: 0; padding: 0; }
@@ -609,3 +609,27 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-nav-go .lm-nav-start { box-shadow: 0 2px 8px rgba(2, 132, 199, .35); }
 .lm-end-stop .lm-end-dot { background: var(--warm); box-shadow: 0 0 0 1px var(--warm); }
 .lm-along-add { color: var(--warm); }
+
+/* the start: what the search reads, with two searches in the sentence, and more searches of the map view; on a phone
+   these are a row of pills right under the search box (the sheet down), the sentence under them */
+.lm-start { display: flex; flex-direction: column; padding: .3rem 0 .6rem; }
+.lm-start-text { margin: .2rem 1rem .4rem; color: var(--muted); font-size: .92rem; line-height: 1.6; }
+.lm-start-ex { border: 0; background: var(--hot); color: var(--accent); border-radius: 6px; padding: .05rem .4rem; margin: 0 .05rem;
+  font-size: inherit; line-height: 1.45; cursor: pointer; box-decoration-break: clone; -webkit-box-decoration-break: clone; text-align: left; }
+.lm-start-ex:hover { text-decoration: underline; }
+.lm-start-head { margin-top: .7rem; }
+.lm-start-list { list-style: none; margin: 0; padding: 0; }
+.lm-start-idea { display: flex; gap: .7rem; align-items: center; width: 100%; border: 0; background: none; padding: .55rem 1rem; text-align: left;
+  cursor: pointer; color: var(--fg); }
+.lm-start-idea:hover { background: var(--hot); }
+.lm-start-icon { color: var(--muted); display: grid; flex: none; }
+.lm-start-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) {
+  .lm-start { padding-top: 0; }
+  .lm-start-head { display: none; }
+  .lm-start-list { order: -1; display: flex; gap: .45rem; overflow-x: auto; padding: 0 1rem .2rem; scrollbar-width: none; }
+  .lm-start-list::-webkit-scrollbar { display: none; }
+  .lm-start-idea { width: auto; min-height: 36px; padding: 0 .9rem 0 .75rem; gap: .4rem; border: 1px solid var(--line); border-radius: var(--pill);
+    background: var(--bg); font-size: .9rem; white-space: nowrap; }
+  .lm-start-text { margin-top: .7rem; }
+}

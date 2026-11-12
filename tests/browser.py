@@ -24,7 +24,10 @@ map of a route saved at Start and shown from the device, the page opening (the s
 directions in their field, the panel at the height of its state when the keyboard goes; the signs along a route by car
 (speed cameras in the Netherlands, none in Switzerland, stop signs in Berkeley) drawn beside it; the search box without the
 focus at the start on a phone, with it on a computer (no list until a click); a place written in the search moved to the
-destination by Directions; and no errors of the page on the way. Needs chromium and websocket-client.
+destination by Directions; the dot of the location and the map on it following the visitor; a route on a small phone with
+car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; the start: what the search reads with two searches, and searches of the map view (a river of
+Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; and no errors
+of the page on the way. Needs chromium and websocket-client.
 """
 import base64
 import json
@@ -139,6 +142,12 @@ try:
     call("Emulation.setTouchEmulationEnabled", enabled=True)
     # a first visit, the location not given: the map opens at the place of the IP address; without a place (no database,
     # or a private address) in Zurich; the map never credits DB-IP (the privacy policy does)
+    def drag(x, y0, y1, steps=8):
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y0}])
+        for i in range(1, steps + 1):
+            call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": x, "y": y0 + (y1 - y0) * i / steps}])
+            time.sleep(0.03)
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
     def first_visit(what):
         call("Page.navigate", url=URL)
         wait("window.hmMap?.loaded()", 30)
@@ -173,6 +182,30 @@ try:
     # our sources (route, pins, results …): tiles up to zoom 14 only
     check(js("(() => { const s = Object.entries(hmMap.getStyle().sources).filter(([k, v]) => k.startsWith('lm-') && v.type === 'geojson'); return s.length > 5 && s.every(([, v]) => v.maxzoom === 14); })()"),
           "our sources with tiles to zoom 14")
+
+    # the dot moves with the visitor (the page watches the location), and the map with it while it is on them; once
+    # a finger moved the map the dot alone moves; the button puts the map on the visitor again
+    wait("!hmMap.isMoving() && hmMap.loaded()", 20)
+    def near(expr, lat, lon, m=10):
+        return f"(() => {{ const c = {expr}; return !!c && Math.hypot((c[1] - {lat}) * 111320, (c[0] - {lon}) * 75000) < {m}; }})()"
+    dot = "hmMap.getStyle().sources['lm-me'].data.features[1]?.geometry.coordinates"
+    mid = "hmMap.getCenter().toArray()"
+    p = (ZURICH[0] + 0.0012, ZURICH[1] + 0.0015)
+    call("Emulation.setGeolocationOverride", latitude=p[0], longitude=p[1], accuracy=10)
+    check(wait(near(dot, *p), 10), "the visitor moves (no search, no directions): the dot of the location moves too")
+    check(wait("!hmMap.isMoving() && " + near(mid, *p, 15), 10), f"the map on the visitor goes along ({js(mid)})")
+    drag(195, 260, 330)
+    wait("!hmMap.isMoving()", 5)
+    c0 = js(mid)
+    p = (ZURICH[0] + 0.002, ZURICH[1] + 0.0015)
+    call("Emulation.setGeolocationOverride", latitude=p[0], longitude=p[1], accuracy=10)
+    moved = wait(near(dot, *p), 10)
+    time.sleep(1.2)
+    check(moved and js(near(mid, c0[1], c0[0], 3)), f"after a finger moved the map: the dot moves, the map stays ({c0}, {js(mid)})")
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+    wait(near(dot, *ZURICH), 10)
+    js("document.querySelector('.lm-locate').click()")
+    check(wait("!hmMap.isMoving() && " + near(mid, *ZURICH, 15), 10), "the button of the location: the map on the visitor again")
 
     # directions: the button, a typed destination, the route by car
     # a double tap zooms the map and opens nothing
@@ -422,6 +455,31 @@ try:
     check(wait("document.querySelector('.lm-input').value === '' && !document.querySelector('.lm-listview').hidden && document.querySelector('.lm-route').hidden", 5),
           "the X clears the search and the views")
 
+    # the start: what the search reads, with two searches in the sentence, and searches of the map view as a row of
+    # pills right under the search box, the sheet down; by Zurich main station a river of the view in them (the Limmat
+    # or the Sihl); a tap on one searches it, the X brings the start back
+    js("document.querySelector('.lm-input').blur(); location.hash = '#map=14/47.3779/8.5403'")
+    wait("!hmMap.isMoving() && hmMap.loaded()", 20)
+    start_ok = wait("document.querySelectorAll('.lm-start-list .lm-start-idea').length >= 2 && document.querySelectorAll('.lm-start-text .lm-start-ex').length === 2"
+                    " && [...document.querySelectorAll('.lm-start-label')].some(e => /the (Limmat|Sihl)/.test(e.textContent))", 20)
+    ideas = js("JSON.stringify([...document.querySelectorAll('.lm-start-ex, .lm-start-label')].map(e => e.textContent))")
+    check(start_ok, f"the start: the sentence with two searches, searches of the map view with its river ({ideas})")
+    wait("document.getElementById('app').dataset.sheet === 'peek'", 5)
+    check(js("(() => { const r = document.querySelector('.lm-start-list').getBoundingClientRect(), f = document.querySelector('.lm-form').getBoundingClientRect();"
+             " return document.getElementById('app').dataset.sheet === 'peek' && r.top >= f.bottom - 1 && r.bottom <= innerHeight && r.height > 20; })()"),
+          "on a phone the searches of the start in a row under the search box, the sheet down")
+    # (the row scrolls sideways, and is drawn again when the map view shows other things: the pill marked just before the tap)
+    wait("hmMap.loaded() && !hmMap.isMoving()", 10)
+    mark = ("(() => { const b = [...document.querySelectorAll('.lm-start-idea')].find(b => /bridges over/.test(b.textContent)); if (!b) return false;"
+            " b.setAttribute('data-hm-tap', '1'); b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' }); return true; })()")
+    if wait(mark, 10) and tap("[data-hm-tap]"):
+        check(wait("/Bridge/.test(document.querySelector('.lm-title').textContent) && document.querySelector('.lm-start').hidden", 60),
+              f"a tap on a search of the start searches it ({js('document.querySelector(\'.lm-title\').textContent')})")
+    else:
+        check(False, "a search of the start for the bridges of the river")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click(); document.querySelector('.lm-input').blur()")
+    check(wait("!document.querySelector('.lm-start').hidden && document.querySelectorAll('.lm-start-idea').length >= 2", 10), "the X: the start again, with its searches")
+
     # the search box: one line, two when the text needs them, never more (the rest scrolls inside); Enter searches
     # and a line break pasted becomes a space
     lines = lambda: js("(() => { const i = document.querySelector('.lm-input'); return [Math.round(i.clientHeight / parseFloat(getComputedStyle(i).lineHeight)),"
@@ -585,7 +643,7 @@ try:
     # the bubbles: a search of the map view; Transit switches its lines
     js("[...document.querySelectorAll('.lm-bubble')].find(b => /Restaurants/.test(b.textContent))?.click()")
     check(wait("/\\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelector('.lm-input').value === 'Restaurants'", 60),
-          "the Restaurants bubble searches the map view")
+          f"the Restaurants bubble searches the map view ({js('JSON.stringify([document.querySelector(\'.lm-status\')?.textContent, document.querySelector(\'.lm-count\')?.textContent, document.querySelector(\'.lm-input\').value, location.hash])')})")
     # in another language, a bubble searches the words it shows (Ristoranti, not restaurants)
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'it'; s.dispatchEvent(new Event('change')) })()")
     js("[...document.querySelectorAll('.lm-bubble')].find(b => b.textContent === 'Ristoranti')?.click()")
@@ -756,12 +814,6 @@ try:
 
     # the panel on a phone: empty, it stays down after a drag up; a finger moved on the suggestions
     # neither picks one nor moves the map, a tap picks; the keyboard gone, directions back at their top
-    def drag(x, y0, y1, steps=8):
-        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y0}])
-        for i in range(1, steps + 1):
-            call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": x, "y": y0 + (y1 - y0) * i / steps}])
-            time.sleep(0.03)
-        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
     call("Page.navigate", url=URL)
     wait("window.hmMap?.loaded() && document.getElementById('app').dataset.sheet === 'peek'", 30)
     time.sleep(1)
@@ -781,8 +833,20 @@ try:
         check(wait("document.querySelector('.lm-input').value !== 'Bahnhofstrasse' || !document.querySelector('.lm-suggest:not([hidden])')", 5), "a tap on a suggestion picks it")
     else:
         check(False, "suggestions for Bahnhofstrasse")
-    call("Page.navigate", url=URL + "/?to=47.36690,8.54500&tn=Bellevue&mode=car")
-    wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40)
+    # a route found on a phone, small and large: car, bike and walk stay in view above start and destination (the
+    # panel not scrolled), the time and Start in view under them: the sheet as high as they need
+    for w, h in ((360, 640), (390, 844)):
+        call("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=2, mobile=True)
+        call("Page.navigate", url=URL + "/?to=47.36690,8.54500&tn=Bellevue&mode=car")
+        wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40)
+        time.sleep(1.2)  # the sheet at its height
+        got = js("JSON.stringify((() => { const b = document.querySelector('.lm-body'), m = document.querySelector('.lm-modes').getBoundingClientRect(),"
+                 " k = document.querySelector('.lm-route > .lm-back').getBoundingClientRect(), g = document.querySelector('.lm-nav-go').getBoundingClientRect(),"
+                 " s = document.querySelector('.lm-side').getBoundingClientRect();"
+                 " return { sheet: document.getElementById('app').dataset.sheet, scroll: b.scrollTop, modes: Math.round(m.top - k.bottom), start: Math.round(innerHeight - g.bottom), map: Math.round(s.top) }; })())")
+        g = json.loads(got)
+        check(g["sheet"] == "half" and g["scroll"] == 0 and g["modes"] >= 0 and g["start"] >= 0 and g["map"] >= 0.28 * h,
+              f"a route on a phone of {w} by {h}: car, bike and walk in view, the panel not scrolled, Start in view, the map above ({got})")
     call("Emulation.setDeviceMetricsOverride", width=390, height=480, deviceScaleFactor=2, mobile=True)  # the keyboard up
     js("document.querySelector('.lm-end-to input').focus()")
     time.sleep(0.4)
@@ -1062,6 +1126,11 @@ try:
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)
     check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 30), "the page in German")
+    # the start in German: the sentence and the searches of the view, no English in them
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click(); document.querySelector('.lm-input').blur()")
+    de_ok = wait("/versteht Alltagssprache/.test(document.querySelector('.lm-start-text')?.textContent || '') && document.querySelectorAll('.lm-start-label').length >= 2", 15)
+    de_ideas = js("[...document.querySelectorAll('.lm-start-ex, .lm-start-label')].map(e => e.textContent)") or []
+    check(de_ok and not any(re.search(r"\b(along|near|over|open|the)\b", t) for t in de_ideas), f"the start in German ({de_ideas})")
     # the words of the search in German too: what it understood, the other readings, the kinds and days of the places
     js("location.hash = '#map=16/47.3720/8.5390'")
     time.sleep(1.5)
@@ -1158,7 +1227,11 @@ try:
     js("window.hmOld = 1; localStorage.setItem('hm-recent', JSON.stringify([{ text: 'cafes in Zurich', extra: {} }]))")
     call("Page.navigate", url=URL)
     focused = wait("!window.hmOld && document.activeElement === document.querySelector('.lm-input')", 15)
-    check(focused and js("document.querySelector('.lm-suggest').hidden"), "on a computer the cursor in the search box at the start, no list over the map")
+    check(focused and js("document.querySelector('.lm-suggest').hidden"),
+          f"on a computer the cursor in the search box at the start, no list over the map ({focused}, {js('JSON.stringify([document.activeElement?.className, document.querySelector(\'.lm-suggest\').hidden, !!window.hmOld])')})")
+    check(wait("document.querySelectorAll('.lm-start-idea').length >= 2", 20) and js("document.querySelectorAll('.lm-start-text .lm-start-ex').length === 2"
+          " && document.querySelector('.lm-start-head').offsetHeight > 0 && document.querySelector('.lm-start-list').getBoundingClientRect().bottom < innerHeight"),
+          "on a computer the start under the search box: the sentence with two searches, In this area and its searches")
     # another tab, then back: the box gets the focus again, and that opens no list
     tab = call("Target.createTarget", url="about:blank").get("targetId")
     time.sleep(1)
@@ -1180,6 +1253,21 @@ try:
           and wait("[...document.querySelectorAll('.lm-end-to .lm-end-list:not([hidden]) .lm-opt-label')].some(e => /^Bern/.test(e.textContent))", 20),
           f"a place written in the search, then Directions: the text in the destination with its suggestions, the search box empty"
           f" ({js('JSON.stringify([document.querySelector(\'.lm-end-to input\')?.value, document.querySelector(\'.lm-input\').value])')})")
+    # the POIs of every kind with a name, not only those of the list of the style: a dental clinic in Sofia by its
+    # name, other kinds around it, nothing of the street furniture; in the dark style too
+    js("hmMap.jumpTo({ center: [23.3126298, 42.707687], zoom: 18, pitch: 0, bearing: 0 })")
+    pois = ("JSON.stringify((() => { const f = hmMap.queryRenderedFeatures({ layers: ['pois', 'lm-pois-near'].filter(l => hmMap.getLayer(l)) }).map(x => x.properties);"
+            " return { clinic: f.some(x => /Щирков/.test(x.name || '')), kinds: [...new Set(f.map(x => x.kind))].sort(), unnamed: f.filter(x => !x.name).map(x => x.kind) }; })())")
+    for style in ("light", "dark"):
+        js(f"document.querySelector('.lm-style[data-style={style}]').click()")
+        wait(f"document.documentElement.dataset.theme === '{style}'", 15)
+        wait("hmMap.loaded() && !hmMap.isMoving() && " + pois.replace("JSON.stringify(", "(", 1) + ".clinic", 30)
+        g = json.loads(js(pois))
+        street = {"crossing", "traffic_signals", "tree", "street_lamp", "waste_basket", "vacant", "stop", "platform"}
+        check(g["clinic"] and "dentist" in g["kinds"] and len([k for k in g["kinds"] if k not in ("dentist", "restaurant", "cafe", "supermarket", "school", "park")]) >= 3
+              and not street & set(g["kinds"]),
+              f"the {style} map at its largest zooms: a dental clinic by its name, POIs of other kinds, no street furniture ({g['kinds']})")
+    js("document.querySelector('.lm-style[data-style=auto]').click()")
     js("localStorage.removeItem('hm-recent')")
     call("Page.removeScriptToEvaluateOnNewDocument", identifier=mouse.get("identifier", ""))
     real = [e for e in errors if "Map cannot fit" not in e]

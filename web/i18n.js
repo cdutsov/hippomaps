@@ -2,6 +2,40 @@
 // and stands in for any text missing here. num formats a number in the language.
 export const languages = [["de", "Deutsch"], ["en", "English"], ["fr", "Français"], ["it", "Italiano"]];
 
+// riverName: the name of a river as the map has it ("La Seine", "L'Arve", "el Llobregat", "La Thièle / Zihl",
+// "Drize (conduite provisoire)") without its article, one name of several, nothing in brackets; art the article
+// written (lower case), else ""
+export function riverName(name) {
+  const one = String(name || "").split(" / ")[0].replace(/\s*\(.*?\)\s*/g, " ").trim();
+  const m = /^(the|la|le|les|il|lo|el|els|los|las|die|der|das|l['’])\s*(.+)$/i.exec(one);
+  return m && m[2] ? { bare: m[2], art: m[1].toLowerCase().replace("’", "'") } : { bare: one, art: "" };
+}
+// the gender of a river without an article in its name: German feminine unless masculine (die Limmat, der Rhein);
+// French feminine unless masculine (la Limmat, le Rhin); the others by the ending of the name
+const MASC_DE = /(bach|kanal|graben|fluss|strom|rhein|^main|^inn|^neckar|^lech|^regen|^kocher|^ticino|^tessin|^po|^tiber|^doubs|^nil|^jordan|^arno|^don|^dnepr|^dnipro|^ebro|^tajo|^duero|^mississippi|^missouri|^hudson|^ganges|^indus|^mekong|^amazonas|^euphrat|^tigris)$|^(river|rio|río|fiume|torrente)\b/i;
+const MASC_FR = /^(rhin|rhône|rhone|danube|doubs|lot|tarn|var|cher|gers|nil|pô|po|tibre|jourdain|main|neckar|inn|tessin|ticino|rhein|gange|mékong|mississippi|saint-laurent)$|(bach|kanal|graben|canal|ruisseau)$|^(river|rio|río|fiume|torrente|gave|ruisseau|canal)\b/i;
+const vowel = (s) => /^[aeiouyhàâäéèêëîïôöùûü]/i.test(s);
+// German: "an der Limmat", "am Rhein"; "über die Limmat", "über den Rhein"
+const deRiver = (name) => {
+  const { bare } = riverName(name);
+  return MASC_DE.test(bare) ? { an: `am ${bare}`, acc: `den ${bare}` } : { an: `an der ${bare}`, acc: `die ${bare}` };
+};
+// French: "de la Seine", "du Rhône", "de l'Arve"; "la Seine", "le Rhône", "l'Arve"
+const frRiver = (name) => {
+  const { bare, art } = riverName(name);
+  const a = vowel(bare) ? "l'" : art === "la" || art === "le" || art === "les" ? art : MASC_FR.test(bare) ? "le" : "la";
+  return { de: a === "le" ? `du ${bare}` : a === "les" ? `des ${bare}` : `de ${a}${a === "l'" ? "" : " "}${bare}`, the: `${a}${a === "l'" ? "" : " "}${bare}` };
+};
+// Italian: "il Ticino", "lo Zambesi", "la Limmat", "l'Aare"; "sul Ticino", "sulla Limmat", "sull'Aare". A name of a river in
+// German of the feminine (die Limmat) feminine in Italian too, as in the Italian of Switzerland
+const itRiver = (name) => {
+  const { bare, art } = riverName(name);
+  const fem = art === "la" || (!art && (/a$/i.test(bare) || (/[^aeiou]$/i.test(bare) && !MASC_DE.test(bare))));
+  const a = vowel(bare) ? "l'" : fem ? "la" : /^(s[^aeiou]|z|gn|ps|x|y)/i.test(bare) ? "lo" : "il";
+  const su = { "l'": "sull'", la: "sulla", lo: "sullo", il: "sul" }[a];
+  return { the: `${a}${a === "l'" ? "" : " "}${bare}`, on: `${su}${a === "l'" ? "" : " "}${bare}` };
+};
+
 export function texts(num) {
   const dur = (s) => {
     const m = Math.max(1, Math.round(s / 60));
@@ -15,6 +49,26 @@ export function texts(num) {
         "Berghütten über 2500 m im Wallis", "Leuchttürme in der Bretagne"],
       examples: ["Cafés", "Migros", "Museen in Bern", "Spielplätze in der Nähe", "Restaurants jetzt offen", "Hotels an der Limmat in Zürich"],
       intro: "Suchen Sie in einfachen Worten: einen Ort, eine Kette, oder was und wo. Ein Wort allein sucht im Kartenausschnitt.",
+      startText: "hippomaps versteht Alltagssprache, von kurzen Suchen wie {0} bis zu längeren wie {1}.",
+      startArea: "In dieser Gegend",
+      idea: {
+        cats: { cafe: "Cafés", restaurant: "Restaurants", bar: "Bars", bakery: "Bäckereien", pharmacy: "Apotheken", icecream: "Eisdielen",
+          playground: "Spielplätze", bench: "Sitzbänke", picnic: "Picknickplätze", museum: "Museen", vegan: "vegane Restaurants",
+          beergarden: "Biergärten", viewpoint: "Aussichtspunkte", water: "Trinkbrunnen" },
+        open: (c) => `offene ${c}`,
+        along: (c, r) => `${c} ${deRiver(r).an}`,
+        bridges: (r) => `Brücken über ${deRiver(r).acc}`,
+        alongLake: (c, r) => `${c} ${deRiver(r).an} in der Nähe des Sees`,
+        alongIn: (c, r, t) => `${c} ${deRiver(r).an} in ${t}`,
+        lake: (c) => `${c} in der Nähe des Sees`,
+        lakeIn: (c, t) => `${c} in der Nähe des Sees in ${t}`,
+        sea: (c) => `${c} am Meer`,
+        beach: (c) => `${c} am Strand`,
+        town: (c, t) => `${c} in ${t}`,
+        near: (c, x) => `${c} in der Nähe von ${x}`,
+        huts: (m) => `Berghütten über ${m} m`,
+        fallback: "Hotels an der Limmat in Zürich",
+      },
       searching: "Suche läuft…",
       locating: "Ihr Standort wird gesucht…",
       results: (n) => (n === 1 ? "1 Ergebnis" : `${num(n)} Ergebnisse`),
@@ -196,6 +250,26 @@ export function texts(num) {
         "châteaux au Tessin", "phares en Bretagne"],
       examples: ["cafés", "Migros", "musées à Berne", "places de jeux près de moi", "restaurants ouverts maintenant", "hôtels au bord du lac à Genève"],
       intro: "Cherchez en mots simples : un lieu, une chaîne, ou quoi et où. Un mot seul cherche dans la vue de la carte.",
+      startText: "hippomaps comprend le langage de tous les jours, des recherches courtes comme {0} aux plus longues comme {1}.",
+      startArea: "Dans cette région",
+      idea: {
+        cats: { cafe: "cafés", restaurant: "restaurants", bar: "bars", bakery: "boulangeries", pharmacy: "pharmacies",
+          playground: "aires de jeux", bench: "bancs", picnic: "aires de pique-nique", museum: "musées", vegan: "restaurants végans",
+          viewpoint: "points de vue", water: "eau potable" },
+        open: (c, k) => `${c} ${k === "bakery" || k === "pharmacy" ? "ouvertes" : "ouverts"}`,
+        along: (c, r) => `${c} le long ${frRiver(r).de}`,
+        bridges: (r) => `ponts sur ${frRiver(r).the}`,
+        alongLake: (c, r) => `${c} le long ${frRiver(r).de} près du lac`,
+        alongIn: (c, r, t) => `${c} le long ${frRiver(r).de} à ${t}`,
+        lake: (c) => `${c} près du lac`,
+        lakeIn: (c, t) => `${c} près du lac à ${t}`,
+        sea: (c) => `${c} au bord de la mer`,
+        beach: (c) => `${c} près de la plage`,
+        town: (c, t) => `${c} à ${t}`,
+        near: null,
+        huts: (m) => `cabanes au-dessus de ${m} m`,
+        fallback: "hôtels au bord du lac à Genève",
+      },
       searching: "Recherche…",
       locating: "Recherche de votre position…",
       results: (n) => (n === 1 ? "1 résultat" : `${num(n)} résultats`),
@@ -375,6 +449,26 @@ export function texts(num) {
       hints: ["distributori lungo la A3", "castelli in Ticino", "gelaterie a Lugano", "castelli in Valle d'Aosta"],
       examples: ["caffè", "Migros", "musei a Lugano", "parchi giochi vicino a me", "ristoranti aperti ora", "alberghi sul lago a Locarno"],
       intro: "Cerca con parole semplici: un luogo, una catena, oppure cosa e dove. Una parola sola cerca nella vista della mappa.",
+      startText: "hippomaps capisce la lingua di tutti i giorni, dalle ricerche brevi come {0} a quelle più lunghe come {1}.",
+      startArea: "In questa zona",
+      idea: {
+        cats: { cafe: "caffè", restaurant: "ristoranti", bakery: "panetterie", pharmacy: "farmacie", icecream: "gelaterie",
+          playground: "parchi giochi", bench: "panchine", picnic: "aree picnic", museum: "musei", vegan: "ristoranti vegani",
+          viewpoint: "punti panoramici", water: "fontanelle" },
+        open: (c, k) => `${c} ${k === "bakery" || k === "pharmacy" ? "aperte" : "aperti"}`,
+        along: (c, r) => `${c} lungo ${itRiver(r).the}`,
+        bridges: (r) => `ponti ${itRiver(r).on}`,
+        alongLake: (c, r) => `${c} lungo ${itRiver(r).the} vicino al lago`,
+        alongIn: null,
+        lake: (c) => `${c} vicino al lago`,
+        lakeIn: (c, t) => `${c} vicino al lago a ${t}`,
+        sea: (c) => `${c} sul mare`,
+        beach: (c) => `${c} vicino alla spiaggia`,
+        town: (c, t) => `${c} a ${t}`,
+        near: null,
+        huts: (m) => `rifugi sopra i ${m} m`,
+        fallback: "alberghi sul lago a Locarno",
+      },
       searching: "Ricerca…",
       locating: "Ricerca della tua posizione…",
       results: (n) => (n === 1 ? "1 risultato" : `${num(n)} risultati`),
