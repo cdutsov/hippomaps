@@ -26,7 +26,10 @@ directions in their field, the panel at the height of its state when the keyboar
 focus at the start on a phone, with it on a computer (no list until a click); a place written in the search moved to the
 destination by Directions; the dot of the location and the map on it following the visitor; a route on a small phone with
 car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; the start: what the search reads with two searches, and searches of the map view (a river of
-Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; and no errors
+Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start); the map
+on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; a shared route with
+9 stops (the first 8), a stop removed; Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
+coordinates in the search box; the POIs with a name in the Outdoor style; and no errors
 of the page on the way. Needs chromium and websocket-client.
 """
 import base64
@@ -1290,6 +1293,180 @@ try:
     js("document.querySelector('.lm-style[data-style=auto]').click()")
     js("localStorage.removeItem('hm-recent')")
     call("Page.removeScriptToEvaluateOnNewDocument", identifier=mouse.get("identifier", ""))
+    # more journeys of a visitor on a phone, each on a new page
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setTouchEmulationEnabled", enabled=True)
+    origin = URL.split("/labs")[0]
+    def fresh(url, ready="window.hmMap?.loaded()", secs=40):  # a new page, not the one before
+        js("window.hmOld = 1")
+        call("Page.navigate", url=url)
+        return wait(f"!window.hmOld && {ready}", secs)
+    def close_to(expr, lat, lon, m=10):
+        return f"(() => {{ const c = {expr}; return !!c && Math.hypot((c[1] - {lat}) * 111320, (c[0] - {lon}) * 75000) < {m}; }})()"
+    me_dot = "hmMap.getStyle().sources['lm-me'].data.features[1]?.geometry.coordinates"
+    map_mid = "hmMap.getCenter().toArray()"
+    panel = ("JSON.stringify([!document.querySelector('.lm-listview').hidden, !document.querySelector('.lm-detail').hidden, !document.querySelector('.lm-start').hidden,"
+             " document.querySelector('.lm-input').value, location.search, document.querySelectorAll('.lm-listview .lm-results .lm-card').length])")
+
+    # the location blocked in the browser: the button says so, no dot, the map stays; Directions asks for the start
+    call("Browser.setPermission", permission={"name": "geolocation"}, setting="denied", origin=origin)
+    fresh(URL)
+    wait("!hmMap.isMoving()", 10)
+    time.sleep(1.0)
+    c0 = js("JSON.stringify(hmMap.getCenter())")
+    js("document.querySelector('.lm-locate').click()")
+    check(wait("/blocked/i.test(document.querySelector('.lm-status').textContent) && document.querySelector('.lm-status').classList.contains('lm-bad')", 10)
+          and js(f"JSON.stringify(hmMap.getCenter()) === {json.dumps(c0)} && !hmMap.getStyle().sources['lm-me'].data.features.length"),
+          f"the location blocked: the button of the location says so, no dot, the map stays ({js('document.querySelector(\'.lm-status\').textContent')})")
+    js("document.querySelector('.lm-dir-btn').click()")
+    check(wait("!document.querySelector('.lm-route').hidden && /set the start/.test(document.querySelector('.lm-route-msg').textContent)"
+               " && document.querySelector('.lm-end-from input').value === ''", 10),
+          "the location blocked, Directions: the start empty and asked for")
+    call("Browser.grantPermissions", origin=origin, permissions=["geolocation"])
+
+    # the map on the visitor stops going along for directions and for a search: the dot moves, the map stays
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+    fresh(URL)
+    wait("location.hash.includes('/47.37')", 20)
+    wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
+    js("document.querySelector('.lm-dir-btn').click()")
+    wait("!document.querySelector('.lm-route').hidden", 5)
+    time.sleep(1.0)
+    wait("!hmMap.isMoving()", 10)
+    c0 = js(map_mid)
+    p = (ZURICH[0] + 0.0012, ZURICH[1] + 0.0010)
+    call("Emulation.setGeolocationOverride", latitude=p[0], longitude=p[1], accuracy=10)
+    moved = wait(close_to(me_dot, *p), 10)
+    time.sleep(1.2)
+    check(moved and js(close_to(map_mid, c0[1], c0[0], 3)), f"directions open, the visitor moves: the dot moves, the map stays ({c0}, {js(map_mid)})")
+    js("document.querySelector('.lm-route .lm-back').click()")
+    wait("getComputedStyle(document.querySelector('.lm-form')).display !== 'none'", 5)
+    js("document.querySelector('.lm-input').value = 'cafés'")
+    js("document.querySelector('.lm-input').focus()")
+    key("Enter", "Enter", 13)
+    found = wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelectorAll('.lm-listview .lm-results .lm-card').length > 1", 60)
+    js("document.querySelector('.lm-input').blur()")
+    wait("!hmMap.isMoving()", 10)
+    time.sleep(1.0)
+    wait("!hmMap.isMoving()", 10)
+    c0 = js(map_mid)
+    p = (ZURICH[0] + 0.0020, ZURICH[1] + 0.0010)
+    call("Emulation.setGeolocationOverride", latitude=p[0], longitude=p[1], accuracy=10)
+    moved = wait(close_to(me_dot, *p), 10)
+    time.sleep(1.2)
+    check(found and moved and js(close_to(map_mid, c0[1], c0[0], 3)), f"a search shown, the visitor moves: the dot moves, the map stays ({c0}, {js(map_mid)})")
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+
+    # the back button of the browser: from a result to the list, from the list to the start; forward: the search again
+    if found:
+        shown = js("document.querySelectorAll('.lm-listview .lm-results .lm-card').length")
+        name = js("document.querySelectorAll('.lm-listview .lm-results .lm-card-name')[1].textContent")
+        js("document.querySelectorAll('.lm-listview .lm-results .lm-card')[1].click()")
+        picked = wait(f"!document.querySelector('.lm-detail').hidden && document.querySelector('.lm-detail .lm-dname')?.textContent === {json.dumps(name)} && /[?&]sel=/.test(location.search)", 10)
+        check(picked, f"a result of a search picked: its page, the result in the address ({js(panel)})")
+        wait("!hmMap.isMoving()", 10)
+        js("history.back()")
+        check(wait(f"!document.querySelector('.lm-listview').hidden && document.querySelector('.lm-detail').hidden && !/[?&]sel=/.test(location.search) && /[?&]q=/.test(location.search)"
+                   f" && document.querySelectorAll('.lm-listview .lm-results .lm-card').length === {shown} && hmMap.getStyle().sources['lm-selected'].data.features.length === 0", 10),
+              f"back from a result: the list of the search as it was, no result selected on the map ({js(panel)})")
+        js("history.back()")
+        check(wait("location.search === '' && document.querySelector('.lm-input').value === '' && !document.querySelector('.lm-start').hidden"
+                   " && hmMap.getStyle().sources['lm-results'].data.features.length === 0 && document.getElementById('app').dataset.sheet === 'peek'", 10),
+              f"back from the list: the start, the search box empty, no results on the map ({js(panel)})")
+        js("history.forward()")
+        check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '') && document.querySelector('.lm-input').value === 'cafés' && /[?&]q=/.test(location.search)", 60),
+              f"forward: the search again ({js(panel)})")
+        js("document.querySelector('.lm-clear').click()")
+        js("document.querySelector('.lm-input').blur()")
+    else:
+        check(False, "a search for cafés for the back button")
+
+    # a shared route with more stops than a route takes (9): the first 8, numbered, a route through them, no stop more
+    stops9 = "&".join(f"via={47.3779 - 0.0011 * (i + 1):.5f},{8.5403 + 0.0005 * (i + 1):.5f}&vn=Stop+{i + 1}" for i in range(9))
+    fresh(URL + f"/?from=47.37790,8.54030&fn=Zurich+HB&{stops9}&to=47.36690,8.54500&tn=Bellevue&mode=walk")
+    check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && document.querySelectorAll('.lm-end-stop').length === 8"
+               " && document.querySelectorAll('.lm-step-stop').length === 8", 60)
+          and js("[...document.querySelectorAll('.lm-end-stop input')].map(e => e.value).join() === 'Stop 1,Stop 2,Stop 3,Stop 4,Stop 5,Stop 6,Stop 7,Stop 8'"
+                 " && document.querySelector('.lm-end-to input').value === 'Bellevue' && !document.querySelector('.lm-add-stop')"),
+          f"a shared route with 9 stops: the first 8 in their order, a route through them, no button for a stop more"
+          f" ({js('JSON.stringify([document.querySelectorAll(\'.lm-end-stop\').length, document.querySelector(\'.lm-route-sum\')?.textContent, !!document.querySelector(\'.lm-add-stop\')])')})")
+    js("document.querySelector('.lm-end-remove').click()")
+    check(wait("document.querySelectorAll('.lm-end-stop').length === 7 && document.querySelectorAll('.lm-step-stop').length === 7 && !!document.querySelector('.lm-add-stop')"
+               " && document.querySelector('.lm-end-stop input').value === 'Stop 2'", 40),
+          "a stop removed: 7 stops, a new route, the button for a stop is back")
+
+    # Preview to its end, the voice off: You have arrived, navigation ends by itself, the route and Start are back, the map flat
+    js("localStorage.setItem('hm-mute', '1')")
+    fresh(URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=47.37650,8.54400&tn=Central&mode=car")
+    if wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && document.querySelector('.lm-nav-go .lm-chip')", 40):
+        js("document.querySelector('.lm-nav-go .lm-chip').click()")
+        on = wait("document.getElementById('app').classList.contains('lm-navigating')", 5)
+        check(on and wait("/arrived/i.test(document.querySelector('.lm-nav-banner')?.textContent || '')", 90), "Preview of a short route by car, to its end: You have arrived")
+        check(wait("!document.getElementById('app').classList.contains('lm-navigating')", 25)
+              and wait("!document.querySelector('.lm-route').hidden && document.querySelector('.lm-route-sum')?.textContent.includes('min') && hmMap.getPitch() < 1"
+                       " && (() => { const b = document.querySelector('.lm-nav-start')?.getBoundingClientRect(); return !!b && b.top >= 0 && b.bottom <= innerHeight; })()", 10),
+              f"after the arrival of Preview: navigation ends by itself, the route with Start in view again, the map flat ({js('hmMap.getPitch()')})")
+        js("document.querySelector('.lm-route .lm-back').click()")
+    else:
+        check(False, "a short route by car for Preview to its end")
+    js("localStorage.removeItem('hm-mute')")
+    js("localStorage.removeItem('hm-recent')")
+    # a route by car with a ferry on a small phone: the warning above Start, and Start still in view
+    call("Emulation.setDeviceMetricsOverride", width=360, height=640, deviceScaleFactor=2, mobile=True)
+    fresh(URL + "/?from=47.25970,8.59770&fn=Horgen&to=47.27000,8.64300&tn=Meilen&mode=car")
+    if wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && !!document.querySelector('.lm-ferries .lm-ferry-ferry')", 40):
+        time.sleep(1.0)
+        g = json.loads(js("JSON.stringify((() => { const r = (s) => { const b = document.querySelector(s).getBoundingClientRect(); return [Math.round(b.top), Math.round(b.bottom)]; };"
+                          " return { modes: r('.lm-modes'), ferry: r('.lm-ferries'), start: r('.lm-nav-start'), side: r('.lm-side'), h: innerHeight, scroll: document.querySelector('.lm-body').scrollTop }; })())"))
+        check(g["scroll"] == 0 and g["modes"][0] >= g["side"][0] and g["ferry"][1] <= g["start"][0] and g["start"][1] <= g["h"],
+              f"a route with a ferry on 360 by 640: car, bike and walk, the warning and Start in view ({g})")
+    else:
+        check(False, "a route by car with a ferry on a small phone")
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+
+    # a shared place on a phone: its pin in the part of the map above the panel, clear of the credits at its edge
+    fresh(URL + "/?at=47.36690,8.54500&n=Bellevue#map=17/47.36690/8.54500")
+    if wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 40):
+        wait("!hmMap.isMoving()", 10)
+        time.sleep(1.5)
+        g = json.loads(js("JSON.stringify((() => { const p = hmMap.project([8.545, 47.3669]), m = document.querySelector('.lm-map').getBoundingClientRect();"
+                          " const a = document.querySelector('.maplibregl-ctrl-attrib').getBoundingClientRect();"
+                          " return { pin: [Math.round(p.x + m.left), Math.round(p.y + m.top)], panel: Math.round(document.querySelector('.lm-side').getBoundingClientRect().top), credits: [Math.round(a.left), Math.round(a.top)] }; })())"))
+        check(g["pin"][1] < g["panel"] - 60 and not (g["pin"][0] >= g["credits"][0] and g["pin"][1] >= g["credits"][1] - 10),
+              f"a shared place on a phone: the place on the map above the panel, not under the credits ({g})")
+    else:
+        check(False, "a shared place opens on a phone")
+
+    # coordinates written in the search box: the map at that point, not at a place found by the numbers
+    fresh(URL + "/#map=12/46.9480/7.4474")
+    js("document.querySelector('.lm-input').value = '47.3769, 8.5417'")
+    js("document.querySelector('.lm-input').focus()")
+    key("Enter", "Enter", 13)
+    wait(r"!!document.querySelector('.lm-title').textContent || !document.querySelector('.lm-here').hidden || /\d/.test(document.querySelector('.lm-count').textContent)"
+         r" || (document.querySelector('.lm-status').textContent.length > 3 && !/…$/.test(document.querySelector('.lm-status').textContent))", 60)
+    wait("!hmMap.isMoving()", 10)
+    time.sleep(1.5)
+    wait("!hmMap.isMoving()", 10)
+    c = js("hmMap.getCenter().toArray().map((v) => +v.toFixed(4))")
+    check(abs(c[1] - 47.3769) < 0.02 and abs(c[0] - 8.5417) < 0.02,
+          f"47.3769, 8.5417 written in the search box: the map at that point in Zurich (the map at {c[1]}, {c[0]}: {js('document.querySelector(\'.lm-title\').textContent')})")
+    js("document.querySelector('.lm-clear').click()")
+    js("document.querySelector('.lm-input').blur()")
+    js("localStorage.removeItem('hm-recent')")
+
+    # the Outdoor style keeps the POIs with a name: restaurants and cafés of an old town, beside its own huts and peaks
+    js("hmMap.jumpTo({ center: [8.5437, 47.3725], zoom: 17, pitch: 0, bearing: 0 })")
+    named = "hmMap.queryRenderedFeatures({ layers: ['pois'] }).filter((f) => f.properties.name).map((f) => f.properties.kind)"
+    counts = {}
+    for style in ("light", "outdoor"):
+        js(f"document.querySelector('.lm-style[data-style={style}]').click()")
+        wait(f"performance.getEntriesByType('resource').some(e => e.name.includes('styles/{style}'))", 15)
+        time.sleep(1.0)
+        wait(f"hmMap.loaded() && hmMap.isStyleLoaded() && !hmMap.isMoving() && (hmMap.getLayer('pois_outdoor') ? {'true' if style == 'outdoor' else 'false'} : {'false' if style == 'outdoor' else 'true'}) && {named}.length > 10", 20)
+        counts[style] = json.loads(js(f"JSON.stringify({named})"))
+    check(len(counts["light"]) > 10 and len(counts["outdoor"]) > 10 and "restaurant" in counts["outdoor"],
+          f"the Outdoor style in the old town of Zurich: restaurants and other POIs with a name, as in the light style ({len(counts['light'])} light, {len(counts['outdoor'])} outdoor)")
+    js("document.querySelector('.lm-style[data-style=auto]').click()")
     real = [e for e in errors if "Map cannot fit" not in e]
     check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
 finally:
