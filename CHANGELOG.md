@@ -48,6 +48,8 @@ On hippomaps.ch since 1.3.0.
 - The limits per visitor count an IPv6 visitor by the /64 of their address.
 - While connections or a route are searched for, a turning ring before the message, and rows that pulse where the
   connections will be.
+- Later, Earlier, another time and another language find connections sooner: the stops and walks around the start
+  and the destination are kept for five minutes.
 
 ### Fixed
 

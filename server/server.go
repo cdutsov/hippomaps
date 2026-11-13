@@ -131,6 +131,8 @@ type Server struct {
 	transitPerIP *window
 	transitCalls chan struct{} // queries to Overpass for transit at once
 
+	journeyEnds endsKept // the stops and walks around the ends of journeys asked for in the last minutes
+
 	trafficCache  trafficCache
 	searchClient  *http.Client
 	searchesPerIP *window // search: it runs on Overpass

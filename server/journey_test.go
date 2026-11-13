@@ -22,6 +22,8 @@ type fakeMotis struct {
 	body  map[string]any // of the last plan
 	plan  string         // the answer
 	code  int            // of the plan, when not 200
+	stops int            // requests of stops
+	plans int            // requests of plans
 }
 
 var journeyStops = []motisStop{
@@ -101,6 +103,9 @@ func newFakeMotis(t *testing.T) *fakeMotis {
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v6/map/stops":
+			f.mu.Lock()
+			f.stops++
+			f.mu.Unlock()
 			lat1, lon1, ok1 := latLon(r.URL.Query().Get("min"))
 			lat2, lon2, ok2 := latLon(r.URL.Query().Get("max"))
 			if !ok1 || !ok2 || lat1 >= lat2 || lon1 >= lon2 {
@@ -121,6 +126,7 @@ func newFakeMotis(t *testing.T) *fakeMotis {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v6/plan":
 			f.mu.Lock()
 			defer f.mu.Unlock()
+			f.plans++
 			f.query, f.body = r.URL.Query(), nil
 			json.NewDecoder(r.Body).Decode(&f.body)
 			if f.code != 0 {
@@ -138,10 +144,11 @@ func newFakeMotis(t *testing.T) *fakeMotis {
 }
 
 type fakeWalks struct {
-	srv    *httptest.Server
-	mu     sync.Mutex
-	routes int
-	down   bool
+	srv      *httptest.Server
+	mu       sync.Mutex
+	routes   int
+	matrices int // matrices answered
+	down     bool
 }
 
 func newFakeWalks(t *testing.T) *fakeWalks {
@@ -171,6 +178,7 @@ func newFakeWalks(t *testing.T) *fakeWalks {
 				w.WriteHeader(400)
 				return
 			}
+			f.matrices++
 			var ds, kms [][]any
 			for _, a := range req.Sources {
 				var d, k []any
@@ -475,5 +483,105 @@ func TestJourneyLimitAndOff(t *testing.T) {
 	}
 	if strings.Contains(get(off, "/labs/maps").Body.String(), "data-journey") {
 		t.Errorf("the page has data-journey without JOURNEY_URL")
+	}
+}
+
+// the stops and walks around both ends are kept for some minutes: Later, another time and another language ask
+// MOTIS for a plan alone; another destination asks for that end alone; both are asked again after the time, after a
+// plan that failed, and an end whose walks were straight lines (Valhalla down) is asked again
+func TestJourneyEndsKept(t *testing.T) {
+	m, v := newFakeMotis(t), newFakeWalks(t)
+	s := journeyServer(t, m, v)
+	now := time.Now()
+	s.journeyEnds.now = func() time.Time { return now }
+	asked := func() [3]int {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		return [3]int{m.stops, v.matrices, m.plans}
+	}
+	path := "/labs/maps/api/journey?from=47.3779,8.5403&to=46.949,7.4391"
+	journeyOf(t, s, path)
+	if got := asked(); got != [3]int{2, 2, 1} {
+		t.Fatalf("the first journey: stops, matrices, plans %v, want [2 2 1]", got)
+	}
+	first := fmt.Sprint(offsetsOf(t, m.body, "fromOffsets"), offsetsOf(t, m.body, "toOffsets"))
+	later := now.Add(3 * time.Hour).UTC().Format("2006-01-02T15:04:05Z")
+	for _, p := range []string{path + "&page=LATER%7C2", path + "&time=" + later, path + "&lang=de"} {
+		journeyOf(t, s, p)
+		if got := fmt.Sprint(offsetsOf(t, m.body, "fromOffsets"), offsetsOf(t, m.body, "toOffsets")); got != first {
+			t.Errorf("%s: offsets %s, want those of the first %s", p, got, first)
+		}
+	}
+	if got := asked(); got != [3]int{2, 2, 4} {
+		t.Errorf("Later, another time, another language: stops, matrices, plans %v, want [2 2 4]", got)
+	}
+	// another destination: its end alone
+	journeyOf(t, s, "/labs/maps/api/journey?from=47.3779,8.5403&to=46.9485,7.44")
+	if got := asked(); got != [3]int{3, 3, 5} {
+		t.Errorf("another destination: stops, matrices, plans %v, want [3 3 5]", got)
+	}
+	// not after the time they are kept
+	now = now.Add(journeyEndsKeep)
+	journeyOf(t, s, path)
+	if got := asked(); got != [3]int{5, 5, 6} {
+		t.Errorf("after %v: stops, matrices, plans %v, want [5 5 6]", journeyEndsKeep, got)
+	}
+	// a plan that fails forgets them (the stops may have gone with a new import of the timetables)
+	m.code = 500
+	if w := get(s, path); w.Code != 502 {
+		t.Fatalf("MOTIS fails: %d", w.Code)
+	}
+	m.code = 0
+	journeyOf(t, s, path)
+	if got := asked(); got != [3]int{7, 7, 8} {
+		t.Errorf("after a plan that failed: stops, matrices, plans %v, want [7 7 8]", got)
+	}
+	// walks in a straight line (Valhalla down) are not kept: with Valhalla back the start is asked again, and the stop
+	// with no way on foot is left out
+	v.mu.Lock()
+	v.down = true
+	v.mu.Unlock()
+	other := "/labs/maps/api/journey?from=47.37791,8.5403&to=46.949,7.4391"
+	journeyOf(t, s, other)
+	if from := offsetsOf(t, m.body, "fromOffsets"); from["ch26_island"] == 0 {
+		t.Errorf("Valhalla down: the island in a straight line, got %v", from)
+	}
+	v.mu.Lock()
+	v.down = false
+	v.mu.Unlock()
+	journeyOf(t, s, other)
+	if got := asked(); got != [3]int{9, 8, 10} {
+		t.Errorf("Valhalla back: stops, matrices, plans %v, want [9 8 10]", got)
+	}
+	if from := offsetsOf(t, m.body, "fromOffsets"); from["ch26_island"] != 0 || from["ch26_A"] == 0 {
+		t.Errorf("Valhalla back: the walks of Valhalla, got %v", from)
+	}
+}
+
+// at most journeyEndsMax ends: those past their time go first, and when all are fresh it starts from nothing
+func TestEndsKeptBounded(t *testing.T) {
+	now := time.Now()
+	k := endsKept{now: func() time.Time { return now }}
+	for i := 0; i < journeyEndsMax; i++ {
+		k.put(endKey{float64(i), 0, false}, journeyEnd{})
+	}
+	now = now.Add(journeyEndsKeep / 2)
+	k.put(endKey{-1, 0, false}, journeyEnd{})
+	if len(k.ends) != 1 {
+		t.Errorf("full of fresh ends, one more: %d kept, want 1", len(k.ends))
+	}
+	now = now.Add(journeyEndsKeep / 4)
+	for i := 1; i < journeyEndsMax; i++ {
+		k.put(endKey{float64(i), 0, true}, journeyEnd{})
+	}
+	now = now.Add(journeyEndsKeep * 3 / 4) // the first one is past its time, the others not
+	k.put(endKey{-2, 0, false}, journeyEnd{})
+	if _, ok := k.get(endKey{-1, 0, false}); ok || len(k.ends) != journeyEndsMax {
+		t.Errorf("one past its time, one more: %d kept, want %d without the old one", len(k.ends), journeyEndsMax)
+	}
+	if _, ok := k.get(endKey{-2, 0, false}); !ok {
+		t.Errorf("the new end is not kept")
 	}
 }

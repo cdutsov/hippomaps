@@ -48,6 +48,8 @@ const (
 	journeyStraight = 150 // a change between stops this near is drawn as a straight line
 	journeyPace     = 1.1 // metres a second in a straight line, when Valhalla has no way
 	journeyFastest  = 1.4 // metres a second: no walk is faster than this in a straight line
+	journeyEndsKeep = 5 * time.Minute // the stops and walks around an end are kept this long (journeyEndKept)
+	journeyEndsMax  = 2000            // ends kept at most
 )
 
 type journeyAnswer struct {
@@ -250,7 +252,7 @@ func (s *Server) journey(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ends[i], errs[i] = s.journeyEnd(ctx, lats[i], lons[i], i == 1)
+			ends[i], errs[i] = s.journeyEndKept(ctx, lats[i], lons[i], i == 1)
 		}()
 	}
 	if straightLine <= journeyWalkKm && s.cfg.RoutingURL != "" {
@@ -283,6 +285,13 @@ func (s *Server) journey(w http.ResponseWriter, r *http.Request) {
 
 	a := journeyAnswer{Trips: []journeyTrip{}, Walk: direct}
 	if len(ends[0].offsets) > 0 && len(ends[1].offsets) > 0 {
+		// no plan: the ends kept are forgotten (their stops may have gone with a new import of the timetables)
+		planned := false
+		defer func() {
+			if !planned {
+				s.journeyEnds.forget(endKey{lat1, lon1, false}, endKey{lat2, lon2, true})
+			}
+		}()
 		ask := url.Values{
 			"fromPlace": {fmt.Sprintf("%.6f,%.6f", lat1, lon1)}, "toPlace": {fmt.Sprintf("%.6f,%.6f", lat2, lon2)},
 			"time": {when.UTC().Format(time.RFC3339)}, "arriveBy": {strconv.FormatBool(q.Get("arrive") == "1")},
@@ -315,6 +324,7 @@ func (s *Server) journey(w http.ResponseWriter, r *http.Request) {
 			failed("plan", err)
 			return
 		}
+		planned = true
 		a.Earlier, a.Later = plan.PreviousPageCursor, plan.NextPageCursor
 		a.Trips, a.TZ = s.journeyTrips(ctx, plan, [2]float64{lat1, lon1}, [2]float64{lat2, lon2}, ends, direct)
 	}
@@ -330,8 +340,87 @@ func (s *Server) journey(w http.ResponseWriter, r *http.Request) {
 // journeyEnd is one end of a journey: what MOTIS is told of the stops around it, and the walk to each place of
 // stops (by its spot)
 type journeyEnd struct {
-	offsets []map[string]any
-	walks   map[spot]foot
+	offsets  []map[string]any
+	walks    map[spot]foot
+	straight bool // the walks in a straight line (no answer of Valhalla)
+}
+
+// journeyEndKept is journeyEnd, kept for journeyEndsKeep: Later, Earlier, another time and another language ask
+// for the same ends again, and their stops and walks take MOTIS and Valhalla up to half a second. Walks in a straight
+// line and failures are not kept.
+func (s *Server) journeyEndKept(ctx context.Context, lat, lon float64, toPoint bool) (journeyEnd, error) {
+	key := endKey{lat, lon, toPoint}
+	if e, ok := s.journeyEnds.get(key); ok {
+		return e, nil
+	}
+	e, err := s.journeyEnd(ctx, lat, lon, toPoint)
+	if err == nil && !e.straight && ctx.Err() == nil {
+		s.journeyEnds.put(key, e)
+	}
+	return e, err
+}
+
+// endsKept holds the ends of journeys asked for in the last journeyEndsKeep, journeyEndsMax at most (read only once
+// kept: requests share them). The zero value is ready.
+type endsKept struct {
+	mu   sync.Mutex
+	ends map[endKey]keptEnd
+	now  func() time.Time // time.Now when nil
+}
+
+type endKey struct {
+	lat, lon float64
+	toPoint  bool
+}
+
+type keptEnd struct {
+	e     journeyEnd
+	until time.Time
+}
+
+func (k *endsKept) clock() time.Time {
+	if k.now != nil {
+		return k.now()
+	}
+	return time.Now()
+}
+
+func (k *endsKept) get(key endKey) (journeyEnd, bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	v, ok := k.ends[key]
+	if !ok || !k.clock().Before(v.until) {
+		return journeyEnd{}, false
+	}
+	return v.e, true
+}
+
+func (k *endsKept) put(key endKey, e journeyEnd) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	now := k.clock()
+	if k.ends == nil {
+		k.ends = map[endKey]keptEnd{}
+	}
+	if len(k.ends) >= journeyEndsMax {
+		for x, v := range k.ends {
+			if !now.Before(v.until) {
+				delete(k.ends, x)
+			}
+		}
+		if len(k.ends) >= journeyEndsMax { // all still fresh: from nothing again
+			clear(k.ends)
+		}
+	}
+	k.ends[key] = keptEnd{e, now.Add(journeyEndsKeep)}
+}
+
+func (k *endsKept) forget(keys ...endKey) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	for _, x := range keys {
+		delete(k.ends, x)
+	}
 }
 
 type motisStop struct {
@@ -371,13 +460,14 @@ func (s *Server) journeyEnd(ctx context.Context, lat, lon float64, toPoint bool)
 			spots = spots[:journeyMaxStops]
 		}
 		walks := s.walkTimes(ctx, lat, lon, spots, toPoint)
-		if len(walks) == 0 { // no Valhalla, or no way on foot from here: the straight line
+		straight := len(walks) == 0
+		if straight { // no Valhalla, or no way on foot from here: the straight line
 			walks = map[spot]foot{}
 			for _, p := range spots {
 				walks[p] = foot{at[p] * 1.3 / journeyPace, at[p] * 1.3}
 			}
 		}
-		e := journeyEnd{walks: walks}
+		e := journeyEnd{walks: walks, straight: straight}
 		for _, st := range stops {
 			f, ok := walks[spotOf(st.Lat, st.Lon)]
 			if !ok || f.s > reach[1] {
