@@ -916,15 +916,15 @@ async function poisEarlier() {
   map.setFilter("pois", near.filter);
 }
 const NEAR_SOURCE = { type: "vector", tiles: ["hmpoi://{z}/{x}/{y}"], minzoom: 14, maxzoom: 14, attribution: "" };
-// the layer of the POIs between zoom 14 and 15 from the layer pois of a style, and the filter of pois without them;
-// null for a style without min_zoom (as it is)
+// the layer of the POIs between zoom 14 and 15 from the layer pois of a style, and the filter of pois without them
+// (both earlier than the tiles say: POI_EARLY, and apart: POI_GAP); null for a style without min_zoom (as it is)
 function nearPois(pois) {
   const earlier = (f) => Array.isArray(f) && f[0] === ">=" && JSON.stringify(f[1]) === '["zoom"]' && JSON.stringify(f[2]?.[1]) === '["get","min_zoom"]'
-    ? [">=", ["zoom"], ["-", ["get", "min_zoom"], 2]]
+    ? [">=", ["zoom"], POI_EARLY]
     : Array.isArray(f) ? f.map(earlier) : f;
   const filter = earlier(pois.filter);
   if (JSON.stringify(filter) === JSON.stringify(pois.filter)) return null;
-  const layer = { ...pois, id: "lm-pois-near", source: "lm-pois-near", minzoom: 14, maxzoom: 15, filter };
+  const layer = { ...pois, id: "lm-pois-near", source: "lm-pois-near", minzoom: 14, maxzoom: 15, filter, layout: { ...pois.layout, "icon-padding": POI_GAP } };
   delete layer.metadata;
   return { layer, filter: ["all", ["any", ["<", ["zoom"], 14], [">=", ["zoom"], 15]], filter] };
 }
@@ -933,8 +933,8 @@ function nearPois(pois) {
 // (lm-pois-more) from the layer pois for every other POI with a name, but for the kinds of POI_NOT (things of the
 // street and of the railway, areas of land use, names drawn by another layer): a dot for a kind without an icon in
 // the sprite, the colour of the text (food with the restaurants, the rest with the public buildings), those the tiles
-// hold from a lower zoom first where they are dense, from zoom 15 and two zooms before the tiles say (as the POIs of
-// the style, nearPois). The layer lies under the names of the streets (POI_UNDER), which so come before it; the POIs
+// hold from a lower zoom first where they are dense, from zoom 15 and earlier than the tiles say (POI_EARLY, as the
+// POIs of the style, nearPois). The layer lies under the names of the streets (POI_UNDER), which so come before it; the POIs
 // of the style stay above them. null when the layer pois is not as expected.
 const POI_NOT = ["crossing", "traffic_signals", "stop", "give_way", "switch", "signal", "railway_crossing", "level_crossing",
   "tram_crossing", "tram_level_crossing", "buffer_stop", "milestone", "turning_circle", "street_lamp", "tree", "vacant", "yes",
@@ -944,12 +944,19 @@ const POI_NOT = ["crossing", "traffic_signals", "stop", "give_way", "switch", "s
   "administrative", "construction", "grass", "wood", "zone", "neighbourhood", "quarter", "suburb", "city_block", "locality"];
 const POI_FOOD = ["pub", "biergarten", "ice_cream", "food_court", "bakery", "pastry", "confectionery", "deli", "coffee", "nightclub"];
 const POI_DOT = "lm-poi-dot";
+// A town at the middle zooms was full of places, the names of the streets gone. The tiles give a place the zoom it
+// is drawn from (min_zoom: 15 a supermarket, 16 a restaurant, 17 a shop); the page shows it one zoom before, and two
+// from zoom 17 (POI_EARLY, for [">=", ["zoom"], …]). Below zoom 17 the icons keep a distance from each other and
+// from other names (POI_GAP, the icon-padding of every layer of places: 20 px at zoom 14, 12 at 16, 2 from 17).
+const POI_EARLY = ["-", ["get", "min_zoom"], ["step", ["zoom"], 1, 17, 2]];
+const POI_GAP = ["interpolate", ["linear"], ["zoom"], 14, 20, 16, 12, 17, 2];
 const POI_UNDER = ["roads_labels_minor", "roads_shields", "roads_labels_major"];
 // the layout of the places under the names of the streets (ours, and pois_more of a style): the name where there is
-// room around the icon, the icon alone when there is none, and from zoom 18 the icon also where a street name is:
-// every place with a name is on the map at the largest zooms
-const POI_ROOM = { "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.9, "text-optional": true,
-  "icon-allow-overlap": ["step", ["zoom"], false, 18, true] };
+// room around the icon, from zoom 17 the icon alone when there is none (below, a place without room for its name is
+// not drawn), and from zoom 18 the icon also where a street name is: every place with a name is on the map at the
+// largest zooms
+const POI_ROOM = { "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.9,
+  "text-optional": ["step", ["zoom"], false, 17, true], "icon-allow-overlap": ["step", ["zoom"], false, 18, true], "icon-padding": POI_GAP };
 function morePois(pois, styleMore) {
   const isKinds = (f) => Array.isArray(f) && f[0] === "in" && JSON.stringify(f[1]) === '["get","kind"]' && f[2]?.[0] === "literal";
   const isZoom = (f) => Array.isArray(f) && f[0] === ">=" && JSON.stringify(f[1]) === '["zoom"]' && JSON.stringify(f[2]?.[1]) === '["get","min_zoom"]';
@@ -963,7 +970,7 @@ function morePois(pois, styleMore) {
   // kind, …]]: the Outdoor style draws those kinds in a layer of its own) stays as it is
   const others = (f) => isKinds(f)
     ? (found = true, ["all", ["!", f], ["has", "name"], ["!", ["in", ["get", "kind"], ["literal", [...POI_NOT, ...theirs]]]]])
-    : isZoom(f) ? [">=", ["zoom"], ["-", ["get", "min_zoom"], 2]]
+    : isZoom(f) ? [">=", ["zoom"], POI_EARLY]
     : Array.isArray(f) && f[0] !== "!" ? f.map(others) : f;
   const filter = others(pois.filter);
   if (!found) return null;
@@ -988,13 +995,13 @@ function morePois(pois, styleMore) {
 }
 // the layer of the style it goes under: pois_more of the style, else the first of the names of the streets, else pois
 const morePoisUnder = (layers) => layers.find((l) => l.id === "pois_more" || POI_UNDER.includes(l.id))?.id || "pois";
-// pois_more of a style, shown as early as our layer: from zoom 15 and two zooms before the tiles say; null when it
+// pois_more of a style, shown as early as our layer: from zoom 15 and earlier than the tiles say (POI_EARLY); null when it
 // is so already or not as expected
 function earlierMore(more) {
   const isZoom = (f) => Array.isArray(f) && f[0] === ">=" && JSON.stringify(f[1]) === '["zoom"]' && JSON.stringify(f[2]?.[1]) === '["get","min_zoom"]';
   let found = false;
-  const earlier = (f) => (isZoom(f) && JSON.stringify(f[2]) !== '["-",["get","min_zoom"],2]'
-    ? (found = true, [">=", ["zoom"], ["-", ["get", "min_zoom"], 2]])
+  const earlier = (f) => (isZoom(f) && JSON.stringify(f[2]) !== JSON.stringify(POI_EARLY)
+    ? (found = true, [">=", ["zoom"], POI_EARLY])
     : Array.isArray(f) ? f.map(earlier) : f);
   const filter = earlier(more?.filter);
   return found ? ["all", [">=", ["zoom"], 15], filter] : null;
@@ -1016,6 +1023,7 @@ function morePoisOnMap() {
   const layers = map.getStyle()?.layers || [];
   if (map.getLayer("lm-pois-more")) return;
   const pois = layers.find((l) => l.id === "pois"), late = latePois(pois);
+  if (pois) map.setLayoutProperty("pois", "icon-padding", POI_GAP);
   if (late && !map.getLayer("lm-pois-late")) {
     map.addLayer(late.layer, morePoisUnder(layers));
     map.setFilter("pois", late.filter);
@@ -1787,6 +1795,7 @@ function ourStyle(prev, st) {
   const pois = st.layers.find((l) => l.id === "pois");
   const theirs = st.layers.find((l) => l.id === "pois_more");
   const late = latePois(pois);
+  if (pois) pois.layout = { ...pois.layout, "icon-padding": POI_GAP };
   if (late) {
     const at = morePoisUnder(st.layers);
     before.set(at, [...(before.get(at) || []), late.layer]);

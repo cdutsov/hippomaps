@@ -12,12 +12,12 @@ const cut = (from, to) => {
   assert.ok(a > 0 && b > a, from);
   return src.slice(a, b);
 };
-const { morePois, morePoisUnder, earlierMore, latePois, nearPois, POI_NOT } = new Function(`${cut("const POI_NOT = [", "// the layer of the style it goes under")}
+const { morePois, morePoisUnder, earlierMore, latePois, nearPois, POI_NOT, POI_GAP } = new Function(`${cut("const POI_NOT = [", "// the layer of the style it goes under")}
   ${cut("const morePoisUnder = ", "\n")}
   ${cut("function earlierMore(", "\n}\n")}
 }
   ${cut("const POI_LATE = ", "// on the map, and in a style JSON")}
-  ${cut("function nearPois(", "\n}\n")}\n}\nreturn { morePois, morePoisUnder, earlierMore, latePois, nearPois, POI_NOT };`)();
+  ${cut("function nearPois(", "\n}\n")}\n}\nreturn { morePois, morePoisUnder, earlierMore, latePois, nearPois, POI_NOT, POI_GAP };`)();
 
 const kinds = (list) => ["in", ["get", "kind"], ["literal", list]];
 const layer = () => ({
@@ -27,7 +27,7 @@ const layer = () => ({
   paint: { "text-color": ["case", kinds(["park"]), "#080", kinds(["school", "townhall", "building"]), "#606", kinds(["restaurant", "cafe"]), "#c60", "#eee"] },
 });
 // what a filter of the kind used here lets through, for a POI at the largest zoom
-const passes = (f, p) => {
+const passes = (f, p, zoom = 19) => {
   const ev = (x) => {
     if (!Array.isArray(x)) return x;
     const [op, ...a] = x;
@@ -38,7 +38,8 @@ const passes = (f, p) => {
     if (op === "get") return p[a[0]];
     if (op === "literal") return a[0];
     if (op === "in") return ev(a[1]).includes(ev(a[0]));
-    if (op === "zoom") return 19;
+    if (op === "zoom") return zoom;
+    if (op === "step") { let v = a[1]; for (let i = 2; i + 1 < a.length; i += 2) if (ev(a[0]) >= a[i]) v = a[i + 1]; return v; }
     if (op === ">=") return ev(a[0]) >= ev(a[1]);
     if (op === "<") return ev(a[0]) < ev(a[1]);
     if (op === "+") return ev(a[0]) + ev(a[1]);
@@ -63,7 +64,7 @@ test("the kinds of the style stay in the layer of the style alone; other kinds w
   assert.equal(passes(layer().filter, { kind: "cafe", name: "X", min_zoom: 16 }), true);
   assert.equal(passes(m.filter, { kind: "dentist", min_zoom: 17 }), false);
 });
-test("from zoom 15, two zooms before the tiles say", () => {
+test("from zoom 15; at the largest zooms two zooms before the tiles say", () => {
   const m = morePois(layer());
   assert.equal(m.minzoom, 15);
   assert.equal(passes(m.filter, { kind: "dentist", name: "X", min_zoom: 21 }), true); // 19 >= 21 - 2
@@ -121,7 +122,7 @@ test("the name of an added POI goes where there is room around its dot, and the 
   l.layout["text-offset"] = [1.1, 0];
   const m = morePois(l);
   assert.deepEqual(m.layout["text-variable-anchor"], ["left", "right", "top", "bottom"]);
-  assert.equal(m.layout["text-optional"], true);
+  assert.deepEqual(m.layout["text-optional"], ["step", ["zoom"], false, 17, true]); // below zoom 17 no icon without its name
   assert.deepEqual(m.layout["icon-allow-overlap"], ["step", ["zoom"], false, 18, true]); // the dot in any case from zoom 18
   assert.equal(m.layout["text-offset"], undefined);
   assert.deepEqual(l.layout["text-offset"], [1.1, 0]); // the layer of the style as it was
@@ -157,4 +158,30 @@ test("benches: out of the layer of the style, in a layer of their own from zoom 
   const m = morePois({ ...l, filter: late.filter });
   assert.equal(passes(m.filter, { kind: "bench", name: "Bank am See", min_zoom: 17 }), false);
   assert.equal(passes(nearPois({ ...l, filter: late.filter }).layer.filter, { kind: "bench", min_zoom: 17 }), false);
+});
+test("the middle zooms are not full of places: one zoom before the tiles say below zoom 17, two from there, in every layer", () => {
+  const l = layer(), near = nearPois(l);
+  const theirs = { id: "pois_more", filter: ["all", kinds(["dentist", "hotel"]), [">=", ["zoom"], ["+", ["get", "min_zoom"], 0]]] };
+  const filters = { near: near.layer.filter, pois: near.filter, more: morePois(l).filter, theirs: earlierMore(theirs) };
+  const kind = { near: "restaurant", pois: "restaurant", more: "bank", theirs: "dentist" };
+  for (const [name, f] of Object.entries(filters)) {
+    const at = (zoom, min_zoom) => passes(f, { kind: kind[name], name: "X", min_zoom }, zoom);
+    if (name !== "pois" && name !== "more" && name !== "theirs") { // zoom 14: the layer of the tiles of zoom 15
+      assert.equal(at(14, 15), true, name); // a supermarket, a hotel
+      assert.equal(at(14, 16), false, name); // no restaurants yet
+    }
+    if (name !== "near") {
+      assert.equal(at(15, 16), true, name);
+      assert.equal(at(15, 17), false, name); // no shops yet
+      assert.equal(at(16, 17), true, name);
+      assert.equal(at(16, 18), false, name);
+      assert.equal(at(17, 19), true, name);
+    }
+  }
+  // the icons keep their distance below zoom 17: more at the smaller zooms, the 2 px of MapLibre from 17
+  assert.deepEqual(POI_GAP.slice(0, 3), ["interpolate", ["linear"], ["zoom"]]);
+  const stops = POI_GAP.slice(3);
+  assert.ok(stops[1] > stops[3] && stops[3] > 2 && stops.at(-2) === 17 && stops.at(-1) === 2, JSON.stringify(stops));
+  assert.deepEqual(near.layer.layout["icon-padding"], POI_GAP);
+  assert.deepEqual(morePois(l).layout["icon-padding"], POI_GAP);
 });

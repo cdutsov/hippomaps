@@ -25,7 +25,7 @@ directions in their field, the panel at the height of its state when the keyboar
 (speed cameras in the Netherlands, none in Switzerland, stop signs in Berkeley) drawn beside it; the search box without the
 focus at the start on a phone, with it on a computer (no list until a click); a place written in the search moved to the
 destination by Directions; the dot of the location and the map on it following the visitor; a route on a small phone with
-car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; the start: what the search reads with two searches, and searches of the map view (a river of
+car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; fewer places at the middle zooms; the start: what the search reads with two searches, and searches of the map view (a river of
 Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start); the map
 on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; a shared route with
 9 stops (the first 8), a stop removed; Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
@@ -1405,6 +1405,20 @@ try:
     b16, b18 = benches(16.5), benches(18.5)
     check(b16[0] == 0 and b16[1] > 10 and js("hmMap.getLayer('lm-pois-late')?.minzoom === 18 && !!hmMap.getLayer('lm-pois-late')"),
           f"benches only at the largest zooms: none at zoom 16.5 beside {b16[1]} places ({b16[0]} benches; at zoom 18.5: {b18[0]})")
+    # the middle zooms are not full of places: at zoom 14.5 none the tiles draw from zoom 16 (restaurants), at 15.5
+    # none from zoom 17 (shops), no icon without its name, and the icons keep their distance
+    def middle(z):
+        js(f"hmMap.jumpTo({{ center: [8.5437, 47.3725], zoom: {z}, pitch: 0, bearing: 0 }})")
+        time.sleep(1)
+        wait("hmMap.loaded() && !hmMap.isMoving()", 20)
+        time.sleep(1)
+        return json.loads(js("JSON.stringify((() => { const ls = ['pois', 'pois_more', 'lm-pois-near', 'lm-pois-more'].filter(l => hmMap.getLayer(l));"
+                             " const f = hmMap.queryRenderedFeatures({ layers: ls }).map(x => x.properties.min_zoom);"
+                             " return { n: f.length, top: Math.max(...f), gap: ls.every(l => JSON.stringify(hmMap.getLayoutProperty(l, 'icon-padding')).includes('interpolate')),"
+                             " alone: ['pois_more', 'lm-pois-more'].filter(l => hmMap.getLayer(l)).every(l => JSON.stringify(hmMap.getLayoutProperty(l, 'text-optional')) === '[\"step\",[\"zoom\"],false,17,true]') }; })())"))
+    m14, m15 = middle(14.5), middle(15.5)
+    check(m14["n"] > 3 and m14["top"] <= 15 and m15["n"] > 3 and m15["top"] <= 16 and m14["gap"] and m15["gap"] and m15["alone"],
+          f"the middle zooms are not full of places: zoom 14.5 {m14}, zoom 15.5 {m15}")
     js("document.querySelector('.lm-style[data-style=auto]').click()")
     js("localStorage.removeItem('hm-recent')")
     call("Page.removeScriptToEvaluateOnNewDocument", identifier=mouse.get("identifier", ""))
