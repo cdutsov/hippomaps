@@ -4,8 +4,8 @@
 
 # hippomaps
 
-**A map app for the web and Android: search in plain words, place pages, directions and turn-by-turn navigation, on
-OpenStreetMap data.**
+**A map app for the web and Android: search in plain words, place pages, directions, public transport and turn-by-turn
+navigation, on OpenStreetMap data.**
 
 [**hippomaps.ch**](https://hippomaps.ch) · [Android app](android/README.md) · [Changelog](CHANGELOG.md) ·
 [Licence](#licence)
@@ -20,14 +20,14 @@ OpenStreetMap data.**
     <td width="20%"><img src="docs/img/place.webp" width="165" alt="The page of a museum with its opening hours and a photo"></td>
     <td width="20%"><img src="docs/img/route.webp" width="165" alt="A route by bike from Zurich main station to the Uetliberg"></td>
     <td width="20%"><img src="docs/img/navigation.webp" width="165" alt="Navigation by car: the next turn, the speed limit and the car in 3D"></td>
-    <td width="20%"><img src="docs/img/globe.webp" width="165" alt="The globe in the dark style with the night side"></td>
+    <td width="20%"><img src="docs/img/transit.webp" width="165" alt="Public transport from Zurich to Bern on a phone: the way of the trains on the map, and a connection with its lines, times, platforms and a delay"></td>
   </tr>
   <tr>
     <td align="center"><b>Search</b><br>in plain words</td>
     <td align="center"><b>Places</b><br>hours, photo, contact</td>
     <td align="center"><b>Directions</b><br>car, bike, on foot</td>
     <td align="center"><b>Navigation</b><br>spoken turn by turn</td>
-    <td align="center"><b>Globe</b><br>day and night</td>
+    <td align="center"><b>Public transport</b><br>times, tracks, delays</td>
   </tr>
 </table>
 
