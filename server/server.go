@@ -69,6 +69,11 @@ type Config struct {
 	// GeoIPDB: a MaxMind DB file with a location per network (DB-IP City Lite): the map opens at the
 	// place of the IP address of the visitor until the device tells where it is; empty: at its default place
 	GeoIPDB string
+	// StatsDir: a directory that lasts (a volume) for the counts of visits (stats.go: per day the page loads, the
+	// visitors and the sites they came from, no address); empty: no counting. StatsIgnore: addresses and networks
+	// not counted (our own).
+	StatsDir    string
+	StatsIgnore []string
 	// ServiceWorker: the service worker of the page (web/sw.js); false: one that removes itself and its caches from the
 	// browsers that have it (web/sw-off.js), and the page registers none
 	ServiceWorker bool
@@ -132,7 +137,8 @@ type Server struct {
 	queriesPerIP  *window // query: how a search is read, asked by the page before each search
 	herePerIP     *window // taps on the map
 
-	geo *geoIP // nil without GeoIPDB
+	geo   *geoIP // nil without GeoIPDB
+	stats *stats // nil without StatsDir
 
 	donatesPerIP *window // checkouts of donations
 }
@@ -161,6 +167,9 @@ func New(cfg Config) *Server {
 	}
 	if cfg.GeoIPDB != "" {
 		s.geo = newGeoIP(cfg.GeoIPDB, s.log)
+	}
+	if cfg.StatsDir != "" {
+		s.stats = newStats(cfg.StatsDir, cfg.StatsIgnore, s.log)
 	}
 	fs.WalkDir(web.Files, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -236,6 +245,9 @@ func New(cfg Config) *Server {
 	return s
 }
 
+// Close writes the counts of visits.
+func (s *Server) Close() { s.stats.Close() }
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -277,6 +289,11 @@ func (s *Server) asset(p string) string {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
+	own := ""
+	if u, err := url.Parse(s.cfg.PublicURL); err == nil {
+		own = strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	}
+	s.stats.record(r, own)
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
 		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}

@@ -89,6 +89,8 @@ to other services:
 | A traffic service with `/incidents.json` | live traffic | `TRAFFIC_URL` |
 | Wikidata and Wikimedia Commons | photos and logos | `PICTURES` |
 | [DB-IP City Lite](https://db-ip.com/db/download/ip-to-city-lite) (MMDB file, monthly, CC BY 4.0) | the map opens at the town of the IP address of the visitor | `GEOIP_DB` |
+| `STATS_DIR` | | a directory on a volume for the counts of visits: `stats.json` with, for each day (UTC), the page loads, the visitors and the sites they came from (`Referer` host, or `?ref=name` in the link). No address and no cookie are written; a visitor is counted once a day by a hash with a salt of the day, in memory only. Bots, headless browsers and prefetches are not counted. `hippomaps stats [DAYS [DIR]]` prints the table (`docker exec hippomaps hippomaps stats`) |
+| `STATS_IGNORE` | | addresses and networks (comma separated) that are not counted: our own |
 | [Stripe](https://stripe.com) Checkout | donations in Swiss francs from the menu (not in the app for Android: Google Play) | `STRIPE_KEY`, `PUBLIC_URL` |
 
 Except for the tiles, each service is optional: without its setting the feature is left out of the page.

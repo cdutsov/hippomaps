@@ -41,6 +41,12 @@ Standort mitteilt. Die Adresse wird dafür an niemanden gesendet.</p>
 <p>Wir verwenden diese Daten nur, um die Anfrage zu beantworten, und speichern sie nicht. Ihr Standort verlässt das Gerät
 für nichts anderes, und die App zeichnet nicht auf, wo Sie waren. Um die Nutzung des Dienstes zu begrenzen, zählt unser
 Server die Anfragen jeder IP-Adresse zehn Minuten lang im Arbeitsspeicher.</p>
+<p>Besuchszähler: Beim Laden der Seite erhöht unser Server den Zähler des Tages und den Zähler der Website, die auf uns
+verwiesen hat (nur deren Hostname, oder ein Name, der im Link als <code>?ref=</code> steht). Um eine Person pro Tag nur einmal
+zu zählen, hält er einen Hash aus Ihrer IP-Adresse und Ihrem Browser im Arbeitsspeicher, mit einem Schlüssel, der um
+Mitternacht wechselt; der Hash wird nie auf die Platte geschrieben. Gespeichert werden Zahlen pro Tag und Hostnamen: keine
+IP-Adresse, kein Cookie, nichts, was Sie identifiziert. Crawler und unsere eigenen Tests werden nicht gezählt. Zweck: zu
+wissen, wie stark der Dienst genutzt wird (berechtigtes Interesse).</p>
 <p>Technische Logs: Fehlermeldungen unserer Server können die IP-Adresse, die Zeit und die angefragte Adresse enthalten. Sie
 werden durch Log-Rotation automatisch gelöscht, in der Regel innerhalb von 30 Tagen. Zweck: Betrieb und Sicherheit des
 Dienstes (berechtigtes Interesse).</p>

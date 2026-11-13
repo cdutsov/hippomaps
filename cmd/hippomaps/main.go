@@ -3,6 +3,7 @@
 //
 //	hippomaps [serve]                listen on LISTEN, default :8096
 //	hippomaps healthcheck            the server answers
+//	hippomaps stats [DAYS [DIR]]     the counts of visits of the last DAYS (30) days, from STATS_DIR
 //	hippomaps geoip FILE ADDRESS...  the place of each address in a database file (GEOIP_DB)
 package main
 
@@ -39,8 +40,10 @@ func main() {
 		err = healthcheck()
 	case "geoip":
 		err = geoip(os.Args[2:])
+	case "stats":
+		err = stats(os.Args[2:])
 	default:
-		err = fmt.Errorf("unknown command %q (serve | healthcheck | geoip)", cmd)
+		err = fmt.Errorf("unknown command %q (serve | healthcheck | geoip | stats)", cmd)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hippomaps:", err)
@@ -105,6 +108,8 @@ func config() (server.Config, error) {
 	cfg.SaysPerIP = num("SAYS_PER_IP", cfg.SaysPerIP)
 	cfg.SearchesPerIP = num("SEARCHES_PER_IP", cfg.SearchesPerIP)
 	cfg.GeoIPDB = env("GEOIP_DB", "")
+	cfg.StatsDir = env("STATS_DIR", "")
+	cfg.StatsIgnore = strings.Split(env("STATS_IGNORE", ""), ",")
 	cfg.StripeKey = env("STRIPE_KEY", "")
 	switch sw := env("SERVICE_WORKER", "on"); sw {
 	case "on", "off":
@@ -124,7 +129,9 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Addr: listen(), Handler: server.New(cfg), ReadHeaderTimeout: 10 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 90 * time.Second}
+	app := server.New(cfg)
+	defer app.Close()
+	srv := &http.Server{Addr: listen(), Handler: app, ReadHeaderTimeout: 10 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 90 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -175,5 +182,29 @@ func geoip(args []string) error {
 		}
 		fmt.Printf("%s %.3f,%.3f %d\n", ip, n.Lat, n.Lon, n.Zoom())
 	}
+	return nil
+}
+
+// stats prints the counts of visits kept in STATS_DIR (or DIR).
+func stats(args []string) error {
+	n, dir := 30, os.Getenv("STATS_DIR")
+	if len(args) > 0 {
+		v, err := strconv.Atoi(args[0])
+		if err != nil || v < 1 {
+			return errors.New("usage: hippomaps stats [DAYS [DIR]]")
+		}
+		n = v
+	}
+	if len(args) > 1 {
+		dir = args[1]
+	}
+	if dir == "" {
+		return errors.New("STATS_DIR is not set")
+	}
+	days, err := server.ReadStats(dir)
+	if err != nil {
+		return err
+	}
+	fmt.Print(server.FormatStats(days, n))
 	return nil
 }

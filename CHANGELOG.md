@@ -9,6 +9,8 @@ On hippomaps.ch since 1.3.0.
 
 ### Added
 
+- Counts of visits that last over restarts (`STATS_DIR`): per day the page loads, the visitors and the sites they came
+  from, with no cookie and no address kept; `hippomaps stats` prints them. The privacy page says so.
 - Public transport in directions (Transit), across Europe: the connections by train, tram, metro, bus,
   boat and cable car, leaving now or with a departure or an arrival at a chosen time; each with its lines, changes,
   tracks and walks, delays where an operator publishes them, and drawn on the map in the colours of its lines.

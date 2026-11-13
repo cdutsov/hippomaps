@@ -41,6 +41,11 @@ where you are. The address is not sent to anyone for this.</p>
 <p>We use these data only to answer the request and do not store them. Your location never leaves the device for
 anything else, and the app does not record where you have been. To limit the use of the service, our server counts the
 requests of each IP address in memory for ten minutes.</p>
+<p>Visit counts: when the page loads, our server adds one to the count of the day and one to the count of the site that
+linked to it (its host name only, or a name given in the link as <code>?ref=</code>). To count a visitor once a day it
+keeps a hash of your IP address and browser in memory, with a key that changes at midnight; the hash is never written
+to disk. What we store are numbers per day and host names: no IP address, no cookie, nothing that identifies you.
+Crawlers and our own tests are not counted. Purpose: knowing how much the service is used (legitimate interest).</p>
 <p>Technical logs: error messages of our servers can contain the IP address, the time and the address requested. They are
 deleted automatically by log rotation, generally within 30 days. Purpose: operating and securing the service
 (legitimate interest).</p>
