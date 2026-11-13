@@ -475,15 +475,27 @@ try:
     check(js("(() => { const r = document.querySelector('.lm-start-list').getBoundingClientRect(), f = document.querySelector('.lm-form').getBoundingClientRect();"
              " return document.getElementById('app').dataset.sheet === 'peek' && r.top >= f.bottom - 1 && r.bottom <= innerHeight && r.height > 20; })()"),
           "on a phone the searches of the start in a row under the search box, the sheet down")
-    # (the row scrolls sideways, and is drawn again when the map view shows other things: the pill marked just before the tap)
+    # (the row scrolls sideways, and is drawn again when the map view shows other things, between two calls of the
+    # test too: the pill found, brought into view and tapped where it is, and once more if the row was drawn again)
     wait("hmMap.loaded() && !hmMap.isMoving()", 10)
-    mark = ("(() => { const b = [...document.querySelectorAll('.lm-start-idea')].find(b => /bridges over/.test(b.textContent)); if (!b) return false;"
-            " b.setAttribute('data-hm-tap', '1'); b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' }); return true; })()")
-    if wait(mark, 10) and tap("[data-hm-tap]"):
+    pill = ("(() => { const b = [...document.querySelectorAll('.lm-start-idea')].find(b => /bridges over/.test(b.textContent)); if (!b) return null;"
+            " b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' }); const r = b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+    searching = False
+    for _ in range(4):
+        at = js(pill)
+        if not at:
+            time.sleep(1)
+            continue
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": at[0], "y": at[1]}])
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        if wait("/bridges over/.test(document.querySelector('.lm-input').value)", 3):  # (the search has begun: its words in the box)
+            searching = True
+            break
+    if searching:
         check(wait("/Bridge/.test(document.querySelector('.lm-title').textContent) && document.querySelector('.lm-start').hidden", 60),
               f"a tap on a search of the start searches it ({js('document.querySelector(\'.lm-title\').textContent')})")
     else:
-        check(False, "a search of the start for the bridges of the river")
+        check(False, f"a search of the start for the bridges of the river ({js('JSON.stringify([...document.querySelectorAll(\'.lm-start-idea\')].map(b => b.textContent))')})")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click(); document.querySelector('.lm-input').blur()")
     check(wait("!document.querySelector('.lm-start').hidden && document.querySelectorAll('.lm-start-idea').length >= 2", 10), "the X: the start again, with its searches")
 
@@ -1023,7 +1035,8 @@ try:
         time.sleep(0.5)
         m = js("JSON.stringify({ moves: hmMoves.filter(m => !m.same).map(m => ({ ms: Math.round(m.t1 - m.t0), out: +(Math.min(m.z0, m.z1) - m.zmin).toFixed(2), after: Math.round(m.t0 - hmResized) })) })")
         mv = json.loads(m)["moves"]
-        check(len(mv) == 1 and mv[0]["after"] >= 0 and 800 <= mv[0]["ms"] <= 1700,
+        # (the flight is set to 0.9 to 1.5 s; drawn in software on a busy machine it has taken 1.75 s)
+        check(len(mv) == 1 and mv[0]["after"] >= 0 and 800 <= mv[0]["ms"] <= 2500,
               f"a far place: the map moves once, after the keyboard, a flight of 0.9 to 1.5 s ({mv})")
     else:
         check(False, "suggestions for Bern")

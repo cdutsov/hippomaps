@@ -2,7 +2,7 @@
 # hippomaps on its site (default https://hippomaps.ch): the service, the page (for search engines), its files, the key of the
 # map tiles, the pictures from Wikimedia Commons, directions in Switzerland by car with speed limits, lanes and traffic,
 # heights on foot, the voice, traffic. About 25 requests to the site, one or two to Wikimedia (then kept for a day), two
-# routes; the spoken turns of navigation, the 30 fps cap and the texts of each language in the source (tests/*.test.mjs, node in Docker). BROWSER=1 adds the page in headless Chromium (tests/browser.py, about five minutes; needs chromium and websocket-client).
+# routes; the spoken turns of navigation, the 30 fps cap and the texts of each language in the source (tests/*.test.mjs, node in Docker). BROWSER=1 adds the page in headless Chromium (tests/browser.py, about nine minutes, BROWSER_SECS at most, 900; needs chromium and websocket-client).
 #   tests/site-test.sh                       PAGE=https://… tests/site-test.sh
 # Ends with "hippomaps test: N passed, M failed"; exit 1 on a failure.
 set -uo pipefail
@@ -249,16 +249,28 @@ for (const [l, b] of [["en", en], ...["de", "fr", "it"].map((l) => [l, all[l].bu
 		ok "cafés far from highways: highways are roads" || ko "cafés far from highways: $(jq -c .understood "$TMP/b" 2>/dev/null)"
 fi
 
-# the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about eight minutes, at most ten
+# the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about nine minutes. BROWSER_SECS is
+# the time one run may take (900: a busy server takes half as long again). Once more when it fails: a slow tile or
+# answer of a server once is no failure of the page; what failed the first time is printed (not counted), so a check
+# that fails now and then is seen.
 if [[ ${BROWSER:-0} == 1 ]]; then
 	echo "Browser"
-	# once more when it fails: a slow tile or answer of a server once is no failure of the page
-	if out=$(timeout 600 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1) || out=$(timeout 600 python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); then
-		while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
-	else
-		while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
+	secs=${BROWSER_SECS:-900}
+	run() { out=$(timeout "$secs" python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); }
+	stopped() { [[ $1 == 124 ]] && echo "the browser test ran into its limit of $secs s after: $(grep -c '^ok ' <<<"$out") checks" || echo "the browser test stopped: $(tail -n 2 <<<"$out" | tr '\n' ' ')"; }
+	run
+	rc=$?
+	if ((rc != 0)); then
+		echo "  first run (exit $rc), run again:"
+		grep "^FAIL " <<<"$out" | cut -c6- | sed 's/^/    failed: /'
+		grep -q "^FAIL " <<<"$out" || echo "    $(stopped $rc)"
+		run
+		rc=$?
+	fi
+	while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
+	if ((rc != 0)); then
 		while read -r line; do ko "$line"; done < <(grep "^FAIL " <<<"$out" | cut -c6-)
-		grep -q "^FAIL " <<<"$out" || ko "the browser test stopped: $(tail -n 2 <<<"$out" | tr '\n' ' ')"
+		grep -q "^FAIL " <<<"$out" || ko "$(stopped $rc)"
 	fi
 fi
 
