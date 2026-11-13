@@ -20,7 +20,7 @@ navigation, on OpenStreetMap data.**
     <td width="20%"><img src="docs/img/place.webp" width="165" alt="The page of a museum with its opening hours and a photo"></td>
     <td width="20%"><img src="docs/img/route.webp" width="165" alt="A route by bike from Zurich main station to the Uetliberg"></td>
     <td width="20%"><img src="docs/img/navigation.webp" width="165" alt="Navigation by car: the next turn, the speed limit and the car in 3D"></td>
-    <td width="20%"><img src="docs/img/transit.webp" width="165" alt="Public transport from Zurich to Bern on a phone: the way of the trains on the map, and a connection with its lines, times, platforms and a delay"></td>
+    <td width="20%"><img src="docs/img/transit.webp" width="165" alt="Public transport from Zürich Triemli to Umiken on a phone: the tram, the train and the bus on the map, and the connection with its lines, times and platforms"></td>
   </tr>
   <tr>
     <td align="center"><b>Search</b><br>in plain words</td>
