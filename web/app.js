@@ -3296,7 +3296,7 @@ function showList() {
   if (state.from === "here" && state.herePoint) setSource("pin", one({ type: "Feature", geometry: { type: "Point", coordinates: state.herePoint.ll }, properties: {} }));
   showView(state.from === "here" ? hereView : listView);
 }
-function select(f, { push = true, fly = true } = {}) {
+function select(f, { push = true, fly = true, from = null } = {}) {
   state.selected = f;
   setSource("selected", one(f));
   if (push) {
@@ -3309,7 +3309,7 @@ function select(f, { push = true, fly = true } = {}) {
     if (f.geometry.type === "Point" || !b) fit(() => glide({ center: c, zoom: Math.max(map.getZoom(), 16), padding: pad() }));
     else fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 17 }));
   }
-  state.from = hereView.hidden ? "list" : "here";
+  state.from = from || (hereView.hidden ? "list" : "here");
   renderDetail(f);
   showView(detailView);
   setSheet(sheet.state === "full" ? "full" : "half");
@@ -3319,8 +3319,9 @@ function renderDetail(f) {
   detailView.innerHTML = "";
   const back = el("button", "lm-back", { type: "button" });
   back.innerHTML = svg(ICON.back, 18);
-  back.append(state.from === "here" ? T.here : T.back);
+  back.append(state.from === "here" ? T.here : state.from === "tap" && !state.answer ? T.close : T.back);
   back.addEventListener("click", () => {
+    if (state.from === "tap" && !state.answer) return closeCard();
     if (state.pushedSel && state.from !== "here") return history.back();
     showList();
     if (state.from !== "here") writeURL(null, true);
@@ -3639,7 +3640,7 @@ async function here(ll, symbol, backToRoute = false) {
   const hit = symbol && fs.find((f) => fold(f.properties.name || "") === fold(symbol));
   if (hit) {
     setSource("pin", empty); // one marker: that of the place
-    select(hit, { push: false, fly: false });
+    select(hit, { push: false, fly: false, from: "tap" }); // a name tapped: no lookup page to go back to
   }
 }
 
