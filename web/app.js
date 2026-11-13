@@ -947,9 +947,10 @@ const POI_DOT = "lm-poi-dot";
 // A town at the middle zooms was full of places, the names of the streets gone. The tiles give a place the zoom it
 // is drawn from (min_zoom: 15 a supermarket, 16 a restaurant, 17 a shop); the page shows it one zoom before, and two
 // from zoom 17 (POI_EARLY, for [">=", ["zoom"], …]). Below zoom 17 the icons keep a distance from each other and
-// from other names (POI_GAP, the icon-padding of every layer of places: 20 px at zoom 14, 12 at 16, 2 from 17).
+// from other names (POI_GAP, the icon-padding of every layer of places: 20 px at zoom 14, 12 at 16, 2 from 17 and
+// to zoom 12, where the few places there are stand beside the name of the town: the main station of Zurich).
 const POI_EARLY = ["-", ["get", "min_zoom"], ["step", ["zoom"], 1, 17, 2]];
-const POI_GAP = ["interpolate", ["linear"], ["zoom"], 14, 20, 16, 12, 17, 2];
+const POI_GAP = ["interpolate", ["linear"], ["zoom"], 12, 2, 14, 20, 16, 12, 17, 2];
 const POI_UNDER = ["roads_labels_minor", "roads_shields", "roads_labels_major"];
 // the layout of the places under the names of the streets (ours, and pois_more of a style): the name where there is
 // room around the icon, from zoom 17 the icon alone when there is none (below, a place without room for its name is

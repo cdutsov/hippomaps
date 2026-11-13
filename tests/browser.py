@@ -880,6 +880,7 @@ try:
              " for (const f of hmMap.queryRenderedFeatures({ layers: ['pois', 'pois_more', 'lm-pois-near', 'lm-pois-more'].filter(l => hmMap.getLayer(l)) })) {"
              "   const p = hmMap.project(f.geometry.coordinates), n = f.properties.name;"
              "   if (n && p.x > 40 && p.x < m.width - 40 && p.y > 90 && p.y + m.top < side - 40) return [n, p.x + m.left, p.y + m.top]; } return null; })()")
+    check(js("hmMap.queryRenderedFeatures({ layers: ['pois'] }).some(f => f.properties.kind === 'station')"), "the main station of Zurich on the map at zoom 12.6")
     if poi:
         call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": poi[1] + 4, "y": poi[2] + 3}])
         call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])

@@ -178,10 +178,12 @@ test("the middle zooms are not full of places: one zoom before the tiles say bel
       assert.equal(at(17, 19), true, name);
     }
   }
-  // the icons keep their distance below zoom 17: more at the smaller zooms, the 2 px of MapLibre from 17
+  // the icons keep their distance between zoom 12 and 17: most at zoom 14, the 2 px of MapLibre from 17
   assert.deepEqual(POI_GAP.slice(0, 3), ["interpolate", ["linear"], ["zoom"]]);
   const stops = POI_GAP.slice(3);
-  assert.ok(stops[1] > stops[3] && stops[3] > 2 && stops.at(-2) === 17 && stops.at(-1) === 2, JSON.stringify(stops));
+  const gap = (z) => stops[stops.indexOf(z) + 1];
+  assert.ok(gap(14) > gap(16) && gap(16) > 2 && stops.at(-2) === 17 && stops.at(-1) === 2, JSON.stringify(stops));
+  assert.ok(stops[0] <= 12 && stops[1] === 2, JSON.stringify(stops)); // zoomed out the few places keep theirs: a station beside the name of its town
   assert.deepEqual(near.layer.layout["icon-padding"], POI_GAP);
   assert.deepEqual(morePois(l).layout["icon-padding"], POI_GAP);
 });
