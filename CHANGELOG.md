@@ -46,6 +46,8 @@ On hippomaps.ch since 1.3.0.
 - Search bubbles search the words they show, in the language of the page; lines by their number in the page language.
 - Country borders twice as wide.
 - The limits per visitor count an IPv6 visitor by the /64 of their address.
+- While connections or a route are searched for, a turning ring before the message, and rows that pulse where the
+  connections will be.
 
 ### Fixed
 

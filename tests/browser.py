@@ -1631,6 +1631,27 @@ try:
             after = js(row_times) or []
             check(changed and len(after) > 0 and not set(after) & set(before) and js("!!document.querySelector('.lm-earlier')"),
                   f"Later: the connections after those shown, none of them again ({before[0]} first before, {after[0] if after else 'none'} after)")
+            # while connections are searched for: a turning ring before the message and three rows that pulse in place
+            # of the list; gone with a failure (the message of it) and with the answer (its rows). The page holds each
+            # request of /api/journey until hmHold(fail) lets it go (or answers it with a failure)
+            js("(() => { const f = window.hmFetch = window.fetch; window.fetch = function (u, ...a) { if (!String(u).includes('/api/journey')) return f.call(this, u, ...a);"
+               " return new Promise((ok) => { window.hmHold = (fail) => ok(fail ? new Response('{}', { status: 502, headers: { 'Content-Type': 'application/json' } }) : f.call(this, u, ...a)); }); }; })()")
+            busy = ("(() => { const q = (s) => document.querySelector(s), ring = q('.lm-route-msg .lm-spinner'), rows = document.querySelectorAll('.lm-trips-wait .lm-trip');"
+                    " return !!ring && getComputedStyle(ring).animationName === 'lm-spin' && q('.lm-route-msg').textContent === 'Finding connections…'"
+                    " && rows.length === 3 && q('.lm-trips-wait').getAttribute('aria-hidden') === 'true' && getComputedStyle(q('.lm-wait-bar')).animationName === 'lm-pulse'"
+                    " && !document.querySelector('.lm-trip-row .lm-trip-times'); })()")
+            done = "!document.querySelector('.lm-route-msg .lm-spinner') && !document.querySelector('.lm-trips-wait')"
+            js("window.hmHold = null; (() => { const k = document.querySelector('.lm-when-kind'); k.value = 'depart'; k.dispatchEvent(new Event('change', { bubbles: true })); })()")
+            waiting = wait("!!window.hmHold && " + busy, 10)
+            js("window.hmHold?.(true)")
+            failed = wait(done + " && document.querySelector('.lm-route-msg').textContent.length > 0", 10)
+            js("window.hmHold = null; (() => { const t = document.querySelector('.lm-when-time'); t.dispatchEvent(new Event('change', { bubbles: true })); })()")
+            again = wait("!!window.hmHold && " + busy, 10)
+            js("window.hmHold?.(false)")
+            answered = wait(done + " && document.querySelectorAll('.lm-trip-row .lm-trip-times').length > 0 && document.querySelector('.lm-route-msg').textContent === ''", 40)
+            js("window.fetch = window.hmFetch")
+            check(waiting and failed and again and answered,
+                  f"connections searched for: a turning ring before the message and three pulsing rows; gone with a failure and with the answer ({waiting}, {failed}, {again}, {answered})")
             # an arrival tomorrow by 09:00: on the clocks of the journey (Zurich), whatever the clock of the browser
             import datetime, zoneinfo
             day = datetime.date.today() + datetime.timedelta(days=1)
@@ -1643,10 +1664,13 @@ try:
             check(asked and shown and ends and all(e <= "09:00" for e in ends) and not js("document.querySelector('.lm-when-time').hidden"),
                   f"an arrival tomorrow by 09:00 in Zurich: asked as {utc}, every connection there by then ({ends}), under the day ({js('document.querySelector(\'.lm-trip-day\')?.textContent')})")
             # by car again: the route, Start, nothing of the journey left on the map or in the panel
+            js("window.hmRing = false; new MutationObserver(() => { if (document.querySelector('.lm-route-msg .lm-spinner')) window.hmRing = true; })"
+               ".observe(document.body, { subtree: true, childList: true })")
             js("document.querySelector('.lm-mode').click()")
             check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && !!document.querySelector('.lm-nav-start')", 40)
                   and js("!hmMap.getStyle().sources['lm-journey'].data.features.length && !document.querySelector('.lm-journey').childElementCount && !document.querySelector('.lm-when')"),
                   "from Transit to Car: the route by car with Start, no connection left in the panel or on the map")
+            check(js("window.hmRing && !document.querySelector('.lm-route-msg .lm-spinner')"), "the route by car searched for: the turning ring before its message, gone with the answer")
         else:
             check(False, f"a shared journey by public transport opens its connections ({js('document.querySelector(\'.lm-route-msg\')?.textContent')})")
         # no timetable near the start (N'Djamena): the message names where there is one (the countries, or Europe), in

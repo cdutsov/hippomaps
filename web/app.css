@@ -249,6 +249,18 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-along-add:hover { background: var(--hot); }
 .lm-step-stop .lm-step-text { font-weight: 600; }
 .lm-route-msg { padding: .6rem 1rem 0; margin: 0; }
+/* a search under way: a turning ring before its message, and rows that pulse where the connections will be */
+.lm-spinner { display: inline-block; width: .95em; height: .95em; margin-right: .5em; vertical-align: -.15em; border: 2px solid var(--line);
+  border-top-color: var(--accent); border-radius: 50%; animation: lm-spin .8s linear infinite; }
+.lm-trips-wait .lm-trip-row { cursor: default; }
+.lm-wait-bar { display: block; height: .85rem; border-radius: 6px; background: var(--line); animation: lm-pulse 1.2s ease-in-out infinite; }
+.lm-wait-times { width: 7.5rem; height: 1.15rem; }
+.lm-wait-dur { width: 3.2rem; }
+.lm-wait-parts { grid-column: 1 / -1; width: 65%; }
+.lm-trips-wait .lm-trip:nth-child(2) .lm-wait-bar { animation-delay: .2s; }
+.lm-trips-wait .lm-trip:nth-child(3) .lm-wait-bar { animation-delay: .4s; }
+@keyframes lm-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .lm-spinner { animation-duration: 2.4s; } .lm-wait-bar { animation: none; } }
 /* public transport: when to travel, the connections, the legs of the one chosen */
 .lm-when { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
 .lm-when-kind, .lm-when-time { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; font-size: 16px; padding: .35rem .5rem; min-width: 0; }

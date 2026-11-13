@@ -3867,9 +3867,23 @@ function setFrom(from) {
 }
 const routeHead = el("div", "lm-route-head");
 const routeMsg = el("p", "lm-notes lm-route-msg", { role: "status", "aria-live": "polite" });
+// a search under way: its message after a turning ring (the next text of the message takes the ring away)
+const busyMsg = (text) => routeMsg.replaceChildren(el("span", "lm-spinner", { "aria-hidden": "true" }), text);
 const routeSum = el("p", "lm-route-sum");
 const routeSteps = el("ol", "lm-steps");
 const journeyBox = el("div", "lm-journey"); // the connections by public transport (renderJourney)
+// rows that pulse where the connections will be, while they are searched for
+function tripsWaiting() {
+  const list = el("ol", "lm-trips lm-trips-wait", { "aria-hidden": "true" });
+  for (let i = 0; i < 3; i++) {
+    const row = el("div", "lm-trip-row");
+    row.append(el("span", "lm-wait-bar lm-wait-times"), el("span", "lm-wait-bar lm-wait-dur"), el("span", "lm-wait-bar lm-wait-parts"));
+    const li = el("li", "lm-trip");
+    li.append(row);
+    list.append(li);
+  }
+  return list;
+}
 // the steps of a route, folded at first (their number in the title)
 const stepsBox = el("details", "lm-steps-box");
 const stepsTitle = el("summary", "lm-steps-title");
@@ -4159,7 +4173,7 @@ async function findRoute({ quiet = false } = {}) {
     drawEnds(null);
   };
   if (!quiet) {
-    routeMsg.textContent = T.routing;
+    busyMsg(T.routing);
     clearRoute();
   }
   let d;
@@ -4382,13 +4396,14 @@ async function findJourney({ quiet = false, page = "" } = {}) {
   const ctl = route.ctl = new AbortController();
   const ll = (v) => `${v.ll[1].toFixed(5)},${v.ll[0].toFixed(5)}`;
   if (!quiet) {
-    routeMsg.textContent = T.journeySearching;
+    busyMsg(T.journeySearching);
     if (!page) {
       route.journey = null;
-      journeyBox.innerHTML = "";
+      journeyBox.replaceChildren(tripsWaiting());
       drawEnds(null);
     }
   }
+  const unwait = () => journeyBox.querySelector(".lm-trips-wait")?.remove();
   let d;
   try {
     const q = new URLSearchParams({ from: ll(route.from), to: ll(route.to), lang: UI, ...journeyWhen(route.when.kind, route.when.value, route.when.tz) });
@@ -4397,11 +4412,15 @@ async function findJourney({ quiet = false, page = "" } = {}) {
     d = await r.json().catch(() => ({}));
     if (ctl.signal.aborted) return;
     if (!r.ok) { // (asked again in a new language with nothing found before: the message in that language)
+      unwait();
       if (!quiet || !route.journey) routeMsg.textContent = journeyError(d.error?.code);
       return;
     }
   } catch (err) {
-    if (err.name !== "AbortError" && !quiet) routeMsg.textContent = failText(T.routeFailed);
+    if (err.name !== "AbortError") {
+      unwait();
+      if (!quiet) routeMsg.textContent = failText(T.routeFailed);
+    }
     return;
   }
   if (routeView.hidden || route.mode !== "transit") return;
