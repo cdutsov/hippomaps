@@ -16,6 +16,10 @@ const API = root.dataset.api.replace(/\/$/, "");
 const PICTURES = root.dataset.pictures || "";
 const ROUTE = root.dataset.route || "";
 const ALONG = (ROUTE && root.dataset.along) || ""; // places along a route (Overpass, through this server)
+// journeys by public transport, the mode Transit of directions (MOTIS, through this server), and the countries
+// it has timetables of
+const JOURNEY = (ROUTE && root.dataset.journey) || "";
+const JOURNEY_REGIONS = (root.dataset.journeyRegions || "").split(",").filter(Boolean);
 // the place of the IP address of the visitor (looked up by the server in a database of its own, DB-IP):
 // latitude, longitude and zoom. The map opens there until the device tells where the visitor is
 const NEAR = ((v) => (v.length === 3 && v.every(Number.isFinite) ? v : null))((root.dataset.near || "").split(",").map(Number));
@@ -158,7 +162,26 @@ const EN = {
   tapEnd: "Type the destination, or tap it on the map.",
   useLocation: "Use my location",
   routing: "Finding the route…",
-  modes: [["car", "Car"], ["bike", "Bike"], ["walk", "Walk"]],
+  modes: [["car", "Car"], ["bike", "Bike"], ["walk", "Walk"], ["transit", "Transit"]],
+  // public transport: when to travel, the connections, their legs
+  leaveNow: "Leave now",
+  departAt: "Depart at",
+  arriveBy: "Arrive by",
+  whenTime: "Date and time",
+  journeySearching: "Finding connections…",
+  changes: (n) => (n === 0 ? "Direct" : n === 1 ? "1 change" : `${n} changes`),
+  late: (m) => `+${m} min`,
+  walkLeg: (t, dist) => `Walk ${t}${dist ? ` · ${dist}` : ""}`,
+  changeLeg: (t, dist) => `Change · ${t}${dist ? ` · ${dist} on foot` : ""}`,
+  platform: (p, rail) => `${rail ? "Platform" : "Stand"} ${p}`,
+  stopsBetween: (n) => (n === 1 ? "1 stop" : `${n} stops`),
+  earlier: "Earlier",
+  later: "Later",
+  onFoot: (t, dist) => `On foot: ${t} · ${dist}`,
+  cancelled: "Cancelled",
+  noStops: (start, regions) => `No public transport stop near the ${start ? "start" : "destination"}.${regions ? ` Timetables: ${regions}.` : ""}`,
+  noJourney: (regions) => `No connection found at this time.${regions ? ` Timetables: ${regions}.` : ""}`,
+  noFaster: "No connection is faster than walking.",
   routeFailed: "The route could not be found. Please try again.",
   routeErrors: {
     no_route: "No route between these points.",
@@ -306,6 +329,10 @@ const ICON = {
   plus: "M12 5v14M5 12h14",
   ferry: "M3 14h18l-2.5 5h-13zM6 14v-4h12v4M9 10V6h6v4M12 3v3",
   train: "M8 3h8a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a3 3 0 0 1 3-3zM5 10h14M8.5 13h.01M15.5 13h.01M8 16l-2 5M16 16l2 5",
+  bus: "M6 4h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM4 11h16M8 18v2M16 18v2M8 14.5h.01M16 14.5h.01",
+  tram: "M7 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM5 12h14M9 3h6M12 3v3M8.5 15h.01M15.5 15h.01M8 18l-1.5 3M16 18l1.5 3",
+  cable: "M3 6l18-3M12 4.5V9M7 9h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM5 14h14",
+  plane: "M10.5 4.5a1.5 1.5 0 0 1 3 0V9l7 4v2l-7-2v4l2 1.5V20L12 19l-3.5 1v-1.5l2-1.5v-4l-7 2v-2l7-4z",
   offline: "M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5-2.7M19 13a10 10 0 0 0-2-1.5M2 9a15 15 0 0 1 4-2.6M22 9a15 15 0 0 0-11.3-3.8M12 20h.01",
 };
 const human = (v) => (v ? v.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
@@ -802,7 +829,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty };
+const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty };
 const ACCENT = "#e8590c"; // the warm complement of the hippo blue (--warm)
 const STOP_COLOUR = "#e8590c"; // stops on a route, and the places along it
 // POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
@@ -1195,7 +1222,7 @@ const pinLayer = (id, source, filter) => ({ id, type: "symbol", source, ...(filt
   layout: { "icon-image": "lm-pin-icon", "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true } });
 
 // the colours of our names, by theme: places along the route, and the results
-const TEXT_COLOUR = { "lm-along-name": ["#ffd8a8", "#7c2d12"], "lm-label": ["#ffb4a9", "#7f1d1d"] };
+const TEXT_COLOUR = { "lm-along-name": ["#ffd8a8", "#7c2d12"], "lm-label": ["#ffb4a9", "#7f1d1d"], "lm-journey-name": ["#e5e7eb", "#111827"] };
 const textPaint = (id) => ({ "text-color": TEXT_COLOUR[id][theme() === "dark" ? 0 : 1], "text-halo-color": theme() === "dark" ? "#111" : "#fff" });
 map.on("style.load", () => {
   if (shownStyle() === "light") pastel();
@@ -1282,6 +1309,19 @@ map.on("style.load", () => {
     paint: { "line-color": "#1a73e8", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
   add({ id: "lm-route-traffic", type: "line", source: "lm-routetraffic", layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["match", ["get", "level"], 2, "#d93025", "#f29900"], "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
+  // a journey by public transport: each ride in the colour of its line over a white casing, the walks dotted,
+  // the stops where the traveller gets on and off with their names
+  add({ id: "lm-journey-case", type: "line", source: "lm-journey", filter: ["all", line, ["!", ["has", "walk"]]], layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#fff", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 6, 16, 12] } }, below);
+  add({ id: "lm-journey-line", type: "line", source: "lm-journey", filter: ["all", line, ["!", ["has", "walk"]]], layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": ["to-color", ["get", "colour"], "#1a73e8"], "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3.5, 16, 8] } }, below);
+  add({ id: "lm-journey-walk", type: "line", source: "lm-journey", filter: ["all", line, ["has", "walk"]], layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#1a73e8", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 6], "line-dasharray": [0.1, 2] } }, below);
+  add({ id: "lm-journey-stop", type: "circle", source: "lm-journey", filter: ["has", "stop"], paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 15, 6], "circle-color": "#fff", "circle-stroke-color": "#111827", "circle-stroke-width": 2 } });
+  if (font) add({ id: "lm-journey-name", type: "symbol", source: "lm-journey", minzoom: 8, filter: ["all", ["has", "stop"], ["has", "name"]],
+    layout: { "text-field": ["get", "name"], "text-font": font, "text-size": 12, "text-offset": [0, 0.9], "text-anchor": "top", "text-max-width": 10, "text-optional": true },
+    paint: { ...textPaint("lm-journey-name"), "text-halo-width": 1.5 } });
   // the turns ahead in navigation: a white arrow on the line, with the casing of the route (turnArrows)
   add({ id: "lm-turn-case", type: "line", source: "lm-turns", minzoom: 12, filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": TURN_CASE, "line-width": ["interpolate", ["linear"], ["zoom"], 12, 6, 16, 10] } }, below);
@@ -1885,10 +1925,11 @@ const sheetHeights = (H = pageHeight()) => ({
   half: Math.max(Math.round(H * 0.48), Math.min(Math.round(H * 0.85), routeNeed())),
   full: H - 56,
 });
-// the height directions with a route need on a phone: from the top of the sheet down to Start, 0 without a route
+// the height directions with a route need on a phone: from the top of the sheet down to Start (by public transport:
+// to the first connection), 0 without a route
 function routeNeed() {
   try {
-    const go = routeView.hidden ? null : routeView.querySelector(".lm-nav-go");
+    const go = routeView.hidden ? null : routeView.querySelector(".lm-nav-go") || routeView.querySelector(".lm-trip-row"); // or the first connection
     return go ? Math.ceil(go.getBoundingClientRect().bottom + body.scrollTop - side.getBoundingClientRect().top + 12) : 0;
   } catch { return 0; } // the sheet set while the page is still built
 }
@@ -3500,7 +3541,7 @@ async function here(ll, symbol, backToRoute = false) {
     // the point instead of the destination, or of the start
     const swap = el("div", "lm-swap-acts");
     for (const [label, end] of [[T.useAsTo, "to"], [T.useAsStop, "stop"], [T.useAsFrom, "from"]]) {
-      if (end === "stop" && (!route.from || !route.to || route.stops.length >= MAX_STOPS)) continue;
+      if (end === "stop" && (!route.from || !route.to || route.stops.length >= MAX_STOPS || route.mode === "transit")) continue; // (no stops by public transport)
       const b = el("button", "lm-chip", { type: "button" }, label);
       b.addEventListener("click", () => {
         const p = { ll: [+ll.lng.toFixed(5), +ll.lat.toFixed(5)], label: hereView.querySelector(".lm-dname")?.textContent || T.mapPoint };
@@ -3604,8 +3645,13 @@ async function here(ll, symbol, backToRoute = false) {
 // ------------------------------------------------------------------ directions
 // From the page of a place or from a point of the map: to there, from the location of the
 // visitor, or from a tap on the map. The line and the steps come from data-route.
-const MODE_ICON = { car: ICON.car, bike: ICON.bike, walk: ICON.walk };
-const route = { keep: false, from: null, to: null, toText: "", stops: [], mode: ["car", "bike", "walk"].includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null };
+const MODE_ICON = { car: ICON.car, bike: ICON.bike, walk: ICON.walk, transit: ICON.train };
+// the modes of directions: public transport only where the server has timetables (data-journey)
+const MODES = ["car", "bike", "walk", ...(JOURNEY ? ["transit"] : [])];
+// when: the time of a journey by public transport (now, or a departure or arrival chosen, a date and time on the
+// clocks of the time zone tz of the stops); journey: the answer shown
+const route = { keep: false, from: null, to: null, toText: "", stops: [], mode: MODES.includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null,
+  when: { kind: "now", value: "", tz: "" }, journey: null };
 function routeButton(go) {
   const b = el("button", "lm-action", { type: "button" });
   b.innerHTML = svg(ICON.directions, 18);
@@ -3619,6 +3665,7 @@ function routeDone() {
   route.ctl?.abort();
   alongDone();
   setSource("route", empty);
+  setSource("journey", empty);
 }
 // the stretches of a route slowed by traffic (d.traffic: [from, to, level] in indexes of the line),
 // from point index `from` on
@@ -3640,10 +3687,12 @@ function trafficClass(d, from = 0) {
 }
 function drawEnds(line) {
   if (!line) setSource("routetraffic", empty);
+  if (sources.journey.features.length) setSource("journey", empty);
   const fs = [];
   if (line) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: line }, properties: {} }, ...(route.answer?.marks || []).map(markFeature));
   if (route.from?.ll) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.from.ll }, properties: { end: "from" } });
-  route.stops.forEach((x, i) => { if (x) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { end: "stop", n: String(i + 1) } }); });
+  // (a journey by public transport has no stops on the way)
+  if (route.mode !== "transit") route.stops.forEach((x, i) => { if (x) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { end: "stop", n: String(i + 1) } }); });
   if (route.to) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } });
   setSource("route", { type: "FeatureCollection", features: fs });
 }
@@ -3756,6 +3805,7 @@ function waitStart() {
   routeView.querySelector(".lm-nav-wait")?.remove();
   if (!(route.from?.me && !route.from.ll && route.to?.ll) || nav.on) return false;
   routeMsg.textContent = T.waitGPS;
+  if (route.mode === "transit") return true; // no navigation to start ahead
   const go = el("div", "lm-nav-go lm-nav-wait");
   const b = el("button", "lm-nav-start", { type: "button", "aria-pressed": String(!!route.go) });
   const draw = () => {
@@ -3796,6 +3846,7 @@ function followMe() {
     clearTimeout(route.moveTimer);
     route.moveTimer = setTimeout(() => {
       route.moved = Date.now();
+      if (route.mode === "transit" && route.journey) return; // the connections shown stay: they leave at their times
       if (wanted() && route.from && route.to) findRoute({ quiet: !!route.answer });
     }, Math.max(0, (route.moved || 0) + PLAN_EVERY_MS - Date.now()));
   }, (err) => { // blocked: the message says so (no location in time comes again and again under ground: the watch goes on)
@@ -3816,6 +3867,7 @@ const routeHead = el("div", "lm-route-head");
 const routeMsg = el("p", "lm-notes lm-route-msg", { role: "status", "aria-live": "polite" });
 const routeSum = el("p", "lm-route-sum");
 const routeSteps = el("ol", "lm-steps");
+const journeyBox = el("div", "lm-journey"); // the connections by public transport (renderJourney)
 // the steps of a route, folded at first (their number in the title)
 const stepsBox = el("details", "lm-steps-box");
 const stepsTitle = el("summary", "lm-steps-title");
@@ -3830,6 +3882,7 @@ function renderRoute() {
   back.addEventListener("click", () => showView(route.back || listView));
   const modes = el("div", "lm-modes", { role: "radiogroup", "aria-label": T.directions });
   for (const [m, label] of T.modes) {
+    if (!MODES.includes(m)) continue;
     const b = el("button", "lm-mode", { type: "button", role: "radio", "aria-checked": String(m === route.mode), title: label });
     b.innerHTML = svg(MODE_ICON[m], 18);
     b.append(el("span", "", {}, label));
@@ -3842,8 +3895,9 @@ function renderRoute() {
     });
     modes.append(b);
   }
+  const transit = route.mode === "transit"; // from the start to the destination, at a time: no stops on the way
   const ends = el("div", "lm-ends");
-  ends.append(placeField("from"), ...route.stops.map((_, i) => placeField(i)), placeField("to"));
+  ends.append(placeField("from"), ...(transit ? [] : route.stops.map((_, i) => placeField(i))), placeField("to"));
   const swap = el("button", "lm-icon-btn lm-swap", { type: "button", title: T.swap, "aria-label": T.swap });
   swap.innerHTML = svg(ICON.swap, 18);
   swap.disabled = !route.from || !route.to;
@@ -3855,8 +3909,9 @@ function renderRoute() {
   });
   ends.append(swap);
   routeHead.append(modes, ends);
+  if (transit) routeHead.append(whenRow());
   const acts = el("div", "lm-route-acts");
-  if (route.stops.length < MAX_STOPS) {
+  if (!transit && route.stops.length < MAX_STOPS) {
     const add = el("button", "lm-chip lm-add-stop", { type: "button" });
     add.innerHTML = svg(ICON.plus, 16);
     add.append(T.addStop);
@@ -3881,9 +3936,11 @@ function renderRoute() {
   routeMsg.textContent = !route.from ? T.tapStart : !route.to ? T.tapEnd : "";
   routeSum.textContent = "";
   route.answer = null;
+  route.journey = null;
+  journeyBox.innerHTML = "";
   routeSteps.innerHTML = "";
   stepsBox.hidden = true;
-  routeView.append(back, routeHead, routeMsg, routeSum, stepsBox);
+  routeView.append(back, routeHead, routeMsg, routeSum, journeyBox, stepsBox);
   drawEnds(null);
   if (route.from?.me || route.to?.me) followMe(); else unfollowMe();
   waitStart();
@@ -4082,6 +4139,7 @@ function placeField(which) {
 async function findRoute({ quiet = false } = {}) {
   if (!route.from || !route.to) return;
   if (waitStart() || !route.from.ll || !route.to.ll) return; // the location of the visitor not known yet
+  if (route.mode === "transit") return findJourney({ quiet });
   route.ctl?.abort();
   const ctl = route.ctl = new AbortController();
   const ll = (v) => `${v.ll[1].toFixed(5)},${v.ll[0].toFixed(5)}`;
@@ -4184,6 +4242,337 @@ function ferriesBox(d) {
   }
   box.append(el("p", "lm-ferry-note", {}, T.ferryNote));
   return box;
+}
+
+// ------------------------------------------------------------------ public transport
+// The mode Transit of directions (data-journey: MOTIS through this server, the walks from Valhalla): the
+// connections of the timetable around a time (leaving now, or a departure or arrival chosen), each a row with its
+// times, its lines and its changes. The one chosen is open leg by leg and drawn on the map: each ride in the
+// colour of its line, the walks dotted. Earlier and Later ask for the connections before and after those shown.
+
+// the line of a leg: an encoded polyline of p decimals as [lon, lat] points
+function decodeShape(s, p) {
+  const f = 10 ** (p || 5), out = [];
+  let lat = 0, lon = 0, i = 0;
+  const next = () => {
+    let res = 0, shift = 0, b;
+    do {
+      b = s.charCodeAt(i++) - 63;
+      res |= (b & 31) << shift;
+      shift += 5;
+    } while (b >= 32 && i < s.length);
+    return res & 1 ? ~(res >> 1) : res >> 1;
+  };
+  while (i < s.length) {
+    lat += next();
+    lon += next();
+    out.push([lon / f, lat / f]);
+  }
+  return out;
+}
+// the minutes a ride is late: its time against that of the timetable (plan); 0 without one, or on time
+function lateMin(t, plan) {
+  const d = (Date.parse(t) - Date.parse(plan)) / 60000;
+  return Number.isFinite(d) && d >= 1 ? Math.round(d) : 0;
+}
+// the parts of a connection in its row: each ride, and the walk at either end when it takes three minutes or
+// more (a change between two rides is in the number of changes)
+function tripParts(legs) {
+  const out = [];
+  legs.forEach((l, i) => {
+    if (l.k !== "walk") out.push({ k: l.k, name: l.name || "", colour: l.colour || "", text: l.text || "", late: lateMin(l.from.t, l.from.plan), cancelled: !!l.cancelled });
+    else if ((i === 0 || i === legs.length - 1) && l.s >= 180) out.push({ k: "walk", min: Math.round(l.s / 60) });
+  });
+  return out;
+}
+// the moment of a date and time on the clocks of a time zone ("2026-11-14T08:30" in Europe/Zurich), as a Date;
+// without a zone, or one the browser does not know: on the clock of the device
+function wallTime(value, tz) {
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(value)) return new Date(NaN); // (a browser reads a date out of many a text)
+  const utc = new Date(`${value}:00Z`); // the same numbers on the clock of UTC
+  if (Number.isNaN(utc.getTime())) return utc;
+  try {
+    if (!tz) throw new Error("no zone");
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(utc).map((x) => [x.type, +x.value]));
+    // how far the clocks of the zone are ahead of UTC at that moment
+    return new Date(2 * utc.getTime() - Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second));
+  } catch { return new Date(value); }
+}
+// the time of the question, from what the visitor chose: none to leave now; the departure or the arrival, a date
+// and time on the clocks of the journey (tz, the time zone of the stops of the last answer), in UTC
+function journeyWhen(kind, value, tz) {
+  if (kind === "now" || !value) return {};
+  const t = wallTime(value, tz);
+  if (Number.isNaN(t.getTime())) return {};
+  return { time: `${t.toISOString().slice(0, 19)}Z`, ...(kind === "arrive" ? { arrive: "1" } : {}) };
+}
+// the colour of the text on the colour of a line: dark on a light colour, white on the others
+function inkOn(colour) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(colour || "");
+  if (!m) return "#fff";
+  const [r, g, b] = m.slice(1).map((h) => parseInt(h, 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#111827" : "#fff";
+}
+const KIND_ICON = { walk: ICON.walk, rail: ICON.train, tram: ICON.tram, metro: ICON.train, bus: ICON.bus, boat: ICON.ferry, cable: ICON.cable, air: ICON.plane, other: ICON.bus };
+// the colour of a line that has none of its own, by its kind
+const KIND_COLOUR = { rail: "#c62828", tram: "#ef6c00", metro: "#6a1b9a", bus: "#00796b", boat: "#0277bd", cable: "#5d4037", air: "#455a64", other: "#455a64" };
+const lineColour = (l) => l.colour || KIND_COLOUR[l.k] || KIND_COLOUR.other;
+// times and days in the time zone of the stops (tz), in the language of the page
+const tzFormats = new Map();
+function tzFormat(tz, opts, lang = UI) {
+  const key = `${lang}|${tz}|${JSON.stringify(opts)}`;
+  if (!tzFormats.has(key)) {
+    let f;
+    try { f = new Intl.DateTimeFormat(lang, { ...opts, timeZone: tz || undefined }); } catch { f = new Intl.DateTimeFormat(lang, opts); } // a zone the browser does not know
+    tzFormats.set(key, f);
+  }
+  return tzFormats.get(key);
+}
+const hmIn = (iso, tz) => tzFormat(tz, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
+const dayIn = (iso, tz) => tzFormat(tz, { weekday: "short", day: "numeric", month: "short" }).format(new Date(iso));
+const ymdIn = (iso, tz) => tzFormat(tz, { year: "numeric", month: "2-digit", day: "2-digit" }, "en-CA").format(new Date(iso));
+// a moment as a field of date and time takes it ("2026-11-14T08:30"), on the clocks of a time zone
+const stampIn = (d, tz) => tzFormat(tz, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, "sv-SE").format(d).replace(" ", "T");
+// the countries with timetables, named in the language of the page
+function regionNames() {
+  try {
+    const names = new Intl.DisplayNames([UI], { type: "region" });
+    return JOURNEY_REGIONS.map((c) => names.of(c)).join(", ");
+  } catch { return JOURNEY_REGIONS.join(", "); }
+}
+const journeyError = (code) => (code === "no_stops_from" || code === "no_stops_to" ? T.noStops(code === "no_stops_from", regionNames())
+  : code === "no_journey" ? T.noJourney(regionNames()) : T.routeErrors[code] || T.routeFailed);
+// when to travel: leaving now, or a departure or an arrival at a date and time
+function whenRow() {
+  const row = el("div", "lm-when");
+  const kind = el("select", "lm-when-kind", { "aria-label": T.departAt });
+  for (const [k, label] of [["now", T.leaveNow], ["depart", T.departAt], ["arrive", T.arriveBy]]) {
+    const o = el("option", "", { value: k }, label);
+    o.selected = route.when.kind === k;
+    kind.append(o);
+  }
+  const time = el("input", "lm-when-time", { type: "datetime-local", "aria-label": T.whenTime });
+  time.value = route.when.value;
+  time.hidden = route.when.kind === "now";
+  kind.addEventListener("change", () => {
+    route.when.kind = kind.value;
+    if (kind.value !== "now" && !route.when.value) route.when.value = stampIn(new Date(Math.ceil(Date.now() / 3e5) * 3e5), route.when.tz); // the next five minutes
+    time.value = route.when.value;
+    time.hidden = kind.value === "now";
+    findRoute();
+  });
+  time.addEventListener("change", () => {
+    if (!time.value) return;
+    route.when.value = time.value;
+    findRoute();
+  });
+  row.append(kind, time);
+  return row;
+}
+// quiet: the connections again without clearing the list first (a new language); page: earlier or later
+async function findJourney({ quiet = false, page = "" } = {}) {
+  route.ctl?.abort();
+  const ctl = route.ctl = new AbortController();
+  const ll = (v) => `${v.ll[1].toFixed(5)},${v.ll[0].toFixed(5)}`;
+  if (!quiet) {
+    routeMsg.textContent = T.journeySearching;
+    if (!page) {
+      route.journey = null;
+      journeyBox.innerHTML = "";
+      drawEnds(null);
+    }
+  }
+  let d;
+  try {
+    const q = new URLSearchParams({ from: ll(route.from), to: ll(route.to), lang: UI, ...journeyWhen(route.when.kind, route.when.value, route.when.tz) });
+    if (page) q.set("page", page);
+    const r = await fetch(`${JOURNEY}?${q}`, { signal: ctl.signal });
+    d = await r.json().catch(() => ({}));
+    if (ctl.signal.aborted) return;
+    if (!r.ok) { // (asked again in a new language with nothing found before: the message in that language)
+      if (!quiet || !route.journey) routeMsg.textContent = journeyError(d.error?.code);
+      return;
+    }
+  } catch (err) {
+    if (err.name !== "AbortError" && !quiet) routeMsg.textContent = failText(T.routeFailed);
+    return;
+  }
+  if (routeView.hidden || route.mode !== "transit") return;
+  routeMsg.textContent = d.trips.length ? "" : T.noFaster;
+  // the connection that was open stays open when it is in the new answer
+  const was = quiet && route.journey ? route.journey.trips[route.journey.sel]?.start : null;
+  route.journey = { ...d, sel: Math.max(0, d.trips.findIndex((t) => t.start === was)) };
+  if (d.tz) route.when.tz = d.tz; // a time chosen is on the clocks of the stops
+  waitGo(false);
+  renderJourney({ move: !quiet });
+}
+// a ride in a row or a leg: the icon of its kind and the name of its line, in the colours of the line
+function lineBadge(l) {
+  const b = el("span", "lm-line");
+  b.innerHTML = svg(KIND_ICON[l.k] || ICON.bus, 14);
+  if (l.name) b.append(el("span", "", {}, l.name));
+  const c = lineColour(l);
+  b.style.setProperty("--c", c);
+  b.style.setProperty("--t", l.text || inkOn(c));
+  return b;
+}
+function renderJourney({ move = true } = {}) {
+  const j = route.journey;
+  journeyBox.innerHTML = "";
+  if (!j) return;
+  const pager = (label, cursor, cls) => {
+    const b = chip(label, () => { b.disabled = true; findJourney({ page: cursor }); }, cls);
+    return b;
+  };
+  const list = el("ol", "lm-trips");
+  let day = ymdIn(new Date().toISOString(), j.tz);
+  j.trips.forEach((t, i) => {
+    const d = ymdIn(t.start, j.tz);
+    if (d !== day) list.append(el("li", "lm-trip-day", {}, dayIn(t.start, j.tz))); // not today, or the day after the row above
+    day = d;
+    const li = el("li", "lm-trip");
+    const b = el("button", "lm-trip-row", { type: "button", "aria-expanded": "false" });
+    const parts = el("span", "lm-trip-parts");
+    let late = 0, cancelled = false;
+    tripParts(t.legs).forEach((part, n) => {
+      if (n) parts.append(el("span", "lm-trip-sep", { "aria-hidden": "true" }, "›"));
+      if (part.k === "walk") {
+        const w = el("span", "lm-trip-walk");
+        w.innerHTML = svg(ICON.walk, 15);
+        w.append(String(part.min));
+        parts.append(w);
+      } else {
+        parts.append(lineBadge(part));
+        late = late || part.late; // of the first ride that is late
+        cancelled = cancelled || part.cancelled;
+      }
+    });
+    const meta = el("span", "lm-trip-meta", {}, T.changes(t.changes));
+    if (cancelled) meta.append(el("span", "lm-late", {}, T.cancelled));
+    else if (late) meta.append(el("span", "lm-late", {}, T.late(late)));
+    b.append(el("span", "lm-trip-times", {}, `${hmIn(t.start, j.tz)} – ${hmIn(t.end, j.tz)}`), el("span", "lm-trip-dur", {}, T.duration(t.s)), parts, meta);
+    b.addEventListener("click", () => selectTrip(i));
+    li.append(b);
+    list.append(li);
+  });
+  journeyBox.append(list);
+  if (j.trips.length && (j.earlier || j.later)) { // under the list: the first connection stays at the top
+    const pages = el("div", "lm-journey-pages");
+    if (j.earlier) pages.append(pager(T.earlier, j.earlier, "lm-earlier"));
+    if (j.later) pages.append(pager(T.later, j.later, "lm-later"));
+    journeyBox.append(pages);
+  }
+  if (j.walk) { // near enough to walk: the way on foot, in the mode Walk
+    const w = el("button", "lm-on-foot", { type: "button" });
+    w.innerHTML = svg(ICON.walk, 18);
+    w.append(el("span", "", {}, T.onFoot(T.duration(j.walk.s), fmtKm(j.walk.km))));
+    w.addEventListener("click", () => {
+      route.mode = "walk";
+      store.set("hm-mode", "walk");
+      renderRoute();
+      findRoute();
+    });
+    journeyBox.append(w);
+  }
+  const acts = el("div", "lm-journey-acts");
+  acts.append(shareButton(() => ({ title: `${route.from?.label || ""} → ${route.to?.label || ""}`, url: routeLink() }), true));
+  journeyBox.append(acts);
+  selectTrip(j.sel, { move });
+  if (move && sheet.state === "half") setSheet("half");
+}
+// the bounds of points [lon, lat] in view
+function fitPoints(pts, maxZoom = 16) {
+  const e = extent({ type: "LineString", coordinates: pts });
+  if (e) fit(() => glide({ bounds: [[e[0], e[1]], [e[2], e[3]]], padding: pad(), maxZoom }));
+}
+const legLine = (l) => {
+  const pts = l.shape ? decodeShape(l.shape, l.p) : [];
+  return pts.length > 1 ? pts : [l.from.at, l.to.at];
+};
+// a connection chosen: open in the list, drawn on the map (move: the map goes to it)
+function selectTrip(i, { move = true } = {}) {
+  const j = route.journey, t = j?.trips[i];
+  if (!j) return;
+  j.sel = i;
+  journeyBox.querySelectorAll(".lm-trip").forEach((li, n) => {
+    const on = n === i;
+    li.classList.toggle("lm-trip-on", on);
+    li.firstChild.setAttribute("aria-expanded", String(on));
+    li.querySelector(".lm-legs")?.remove();
+    if (on) li.append(legList(t, j.tz));
+  });
+  drawEnds(null);
+  if (!t) return;
+  const fs = [], named = new Set(), all = [];
+  for (const l of t.legs) {
+    const pts = legLine(l), walk = l.k === "walk";
+    all.push(...pts);
+    fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: pts }, properties: walk ? { walk: 1 } : { colour: lineColour(l) } });
+    if (walk) continue;
+    for (const p of [l.from, l.to]) { // a stop of a change has its name once
+      const props = { stop: 1 };
+      if (p.name && !named.has(p.name)) props.name = p.name;
+      named.add(p.name);
+      fs.push({ type: "Feature", geometry: { type: "Point", coordinates: p.at }, properties: props });
+    }
+  }
+  setSource("journey", { type: "FeatureCollection", features: fs });
+  if (move) fitPoints(all);
+}
+// the legs of a connection: each walk a line, each ride its departure, its line and its arrival, and the
+// destination last; a tap on a leg shows it on the map
+function legList(t, tz) {
+  const list = el("ol", "lm-legs");
+  const row = (cls, time, ...body) => {
+    const r = el("span", `lm-leg-row ${cls}`.trim());
+    const tm = el("span", "lm-leg-time");
+    if (time) tm.append(...time);
+    const bd = el("span", "lm-leg-body");
+    bd.append(...body);
+    r.append(tm, bd);
+    return r;
+  };
+  // a time, with the time of the timetable struck through before it when the ride is late
+  const timeOf = (p) => {
+    const late = lateMin(p.t, p.plan);
+    return late ? [el("s", "", {}, hmIn(p.plan, p.tz || tz)), el("span", "lm-late", {}, hmIn(p.t, p.tz || tz))] : [hmIn(p.t, p.tz || tz)];
+  };
+  const stopOf = (p, rail) => {
+    const s = el("span", "lm-leg-stop", {}, p.name || "");
+    if (p.track) s.append(el("span", "lm-leg-track", {}, T.platform(p.track, rail)));
+    return s;
+  };
+  t.legs.forEach((l, i) => {
+    const li = el("li", `lm-leg lm-leg-${l.k === "walk" ? "walk" : "ride"}`);
+    const b = el("button", "lm-leg-btn", { type: "button" });
+    if (l.k === "walk") {
+      const ends = i === 0 || i === t.legs.length - 1;
+      // a change: the time between the arrival of one ride and the departure of the next, the walk when it is one
+      const gap = ends ? l.s : Math.max(l.s, (Date.parse(t.legs[i + 1].from.t) - Date.parse(t.legs[i - 1].to.t)) / 1000 || 0);
+      const far = l.m >= 50 ? fmtKm(l.m / 1000) : "";
+      const icon = el("span", "lm-leg-icon");
+      icon.innerHTML = svg(ICON.walk, 16);
+      b.append(row("", ends ? [hmIn(l.from.t, l.from.tz || tz)] : null, icon, el("span", "lm-leg-text", {}, ends ? T.walkLeg(T.duration(l.s), far) : T.changeLeg(T.duration(gap), far))));
+    } else {
+      const rail = l.k === "rail" || l.k === "metro";
+      const line = el("span", "lm-leg-line");
+      line.append(lineBadge(l));
+      if (l.head) line.append(el("span", "lm-leg-head", {}, `→ ${l.head}`));
+      const meta = el("span", "lm-leg-meta", {}, [T.duration(l.s), l.stops?.length ? T.stopsBetween(l.stops.length) : ""].filter(Boolean).join(" · "));
+      const mid = [line, meta];
+      if (l.cancelled) mid.push(el("span", "lm-leg-alert lm-late", {}, T.cancelled));
+      for (const a of l.alerts || []) mid.push(el("span", "lm-leg-alert", {}, a));
+      b.append(row("lm-leg-dep", timeOf(l.from), stopOf(l.from, rail)), row("lm-leg-mid", null, ...mid), row("lm-leg-arr", timeOf(l.to), stopOf(l.to, rail)));
+    }
+    b.addEventListener("click", () => fitPoints(legLine(l), 17));
+    li.append(b);
+    list.append(li);
+  });
+  const end = el("li", "lm-leg lm-leg-end");
+  end.append(row("", [hmIn(t.end, tz)], el("span", "lm-leg-stop", {}, route.to?.label || "")));
+  list.append(end);
+  return list;
 }
 
 // ------------------------------------------------------------------ stops and places along the route
@@ -5838,7 +6227,7 @@ map.once("load", () => {
     const extra = Object.fromEntries(extraKeys.map((k) => [k, u.get(k) || ""]));
     run(startQ, extra, { push: false, sel: u.get("sel") });
   } else if (to) { // a shared route
-    if (["car", "bike", "walk"].includes(u.get("mode"))) route.mode = u.get("mode");
+    if (MODES.includes(u.get("mode"))) route.mode = u.get("mode");
     const from = pt(u.get("from"));
     directions({ ll: to, label: u.get("tn") || T.mapPoint });
     const names = u.getAll("vn");

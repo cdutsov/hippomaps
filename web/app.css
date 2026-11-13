@@ -249,6 +249,51 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-along-add:hover { background: var(--hot); }
 .lm-step-stop .lm-step-text { font-weight: 600; }
 .lm-route-msg { padding: .6rem 1rem 0; margin: 0; }
+/* public transport: when to travel, the connections, the legs of the one chosen */
+.lm-when { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
+.lm-when-kind, .lm-when-time { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; font-size: 16px; padding: .35rem .5rem; min-width: 0; }
+.lm-when-time { flex: 1; }
+.lm-when-time[hidden] { display: none; }
+.lm-journey:empty { display: none; }
+.lm-journey-pages { display: flex; justify-content: center; gap: .6rem; padding: .7rem 1rem; border-bottom: 1px solid var(--line); }
+.lm-trips, .lm-legs { list-style: none; margin: 0; padding: 0; }
+.lm-trip { border-bottom: 1px solid var(--line); }
+.lm-trip-day { padding: .5rem 1rem .2rem; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.lm-trip-row { display: grid; grid-template-columns: 1fr auto; gap: .3rem .8rem; align-items: center; width: 100%; border: 0; background: none; color: var(--fg);
+  font: inherit; text-align: left; padding: .7rem 1rem; cursor: pointer; }
+.lm-trip-row:hover, .lm-trip-on > .lm-trip-row { background: var(--hot); }
+.lm-trip-times { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lm-trip-dur { color: var(--muted); white-space: nowrap; }
+.lm-trip-parts { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .3rem; min-width: 0; }
+.lm-trip-sep { color: var(--muted); }
+.lm-trip-walk { display: inline-flex; align-items: center; color: var(--muted); font-size: .8rem; }
+.lm-trip-meta { color: var(--muted); font-size: .85rem; white-space: nowrap; text-align: right; }
+.lm-trip-meta .lm-late { display: block; }
+.lm-line { display: inline-flex; align-items: center; gap: .2rem; padding: .08rem .4rem; border-radius: 6px; background: var(--c, #455a64); color: var(--t, #fff);
+  font-size: .8rem; font-weight: 700; line-height: 1.4; white-space: nowrap; }
+.lm-legs { padding: .2rem 0 .5rem; background: var(--bg2); }
+.lm-leg-btn { display: block; width: 100%; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; padding: .3rem 1rem; cursor: pointer; }
+.lm-leg-btn:hover { background: var(--hot); }
+.lm-leg-row { display: grid; grid-template-columns: 3.4rem 1fr; gap: .6rem; align-items: baseline; padding: .12rem 0; }
+.lm-leg-end { padding: .3rem 1rem; }
+.lm-leg-time { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.lm-leg-time s { display: block; color: var(--muted); font-size: .8rem; }
+.lm-leg-body { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .5rem; min-width: 0; }
+.lm-leg-stop { font-weight: 600; }
+.lm-leg-track { margin-left: .5rem; font-weight: 400; color: var(--muted); font-size: .85rem; white-space: nowrap; }
+.lm-leg-line { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.lm-leg-meta, .lm-leg-walk .lm-leg-text { color: var(--muted); font-size: .85rem; }
+.lm-leg-meta, .lm-leg-alert { flex-basis: 100%; }
+.lm-leg-alert { font-size: .85rem; color: #e37400; }
+.lm-leg-icon { display: inline-flex; color: var(--muted); }
+.lm-on-foot { display: flex; align-items: center; gap: .5rem; width: 100%; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--accent);
+  font: inherit; text-align: left; padding: .7rem 1rem; cursor: pointer; }
+.lm-on-foot:hover { background: var(--hot); }
+.lm-journey-acts { display: flex; justify-content: flex-end; padding: .5rem 1rem 0; }
+@media (max-width: 420px) {
+  .lm-modes { gap: .25rem; }
+  .lm-mode { padding: .4rem .2rem; gap: .2rem; font-size: .8rem; }
+}
 .lm-route-sum { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .7rem; margin: .7rem 1rem .5rem; }
 .lm-sum-time { font-size: 1.45rem; font-weight: 700; }
 .lm-sum-km { font-size: 1.05rem; color: var(--muted); }

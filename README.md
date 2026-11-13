@@ -45,6 +45,9 @@ OpenStreetMap data.**
 
 - **Directions** by car, bike and on foot with up to 8 stops, places along the route (fuel, charging, rest areas, food,
   drinking water…), lanes, junction signs, speed limits, and a height profile by bike and on foot
+- **Public transport**: connections by train, tram, metro, bus, boat and cable car where the server has timetables
+  (on hippomaps.ch: Switzerland and Bulgaria), leaving now or with a departure or an arrival at a chosen time, with
+  tracks, the walks to and from the stops, and delays where an operator publishes them
 - **Signs beside a route by car**: stop signs, speed bumps and speed cameras. Cameras only in countries that allow a
   navigation app to show them: none in Switzerland, Liechtenstein, Germany, France, Cyprus, North Macedonia and Kuwait
   (`server/marks.go`)
@@ -79,6 +82,7 @@ to other services:
 | Map tiles API ([overpass.ch](https://overpass.ch) maps, or a gateway with the same paths) | vector and terrain tiles, styles, geocoding | `TILES_URL`, `MAPS_KEY` |
 | [overpass-search](https://gitlab.com/cdutsov/overpass-search) | the search | `SEARCH_UPSTREAM` |
 | [Valhalla](https://github.com/valhalla/valhalla) | directions, lanes, speed limits | `ROUTING_URL` |
+| [MOTIS](https://github.com/motis-project/motis) (tested with 2.11.4: `POST /api/v6/plan` with the walks to the stops, which come from Valhalla) with timetables (GTFS); it needs no street data | journeys by public transport | `JOURNEY_URL`, `JOURNEY_REGIONS` |
 | Overpass API | transit lines, places along a route, stop signs, speed bumps and speed cameras on a route by car | `OVERPASS_URL`, or overpass.ch with `ELEVATION_KEY` |
 | overpass.ch elevation API | height profiles | `ELEVATION_URL`, `ELEVATION_KEY` |
 | [Piper](https://github.com/OHF-Voice/piper1-gpl) 1.5 or later behind `/say?lang=&text=`, a voice for each language of `sayLangs` (`server/say.go`) | spoken navigation (else the voices of the browser) | `TTS_URL` |
@@ -110,6 +114,8 @@ The Docker build runs `go vet` and the tests.
 | `SEARCH_UPSTREAM` | | overpass-search, relayed under `{base}/api/search` |
 | `SEARCH_API` | `/labs/search/api` | search API as the browser reaches it, when not relayed |
 | `ROUTING_URL` | | Valhalla |
+| `JOURNEY_URL` | | MOTIS, for the mode Transit of directions (`server/journey.go`). The walks between an end and the stops around it come from `ROUTING_URL`; without it they are straight lines |
+| `JOURNEY_REGIONS` | | the countries MOTIS has timetables of, as codes (`CH,BG`): the page names them where it finds no stop or no connection |
 | `OVERPASS_URL` | | Overpass API, asked without a key |
 | `ELEVATION_URL` | `https://api.overpass.ch` | elevation API |
 | `ELEVATION_KEY` | | overpass.ch key for elevation (and Overpass without `OVERPASS_URL`), server side only |
@@ -120,7 +126,7 @@ The Docker build runs `go vet` and the tests.
 | `STRIPE_KEY` | | a restricted key of Stripe with Checkout Sessions: Write, for donations (`server/donate.go`; needs `PUBLIC_URL` for the way back), server side only. The payment methods of the account but Klarna and Amazon Pay. 10 checkouts per visitor in 10 minutes |
 | `PICTURES` | `true` | photos and logos from Wikimedia |
 | `PICTURE_CACHE_MB` | `64` | memory for Wikimedia answers and thumbnails |
-| `PICTURES_PER_IP`, `ROUTES_PER_IP`, `SAYS_PER_IP`, `SEARCHES_PER_IP` | `600`, `120`, `600`, `100` | per visitor in 10 minutes (map taps: three times the searches) |
+| `PICTURES_PER_IP`, `ROUTES_PER_IP`, `SAYS_PER_IP`, `SEARCHES_PER_IP` | `600`, `120`, `600`, `100` | per visitor in 10 minutes (map taps: three times the searches; journeys by public transport count as directions) |
 | `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia and the other services |
 
 Limits count by `X-Forwarded-For`, so the server belongs behind a proxy that sets it.
@@ -133,6 +139,7 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 |---|---|
 | `GET picture?wikidata=Q…&brand=Q…&commons=File:…&w=120` | thumbnail of the place photo, else the chain logo, with credit headers |
 | `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=` | line, steps, stops, speed limits, lanes, traffic, tunnels, signs on the way (`marks`), height profile |
+| `GET journey?from=lat,lon&to=…&time=2026-11-13T08:00:00Z&arrive=1&page=&lang=` | connections by public transport around a time (now without `time`; `arrive=1`: there by then): legs with line, direction, tracks, stops, delays and their way; `earlier` and `later` are the `page` of the connections before and after; the way on foot when the ends are near |
 | `POST along` `{"line","cat","mode","lang"}` | places of a kind near a route, in route order |
 | `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |
 | `GET say?lang=&text=` | spoken sentence (audio/mpeg) |
@@ -155,8 +162,8 @@ screenshots are in `fastlane/`. Details: [android/README.md](android/README.md).
 
 ## Tests
 
-- `go test ./...`: the server against fakes of Valhalla, Wikimedia, Overpass, the elevation API, Piper, the traffic service
-  and overpass-search
+- `go test ./...`: the server against fakes of Valhalla, MOTIS, Wikimedia, Overpass, the elevation API, Piper, the traffic
+  service and overpass-search
 - `tests/site-test.sh` (`PAGE=https://…`): a running site end to end; `BROWSER=1` adds `tests/browser.py`, the page in
   headless Chromium on a phone screen, from the first search to navigation
 
@@ -164,7 +171,7 @@ screenshots are in `fastlane/`. Details: [android/README.md](android/README.md).
 
 ```
 cmd/hippomaps/   settings, server, healthcheck
-server/          page, pictures, directions, search relay, transit, traffic, voice
+server/          page, pictures, directions, journeys by public transport, search relay, transit lines, traffic, voice
 web/             index.html, app.js, i18n.js, avatar.js (3D traveller), sw.js (service worker), app.css, icons, vendor/
 android/         the Android app
 fastlane/        F-Droid texts and screenshots

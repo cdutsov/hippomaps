@@ -344,7 +344,9 @@ func TestLicences(t *testing.T) {
 		}
 		for _, credit := range []string{"SIWIS", "Hi-Fi TTS", "serena-synthetic-it-27h (Marco Baccarani)", "LibriTTS-R", "CC BY",
 			"Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).", "OpenStreetMap", "ODbL",
-			`<a href="https://db-ip.com">IP Geolocation by DB-IP</a>`, "GNU General Public License", "MapLibre GL JS (BSD-3-Clause)"} {
+			`<a href="https://db-ip.com">IP Geolocation by DB-IP</a>`, "GNU General Public License", "MapLibre GL JS (BSD-3-Clause)",
+			// the timetables of public transport: opentransportdata.swiss asks to be cited as the source
+			`<a href="https://opentransportdata.swiss">opentransportdata.swiss</a>`, "https://transitous.org/sources/", "sofia.bg", "MOTIS"} {
 			if !strings.Contains(body, credit) {
 				t.Errorf("%s: no %q", p, credit)
 			}

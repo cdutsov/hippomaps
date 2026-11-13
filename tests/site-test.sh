@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # hippomaps on its site (default https://hippomaps.ch): the service, the page (for search engines), its files, the key of the
 # map tiles, the pictures from Wikimedia Commons, directions in Switzerland by car with speed limits, lanes and traffic,
-# heights on foot, the voice, traffic. About 25 requests to the site, one or two to Wikimedia (then kept for a day), two
+# heights on foot, journeys by public transport (Zurich - Bern, Sofia), the voice, traffic. About 25 requests to the site, one or two to Wikimedia (then kept for a day), two
 # routes; the spoken turns of navigation, the 30 fps cap and the texts of each language in the source (tests/*.test.mjs, node in Docker). BROWSER=1 adds the page in headless Chromium (tests/browser.py, about nine minutes, BROWSER_SECS at most, 900; needs chromium and websocket-client).
 #   tests/site-test.sh                       PAGE=https://… tests/site-test.sh
 # Ends with "hippomaps test: N passed, M failed"; exit 1 on a failure.
@@ -79,6 +79,9 @@ for pr in "licences|Licences and sources" "de/licences|Lizenzen und Quellen"; do
 	code=$(get "$PAGE/${pr%%|*}")
 	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -qF 'serena-synthetic-it-27h (Marco Baccarani)' "$TMP/b" && grep -qF 'Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).' "$TMP/b" &&
 		grep -qF 'OpenStreetMap' "$TMP/b" && grep -qF 'IP Geolocation by DB-IP' "$TMP/b" && ok "the licences /${pr%%|*}: voices, traffic, map data, DB-IP" || ko "/${pr%%|*}: HTTP $code"
+	# the timetables of public transport with their sources (opentransportdata.swiss asks to be cited as the source)
+	grep -qF '<a href="https://opentransportdata.swiss">opentransportdata.swiss</a>' "$TMP/b" && grep -qF 'https://transitous.org/sources/' "$TMP/b" && grep -qF 'sofia.bg' "$TMP/b" &&
+		ok "the licences /${pr%%|*}: the sources of the timetables" || ko "/${pr%%|*}: no sources of the timetables"
 done
 # the app for Android opens links of the site: its signing key in assetlinks.json
 code=$(get "$PAGE/.well-known/assetlinks.json")
@@ -162,6 +165,59 @@ if grep -q "data-route=" "$TMP/page"; then
 	fi
 else
 	echo "  SKIP  no directions (ROUTING_URL not set)"
+fi
+
+echo "Public transport"
+if grep -q "data-journey=" "$TMP/page"; then
+	# tomorrow at 07:00 UTC: connections at any hour of the test
+	at=$(date -u -d tomorrow +%FT07:00:00Z)
+	code=$(get "$PAGE/api/journey?from=47.3779,8.5403&to=91,7")
+	[[ $code == 400 ]] && ok "a bad point: 400" || ko "a journey with a bad point: HTTP $code"
+	# Zurich Bellevue - Bern Zytglogge: a train with its way on the rails (the Swiss timetable has no shapes: they come
+	# from OpenStreetMap at the import), the walk to the first stop with its way from Valhalla, tracks, the time zone
+	code=$(get "$PAGE/api/journey?from=47.3662,8.5486&to=46.9480,7.4474&time=$at")
+	if [[ $code == 200 ]] && jq -e '(.trips | length) >= 2 and (.tz | length) > 0 and (.later | length) > 0
+		and ([.trips[].legs[] | select(.k == "rail" and (.shape | length) > 1000 and .p > 0 and (.from.track // "") != "" and (.name // "") != "")] | length) > 0
+		and ([.trips[] | select(.legs[0].k == "walk" and (.legs[0].shape | length) > 10 and .legs[0].m > 20 and (.legs[0].from.name // "") == "")] | length) == (.trips | length)
+		and ([.trips[] | select(.legs[-1].k == "walk" and (.legs[-1].to.name // "") == "" and .legs[-1].m > 20)] | length) == (.trips | length)
+		and ([.trips[] | select(.start >= "'"$at"'" and .end > .start and .s > 3000 and .s < 9000)] | length) == (.trips | length)' "$TMP/b" >/dev/null; then
+		ok "Zurich Bellevue - Bern Zytglogge: $(jq '.trips | length' "$TMP/b") connections, the first $(jq -r '.trips[0] | "\(.start[11:16])-\(.end[11:16]) UTC with \([.legs[] | select(.k != "walk") | .name] | join(", "))"' "$TMP/b"), the trains on their rails, the walks on their ways"
+	else
+		ko "Zurich - Bern by public transport: HTTP $code $(head -c 300 "$TMP/b")"
+	fi
+	first=$(jq -r '.trips[0].start // empty' "$TMP/b" 2>/dev/null)
+	later=$(jq -r '.later // empty' "$TMP/b" 2>/dev/null)
+	# Later: the connections after those
+	code=$(get -G "$PAGE/api/journey" --data-urlencode "from=47.3662,8.5486" --data-urlencode "to=46.9480,7.4474" --data-urlencode "time=$at" --data-urlencode "page=$later")
+	[[ $code == 200 && -n $first ]] && jq -e --arg first "$first" '(.trips | length) >= 1 and ([.trips[] | select(.start > $first)] | length) == (.trips | length)' "$TMP/b" >/dev/null &&
+		ok "Later: $(jq '.trips | length' "$TMP/b") connections after the first ($(jq -r '.trips[0].start[11:16]' "$TMP/b") UTC)" || ko "Later: HTTP $code $(head -c 200 "$TMP/b")"
+	# an arrival: every connection there by then
+	code=$(get "$PAGE/api/journey?from=47.3662,8.5486&to=46.9480,7.4474&time=$at&arrive=1")
+	[[ $code == 200 ]] && jq -e '(.trips | length) >= 1 and ([.trips[] | select(.end <= "'"$at"'")] | length) == (.trips | length)' "$TMP/b" >/dev/null &&
+		ok "an arrival by 07:00 UTC: $(jq '.trips | length' "$TMP/b") connections, the last there at $(jq -r '[.trips[].end] | max | .[11:16]' "$TMP/b")" || ko "an arrival: HTTP $code $(head -c 200 "$TMP/b")"
+	# Sofia: the metro in the colour of its line, the names of the stops in the language asked
+	code=$(get "$PAGE/api/journey?from=42.7137,23.3208&to=42.6586,23.3158&time=$at&lang=bg")
+	[[ $code == 200 ]] && jq -e '[.trips[].legs[] | select(.k == "metro" and (.colour // "" | test("^#[0-9a-f]{6}$")) and (.from.name | test("[а-яА-Я]")))] | length > 0' "$TMP/b" >/dev/null &&
+		ok "Sofia, Central Station - Vitosha: the metro $(jq -r '[.trips[].legs[] | select(.k == "metro")][0] | "\(.name) in \(.colour) from \(.from.name)"' "$TMP/b")" || ko "Sofia by metro: HTTP $code $(head -c 300 "$TMP/b")"
+	# 600 m apart: on foot all the way is in the answer, and no connection that takes as long
+	code=$(get "$PAGE/api/journey?from=47.3769,8.5417&to=47.3720,8.5440&time=$at")
+	[[ $code == 200 ]] && jq -e '.walk.s > 200 and .walk.s < 1200 and .walk.km > 0.4 and .walk.km < 1.2 and ([.trips[] | select(.s >= $w)] | length) == 0' --argjson w "$(jq '.walk.s // 0' "$TMP/b")" "$TMP/b" >/dev/null &&
+		ok "600 m apart: on foot $(jq -r '"\(.walk.s) s, \(.walk.km) km"' "$TMP/b"), $(jq '.trips | length' "$TMP/b") faster connections" || ko "ends near each other: HTTP $code $(head -c 200 "$TMP/b")"
+	# no timetable there: the page names the countries with one
+	code=$(get "$PAGE/api/journey?from=64.1466,-21.9426&to=64.1000,-21.8000")
+	[[ $code == 404 && $(jq -r '.error.code' "$TMP/b" 2>/dev/null) == no_stops_from ]] && ok "Reykjavik: no stop of the timetables near the start (404)" || ko "a start without a timetable: HTTP $code $(head -c 200 "$TMP/b")"
+	regions=$(grep -o 'data-journey-regions="[^"]*"' "$TMP/page" | cut -d'"' -f2)
+	[[ $regions =~ ^[A-Z]{2}(,[A-Z]{2})*$ ]] && ok "the page names the countries with timetables ($regions)" || ko "data-journey-regions: '$regions'"
+	# MOTIS next to the site: healthy, on no public address, its timetables not older than nine days
+	if docker inspect motis >/dev/null 2>&1; then
+		health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no health check{{end}}' motis)
+		ports=$(docker port motis | grep -v '^8080/tcp -> 127\.0\.0\.1:' || true)
+		[[ $health == healthy && -z $ports ]] && ok "MOTIS is healthy, on 127.0.0.1 only" || ko "MOTIS: $health, ports $ports"
+		age=$(( ($(date +%s) - $(stat -c %Y /srv/motis/live/INPUTS 2>/dev/null || echo 0)) / 86400 ))
+		((age <= 9)) && ok "the timetables are $age days old ($(cat /srv/motis/live/SUMMARY 2>/dev/null))" || ko "the timetables are $age days old (daily update, motis-update.timer)"
+	fi
+else
+	echo "  SKIP  no public transport (JOURNEY_URL not set)"
 fi
 
 echo "Voice"

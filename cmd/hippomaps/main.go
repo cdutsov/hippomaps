@@ -82,6 +82,16 @@ func config() (server.Config, error) {
 	cfg.CacheMB = num("PICTURE_CACHE_MB", cfg.CacheMB)
 	cfg.RoutingURL = env("ROUTING_URL", "")
 	cfg.RoutesPerIP = num("ROUTES_PER_IP", cfg.RoutesPerIP)
+	cfg.JourneyURL = env("JOURNEY_URL", "")
+	for _, c := range strings.Split(env("JOURNEY_REGIONS", ""), ",") {
+		if c = strings.ToUpper(strings.TrimSpace(c)); c == "" {
+			continue
+		} else if len(c) != 2 || c[0] < 'A' || c[0] > 'Z' || c[1] < 'A' || c[1] > 'Z' {
+			err = errors.Join(err, fmt.Errorf("JOURNEY_REGIONS: country codes as CH,BG: %q", c))
+		} else {
+			cfg.JourneyRegions = append(cfg.JourneyRegions, c)
+		}
+	}
 	cfg.ElevationURL = strings.TrimRight(env("ELEVATION_URL", cfg.ElevationURL), "/")
 	cfg.ElevationKey = env("ELEVATION_KEY", "")
 	cfg.OverpassURL = env("OVERPASS_URL", "")
@@ -118,7 +128,7 @@ func serve() error {
 		defer cancel()
 		srv.Shutdown(c)
 	}()
-	cfg.Log.Info("listening", "addr", srv.Addr, "version", Version, "base", cfg.Base, "pictures", cfg.Pictures, "routes", cfg.RoutingURL != "", "heights", cfg.ElevationKey != "", "voice", cfg.TTSURL != "", "traffic", cfg.TrafficURL != "", "geoip", cfg.GeoIPDB != "", "key", cfg.MapsKey != "")
+	cfg.Log.Info("listening", "addr", srv.Addr, "version", Version, "base", cfg.Base, "pictures", cfg.Pictures, "routes", cfg.RoutingURL != "", "journeys", cfg.JourneyURL != "", "heights", cfg.ElevationKey != "", "voice", cfg.TTSURL != "", "traffic", cfg.TrafficURL != "", "geoip", cfg.GeoIPDB != "", "key", cfg.MapsKey != "")
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

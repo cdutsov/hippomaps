@@ -2,8 +2,8 @@
 // each in a file of its own: the search of overpass-search (search.go, its words in the language of the
 // page in labels.go), pictures from Wikimedia Commons (picture.go), directions from Valhalla (route.go) with
 // the signs beside the route (marks.go) and the places along it (along.go), spoken sentences (say.go),
-// traffic (traffic.go), transit lines (transit.go), donations (donate.go), and the place of the visitor
-// from the IP address (geoip.go).
+// traffic (traffic.go), transit lines (transit.go), journeys by public transport from MOTIS (journey.go),
+// donations (donate.go), and the place of the visitor from the IP address (geoip.go).
 package server
 
 import (
@@ -50,16 +50,21 @@ type Config struct {
 	ThumbHosts    []string      // hosts of thumbnails: upload.wikimedia.org, thumb.wikimedia.org
 	UserAgent     string        // for Wikimedia, with a way to reach the operator
 
-	RoutingURL    string        // Valhalla, for directions; empty: no directions
-	ElevationURL  string        // the elevation API of overpass.ch, for height profiles of routes by bike and on foot
-	ElevationKey  string        // a key for it (a maps key does not do); empty: no height profiles
-	OverpassURL   string        // an Overpass API of its own, asked without a key; empty: the one of overpass.ch with ElevationKey
-	RoutesPerIP   int           // directions a visitor gets in RouteWindow
-	TTSURL        string        // a text-to-speech server for navigation (Piper); empty: the voices of the browser
-	SaysPerIP     int           // spoken sentences a visitor gets in RouteWindow, beyond those in memory
-	SearchesPerIP int           // searches (search, query) a visitor gets in RouteWindow; taps on the map (here) three times as many
-	TrafficURL    string        // the traffic service next to Valhalla (incidents.json); empty: no traffic
-	RouteWindow   time.Duration //
+	RoutingURL   string // Valhalla, for directions; empty: no directions
+	ElevationURL string // the elevation API of overpass.ch, for height profiles of routes by bike and on foot
+	ElevationKey string // a key for it (a maps key does not do); empty: no height profiles
+	OverpassURL  string // an Overpass API of its own, asked without a key; empty: the one of overpass.ch with ElevationKey
+	RoutesPerIP  int    // directions a visitor gets in RouteWindow
+	// JourneyURL: MOTIS, for journeys by public transport (journey.go); empty: none. The walks to the stops come from
+	// RoutingURL (without it: straight lines)
+	JourneyURL string
+	// JourneyRegions: where MOTIS has timetables, as country codes (CH, BG); the page names them where it finds no stop
+	JourneyRegions []string
+	TTSURL         string        // a text-to-speech server for navigation (Piper); empty: the voices of the browser
+	SaysPerIP      int           // spoken sentences a visitor gets in RouteWindow, beyond those in memory
+	SearchesPerIP  int           // searches (search, query) a visitor gets in RouteWindow; taps on the map (here) three times as many
+	TrafficURL     string        // the traffic service next to Valhalla (incidents.json); empty: no traffic
+	RouteWindow    time.Duration //
 	// GeoIPDB: a MaxMind DB file with a location per network (DB-IP City Lite): the map opens at the
 	// place of the IP address of the visitor until the device tells where it is; empty: at its default place
 	GeoIPDB string
@@ -149,6 +154,7 @@ func New(cfg Config) *Server {
 		s.cfg.SearchAPI = strings.TrimRight(cfg.Base, "/") + "/api/search"
 	}
 	s.cfg.RoutingURL = strings.TrimRight(cfg.RoutingURL, "/")
+	s.cfg.JourneyURL = strings.TrimRight(cfg.JourneyURL, "/")
 	if s.log == nil {
 		s.log = slog.Default()
 	}
@@ -189,6 +195,9 @@ func New(cfg Config) *Server {
 	}
 	if s.cfg.RoutingURL != "" {
 		s.mux.HandleFunc("GET "+base+"/api/route", s.route)
+	}
+	if s.cfg.JourneyURL != "" {
+		s.mux.HandleFunc("GET "+base+"/api/journey", s.journey)
 	}
 	if s.cfg.TTSURL != "" {
 		s.mux.HandleFunc("GET "+base+"/api/say", s.say)
@@ -269,7 +278,7 @@ func (s *Server) asset(p string) string {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}

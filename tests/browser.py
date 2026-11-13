@@ -29,7 +29,9 @@ car, bike and walk and Start in view; the POIs of every kind with a name at the 
 Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start); the map
 on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; a shared route with
 9 stops (the first 8), a stop removed; Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
-coordinates in the search box; the POIs with a name in the Outdoor style; and no errors
+coordinates in the search box; the POIs with a name in the Outdoor style; public transport (a shared journey from Zurich to
+Bern: its connections, the legs of the first, the rides and walks on the map, Later, an arrival by a time on the clocks of the
+journey, back to the car; a start without a timetable); and no errors
 of the page on the way. Needs chromium and websocket-client.
 """
 import base64
@@ -1597,6 +1599,66 @@ try:
     check(len(counts["light"]) > 10 and len(counts["outdoor"]) > 10 and "restaurant" in counts["outdoor"],
           f"the Outdoor style in the old town of Zurich: restaurants and other POIs with a name, as in the light style ({len(counts['light'])} light, {len(counts['outdoor'])} outdoor)")
     js("document.querySelector('.lm-style[data-style=auto]').click()")
+    # public transport, the mode Transit of directions (where the server has timetables): a shared journey from
+    # Bellevue in Zurich to the Zytglogge in Bern
+    if js("!!document.getElementById('app').dataset.journey"):
+        fresh(URL + "/?from=47.36620,8.54860&fn=Bellevue&to=46.94800,7.44740&tn=Zytglogge&mode=transit")
+        row_times = "[...document.querySelectorAll('.lm-trip-row .lm-trip-times')].map(e => e.textContent)"
+        if wait("document.querySelectorAll('.lm-trip').length > 0 && !!document.querySelector('.lm-trip-on .lm-legs') && !hmMap.isMoving()", 60):
+            time.sleep(1.5)
+            g = json.loads(js("JSON.stringify((() => { const q = (s) => document.querySelector(s), all = (s) => [...document.querySelectorAll(s)];"
+                              " const fs = hmMap.getStyle().sources['lm-journey'].data.features, rides = fs.filter(f => f.properties.colour), b = (s) => q(s).getBoundingClientRect();"
+                              " return { modes: all('.lm-mode').map(m => m.getAttribute('aria-checked')), times: all('.lm-trip-row .lm-trip-times').map(e => e.textContent),"
+                              " lines: all('.lm-trip-on .lm-trip-row .lm-line').map(e => e.textContent), legs: q('.lm-trip-on .lm-legs').innerText.replace(/\\s+/g, ' '),"
+                              " rides: all('.lm-trip-on .lm-leg-ride').length, tracks: all('.lm-trip-on .lm-leg-track').length, start: !!q('.lm-nav-start'), stop: !!q('.lm-add-stop'), fields: all('.lm-end input').length,"
+                              " drawn: { rides: rides.length, points: Math.max(0, ...rides.map(f => f.geometry.coordinates.length)), colours: rides.every(f => /^#[0-9a-f]{6}$/.test(f.properties.colour)),"
+                              " walks: fs.filter(f => f.properties.walk).length, stops: fs.filter(f => f.properties.stop).length, names: fs.filter(f => f.properties.name).map(f => f.properties.name) },"
+                              " row: Math.round(b('.lm-trip-row').bottom), modesTop: Math.round(b('.lm-modes').top), side: Math.round(b('.lm-side').top), h: innerHeight, scroll: q('.lm-body').scrollTop }; })())"))
+            check(g["modes"] == ["false", "false", "false", "true"] and len(g["times"]) >= 2 and all(re.fullmatch(r"\d\d:\d\d – \d\d:\d\d", t) for t in g["times"])
+                  and len(g["lines"]) >= 1 and all(g["lines"]) and g["rides"] == len(g["lines"]) and g["tracks"] >= 2 and "Bern" in g["legs"] and "Zytglogge" in g["legs"]
+                  and not g["start"] and not g["stop"] and g["fields"] == 2,
+                  f"a shared journey by public transport: {len(g['times'])} connections with their times, the first with {', '.join(g['lines'])}, its legs open with stops and tracks; no Start, no stops on the way ({g['legs'][:90]})")
+            d = g["drawn"]
+            check(d["rides"] == g["rides"] and d["colours"] and d["points"] > 500 and d["walks"] >= 2 and d["stops"] == 2 * d["rides"] and "Bern" in d["names"],
+                  f"the journey on the map: each ride in the colour of its line along the rails ({d['points']} points), the walks dotted, the stops with their names ({d})")
+            check(g["scroll"] == 0 and g["modesTop"] >= g["side"] and g["row"] <= g["h"],
+                  f"on a phone the first connection is in view under the modes, the start and the destination ({ {k: g[k] for k in ('side', 'modesTop', 'row', 'h', 'scroll')} })")
+            # Later: the connections after these
+            before = js(row_times) or [""]
+            js("document.querySelector('.lm-later').click()")
+            first_row = "document.querySelector('.lm-trip-row .lm-trip-times')?.textContent"
+            changed = wait(f"!!{first_row} && {first_row} !== {json.dumps(before[0])}", 30)
+            after = js(row_times) or []
+            check(changed and len(after) > 0 and not set(after) & set(before) and js("!!document.querySelector('.lm-earlier')"),
+                  f"Later: the connections after those shown, none of them again ({before[0]} first before, {after[0] if after else 'none'} after)")
+            # an arrival tomorrow by 09:00: on the clocks of the journey (Zurich), whatever the clock of the browser
+            import datetime, zoneinfo
+            day = datetime.date.today() + datetime.timedelta(days=1)
+            utc = datetime.datetime.combine(day, datetime.time(9), zoneinfo.ZoneInfo("Europe/Zurich")).astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:00Z")
+            js("(() => { const k = document.querySelector('.lm-when-kind'); k.value = 'arrive'; k.dispatchEvent(new Event('change', { bubbles: true }));"
+               f" const t = document.querySelector('.lm-when-time'); t.value = '{day.isoformat()}T09:00'; t.dispatchEvent(new Event('change', {{ bubbles: true }})); }})()")
+            asked = wait("performance.getEntriesByType('resource').some(e => e.name.includes('/api/journey') && e.name.includes('arrive=1') && e.name.includes('time=" + utc.replace(":", "%3A") + "'))", 20)
+            shown = wait("!!document.querySelector('.lm-trip-day') && document.querySelectorAll('.lm-trip').length > 0", 30)
+            ends = [t.split(" – ")[1] for t in (js(row_times) or [])]
+            check(asked and shown and ends and all(e <= "09:00" for e in ends) and not js("document.querySelector('.lm-when-time').hidden"),
+                  f"an arrival tomorrow by 09:00 in Zurich: asked as {utc}, every connection there by then ({ends}), under the day ({js('document.querySelector(\'.lm-trip-day\')?.textContent')})")
+            # by car again: the route, Start, nothing of the journey left on the map or in the panel
+            js("document.querySelector('.lm-mode').click()")
+            check(wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && !!document.querySelector('.lm-nav-start')", 40)
+                  and js("!hmMap.getStyle().sources['lm-journey'].data.features.length && !document.querySelector('.lm-journey').childElementCount && !document.querySelector('.lm-when')"),
+                  "from Transit to Car: the route by car with Start, no connection left in the panel or on the map")
+        else:
+            check(False, f"a shared journey by public transport opens its connections ({js('document.querySelector(\'.lm-route-msg\')?.textContent')})")
+        # no timetable near the start (Reykjavik): the message names the countries with one, in the language of the page
+        fresh(URL + "/?from=64.14660,-21.94260&fn=Reykjavik&to=64.10000,-21.80000&tn=Kopavogur&mode=transit")
+        msg = "document.querySelector('.lm-route-msg')?.textContent || ''"
+        en = wait(f"/Switzerland/.test({msg})", 40) and js(msg)
+        page_lang("de")
+        de = wait(f"/Schweiz/.test({msg})", 20) and js(msg)
+        check(bool(en) and "Bulgaria" in en and "start" in en and bool(de) and "Bulgarien" in de and js("document.querySelectorAll('.lm-mode')[3].title") == "ÖV",
+              f"a start without a timetable: the message names the countries with one, in German after a change of language ({en} / {de})")
+        page_lang("en")
+        js("localStorage.removeItem('hm-lang')")
     real = [e for e in errors if "Map cannot fit" not in e]
     check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
 finally:

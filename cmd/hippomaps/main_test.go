@@ -16,28 +16,28 @@ import (
 // "on" or "off" and no path refused with the name of the setting
 func TestConfig(t *testing.T) {
 	for _, k := range []string{"BASE_PATH", "SEARCH_API", "SEARCH_UPSTREAM", "PUBLIC_URL", "TILES_URL", "MAPS_KEY", "USER_AGENT", "PICTURES",
-		"PICTURES_PER_IP", "PICTURE_CACHE_MB", "ROUTING_URL", "ROUTES_PER_IP", "ELEVATION_URL", "ELEVATION_KEY", "OVERPASS_URL", "TTS_URL",
+		"PICTURES_PER_IP", "PICTURE_CACHE_MB", "ROUTING_URL", "ROUTES_PER_IP", "JOURNEY_URL", "JOURNEY_REGIONS", "ELEVATION_URL", "ELEVATION_KEY", "OVERPASS_URL", "TTS_URL",
 		"TRAFFIC_URL", "SAYS_PER_IP", "SEARCHES_PER_IP", "GEOIP_DB", "STRIPE_KEY", "SERVICE_WORKER", "LISTEN"} {
 		t.Setenv(k, "")
 	}
 	cfg, err := config()
 	def := server.DefaultConfig()
 	if err != nil || cfg.Base != def.Base || cfg.PicturesPerIP != def.PicturesPerIP || !cfg.Pictures || !cfg.ServiceWorker || cfg.RoutingURL != "" ||
-		cfg.StripeKey != "" || !strings.HasPrefix(cfg.UserAgent, "hippomaps/"+Version) || listen() != ":8096" {
+		cfg.JourneyURL != "" || cfg.JourneyRegions != nil || cfg.StripeKey != "" || !strings.HasPrefix(cfg.UserAgent, "hippomaps/"+Version) || listen() != ":8096" {
 		t.Errorf("without the environment: %v %+v", err, cfg)
 	}
 	for k, v := range map[string]string{"BASE_PATH": "/", "TILES_URL": "https://tiles.example/", "ELEVATION_URL": "https://api.example//", "PICTURES": "false",
 		"PICTURES_PER_IP": "7", "PICTURE_CACHE_MB": "0", "ROUTES_PER_IP": "8", "SAYS_PER_IP": "9", "SEARCHES_PER_IP": "10", "SERVICE_WORKER": "off",
-		"ROUTING_URL": "http://valhalla:8002", "PUBLIC_URL": "https://hippomaps.example", "LISTEN": "127.0.0.1:9000"} {
+		"ROUTING_URL": "http://valhalla:8002", "JOURNEY_URL": "http://motis:8080", "JOURNEY_REGIONS": "ch, BG,", "PUBLIC_URL": "https://hippomaps.example", "LISTEN": "127.0.0.1:9000"} {
 		t.Setenv(k, v)
 	}
 	cfg, err = config()
 	if err != nil || cfg.Base != "/" || cfg.TilesURL != "https://tiles.example" || cfg.ElevationURL != "https://api.example" || cfg.Pictures ||
 		cfg.PicturesPerIP != 7 || cfg.CacheMB != 0 || cfg.RoutesPerIP != 8 || cfg.SaysPerIP != 9 || cfg.SearchesPerIP != 10 || cfg.ServiceWorker ||
-		cfg.RoutingURL != "http://valhalla:8002" || cfg.PublicURL != "https://hippomaps.example" || listen() != "127.0.0.1:9000" {
+		cfg.RoutingURL != "http://valhalla:8002" || cfg.JourneyURL != "http://motis:8080" || strings.Join(cfg.JourneyRegions, " ") != "CH BG" || cfg.PublicURL != "https://hippomaps.example" || listen() != "127.0.0.1:9000" {
 		t.Errorf("from the environment: %v %+v", err, cfg)
 	}
-	for k, v := range map[string]string{"PICTURES_PER_IP": "many", "ROUTES_PER_IP": "-1", "SEARCHES_PER_IP": "1.5", "SERVICE_WORKER": "maybe", "BASE_PATH": "maps"} {
+	for k, v := range map[string]string{"PICTURES_PER_IP": "many", "ROUTES_PER_IP": "-1", "SEARCHES_PER_IP": "1.5", "SERVICE_WORKER": "maybe", "BASE_PATH": "maps", "JOURNEY_REGIONS": "CH,Bulgaria"} {
 		t.Run(k, func(t *testing.T) {
 			t.Setenv(k, v)
 			if _, err := config(); err == nil || !strings.Contains(err.Error(), k) {
