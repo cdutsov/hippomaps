@@ -1,6 +1,6 @@
 HippoMaps ist die Android-App von hippomaps.ch, einer Karte mit Suche und Navigation auf Daten von OpenStreetMap.
 
-• Suche in eigenen Worten («Cafés in der Zürcher Altstadt», «Campingplätze am Genfersee») mit Vorschlägen beim Tippen
+• Suche in eigenen Worten («Cafés in Zürich an der Limmat», «Campingplätze am Genfersee») mit Vorschlägen beim Tippen
 • Ortsseiten mit Bild von Wikimedia Commons, Öffnungszeiten, Website, Telefon, Adresse und Rollstuhlzugang
 • Routen mit dem Auto, dem Velo und zu Fuss, mit bis zu 8 Zwischenstopps und Orten entlang der Route (Tankstellen, Ladestationen, Raststätten, Essen)
 • Navigation mit gesprochenen Anweisungen, auch bei gesperrtem Bildschirm

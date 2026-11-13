@@ -16,7 +16,7 @@ OpenStreetMap data.**
 
 <table>
   <tr>
-    <td width="20%"><img src="docs/img/search.webp" width="165" alt="A search for cafés in Zurich on a phone, the results on the map"></td>
+    <td width="20%"><img src="docs/img/search.webp" width="165" alt="The search “cafés in Zurich by the Limmat” on a phone: the river drawn and the cafés along it"></td>
     <td width="20%"><img src="docs/img/place.webp" width="165" alt="The page of a museum with its opening hours and a photo"></td>
     <td width="20%"><img src="docs/img/route.webp" width="165" alt="A route by bike from Zurich main station to the Uetliberg"></td>
     <td width="20%"><img src="docs/img/navigation.webp" width="165" alt="Navigation by car: the next turn, the speed limit and the car in 3D"></td>
@@ -35,7 +35,7 @@ OpenStreetMap data.**
 
 ### Search and places
 
-- **Search** in plain words: "cafés in Zurich old town", "peaks over 4000 m in Valais". Once the map is zoomed or
+- **Search** in plain words: "cafés in Zurich by the Limmat", "peaks over 4000 m in Valais". Once the map is zoomed or
   moved, the list shows the results in view
 - **Place pages**: photo or logo from Wikimedia Commons, opening hours with the next change, website, phone, wheelchair
   access, Wikipedia, all tags
@@ -58,8 +58,6 @@ OpenStreetMap data.**
 
 ### Map
 
-- Opens at the town of the IP address of the visitor until the device tells where they are
-- A globe with the night side when zoomed out
 - Nine styles, the day map in the colours of Swiss topographic maps, day and night by the sun
 - 3D terrain and buildings, relief shading
 - Transit lines (metro, light rail, tram) in their colours

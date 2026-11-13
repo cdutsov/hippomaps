@@ -1,7 +1,7 @@
 <p>HippoMaps is the Android app of <a href="https://hippomaps.ch">hippomaps.ch</a>, a map with search and navigation built on OpenStreetMap data.</p>
 
 <ul>
-<li>Search in plain words ("cafés in Zurich old town", "campsites by Lake Geneva") with suggestions while you type</li>
+<li>Search in plain words ("cafés in Zurich by the Limmat", "campsites by Lake Geneva") with suggestions while you type</li>
 <li>Place pages with a picture from Wikimedia Commons, opening hours, website, phone, address and wheelchair access</li>
 <li>Directions by car, bike and on foot, with up to 8 stops and places along the route (fuel, charging, rest areas, food)</li>
 <li>Turn-by-turn navigation with spoken instructions; it goes on with the screen locked</li>
