@@ -1,36 +1,75 @@
+<div align="center">
+
+<img src="web/icon-192.png" width="96" height="96" alt="The hippomaps icon: a hippo over a road">
+
 # hippomaps
 
-A map app for the web and Android: search in plain words, place pages, directions and turn-by-turn navigation, on
-OpenStreetMap data. Live at https://hippomaps.ch.
+**A map app for the web and Android: search in plain words, place pages, directions and turn-by-turn navigation, on
+OpenStreetMap data.**
+
+[**hippomaps.ch**](https://hippomaps.ch) · [Android app](android/README.md) · [Changelog](CHANGELOG.md) ·
+[Licence](#licence)
+
+<img src="docs/img/desktop.webp" width="900" alt="hippomaps on a computer: the search “peaks over 4000 m in Switzerland” with the list of results and their pictures beside the map">
+
+</div>
+
+<table>
+  <tr>
+    <td width="20%"><img src="docs/img/search.webp" width="165" alt="A search for cafés in Zurich on a phone, the results on the map"></td>
+    <td width="20%"><img src="docs/img/place.webp" width="165" alt="The page of a museum with its opening hours and a photo"></td>
+    <td width="20%"><img src="docs/img/route.webp" width="165" alt="A route by bike from Zurich main station to the Uetliberg"></td>
+    <td width="20%"><img src="docs/img/navigation.webp" width="165" alt="Navigation by car: the next turn, the speed limit and the car in 3D"></td>
+    <td width="20%"><img src="docs/img/globe.webp" width="165" alt="The globe in the dark style with the night side"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Search</b><br>in plain words</td>
+    <td align="center"><b>Places</b><br>hours, photo, contact</td>
+    <td align="center"><b>Directions</b><br>car, bike, on foot</td>
+    <td align="center"><b>Navigation</b><br>spoken turn by turn</td>
+    <td align="center"><b>Globe</b><br>day and night</td>
+  </tr>
+</table>
 
 ## Features
 
-- **Search** in plain words ("cafés in Zurich old town", "peaks over 4000 m in Valais") with suggestions while typing,
-  results on the map and in a list (once the map is zoomed or moved, the list shows the results in view), "search this
-  area", and quick searches for restaurants, hotels, fuel and more
-- **Place pages**: photo or logo from Wikimedia Commons with its credit, opening hours with the next change, website, phone,
-  address, wheelchair access, Wikipedia, all tags
+### Search and places
+
+- **Search** in plain words: "cafés in Zurich old town", "peaks over 4000 m in Valais". Once the map is zoomed or
+  moved, the list shows the results in view
+- **Place pages**: photo or logo from Wikimedia Commons, opening hours with the next change, website, phone, wheelchair
+  access, Wikipedia, all tags
 - **What is here**: a tap on the map shows the address and the named places around it
-- **Directions** by car, bike and on foot, with up to 8 stops, places along the route (fuel, charging, rest areas, food,
-  drinking water…), lanes, junction signs and speed limits, and a height profile by bike and on foot; by car small signs
-  beside the route for stop signs, speed bumps and speed cameras (cameras only in countries that allow a navigation app to
-  show them: none in Switzerland, Liechtenstein, Germany, France, Cyprus, North Macedonia and Kuwait; `server/marks.go`)
-- **Navigation** turn by turn, spoken in 18 languages (Bulgarian, Dutch, English, Estonian, Finnish, French, German, Greek,
-  Hungarian, Italian, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Ukrainian; chosen apart from the
-  language of the page), with arrows at the turns, re-routing, a 3D traveller and a preview mode
-- **Without a connection** a note over the map says so and the page opens as last loaded; at Start the map along the
-  route is saved on the device (about 15 MB for 25 km by car, `web/sw.js`; a switch of the menu turns it off), so
-  navigation goes on along the route with its map and its spoken sentences, says when it cannot find a new route, and
-  finds one when the connection is back
+
+### Directions and navigation
+
+- **Directions** by car, bike and on foot with up to 8 stops, places along the route (fuel, charging, rest areas, food,
+  drinking water…), lanes, junction signs, speed limits, and a height profile by bike and on foot
+- **Signs beside a route by car**: stop signs, speed bumps and speed cameras. Cameras only in countries that allow a
+  navigation app to show them: none in Switzerland, Liechtenstein, Germany, France, Cyprus, North Macedonia and Kuwait
+  (`server/marks.go`)
+- **Navigation** turn by turn with arrows at the turns, a 3D traveller and a preview, spoken in 18 languages chosen
+  apart from the language of the page: Bulgarian, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian,
+  Italian, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish, Ukrainian
+- **Without a connection**: at Start the map along the route is saved on the device (about 15 MB for 25 km by car,
+  `web/sw.js`; a switch in the menu turns it off), so navigation goes on along the route with its map and its spoken
+  sentences
 - **Live traffic** in Switzerland: closures, queues and roadworks on the map and in the route time
-- **Transit lines** (metro, light rail, tram) in their colours
-- **Map**: opens near the visitor (the town of their IP address) until the device tells where they are; a globe with the night side when zoomed out; nine styles, the default day map in the colours of Swiss
-  topographic maps, day and night by the sun, 3D terrain and buildings, relief shading; starred places as stars
-- **Languages**: the page in English, German, French and Italian; directions and voice in the 18 languages of navigation
-- **Privacy**: settings, starred places and recent searches stay in the browser
-- **Shareable links** for places, searches and routes
-- **Android app** (`android/`): the site in a WebView with native location, background navigation, and links from other
-  map apps (`geo:`, Google Maps, OpenStreetMap, Apple Maps)
+
+### Map
+
+- Opens at the town of the IP address of the visitor until the device tells where they are
+- A globe with the night side when zoomed out
+- Nine styles, the day map in the colours of Swiss topographic maps, day and night by the sun
+- 3D terrain and buildings, relief shading
+- Transit lines (metro, light rail, tram) in their colours
+- The page in English, German, French and Italian
+- Settings, starred places and recent searches stay in the browser
+
+### Android
+
+- The site in a WebView with native location, navigation in the background, and links from other map apps (`geo:`,
+  Google Maps, OpenStreetMap, Apple Maps)
 
 ## How it works
 
@@ -132,6 +171,8 @@ web/             index.html, app.js, i18n.js, avatar.js (3D traveller), sw.js (s
 android/         the Android app
 fastlane/        F-Droid texts and screenshots
 tests/           tests of a running site
+docs/img/        the pictures of this page
+CHANGELOG.md     what changed, by release of the Android app
 ```
 
 ## Licence
@@ -146,3 +187,13 @@ repository; the privacy policy credits it with a link). Voices (Piper, not in th
 database and Hi-Fi TTS, the Italian from serena-synthetic-it-27h (Marco Baccarani), the Estonian from the speech corpus of Estonian
 news sentences and LibriTTS-R; the others CC0 or public domain; the licences page credits them (`/licences`, linked small under the side panel and in the menu). None from the research-only
 lessac voice.
+
+---
+
+<div align="center">
+
+Maps, search and elevation by
+
+<a href="https://overpass.ch"><img src="docs/img/overpass-logo.png" width="220" alt="overpass.ch"></a>
+
+</div>
