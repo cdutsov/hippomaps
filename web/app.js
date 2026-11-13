@@ -16,8 +16,8 @@ const API = root.dataset.api.replace(/\/$/, "");
 const PICTURES = root.dataset.pictures || "";
 const ROUTE = root.dataset.route || "";
 const ALONG = (ROUTE && root.dataset.along) || ""; // places along a route (Overpass, through this server)
-// journeys by public transport, the mode Transit of directions (MOTIS, through this server), and the countries
-// it has timetables of
+// journeys by public transport, the mode Transit of directions (MOTIS, through this server), and where it has
+// timetables: countries (CH), or parts of the world by their number of the UN (150: Europe)
 const JOURNEY = (ROUTE && root.dataset.journey) || "";
 const JOURNEY_REGIONS = (root.dataset.journeyRegions || "").split(",").filter(Boolean);
 // the place of the IP address of the visitor (looked up by the server in a database of its own, DB-IP):
@@ -182,6 +182,7 @@ const EN = {
   noStops: (start, regions) => `No public transport stop near the ${start ? "start" : "destination"}.${regions ? ` Timetables: ${regions}.` : ""}`,
   noJourney: (regions) => `No connection found at this time.${regions ? ` Timetables: ${regions}.` : ""}`,
   noFaster: "No connection is faster than walking.",
+  regions: { 150: "Europe" }, // parts of the world with timetables, by their number of the UN
   routeFailed: "The route could not be found. Please try again.",
   routeErrors: {
     no_route: "No route between these points.",
@@ -4334,13 +4335,17 @@ const dayIn = (iso, tz) => tzFormat(tz, { weekday: "short", day: "numeric", mont
 const ymdIn = (iso, tz) => tzFormat(tz, { year: "numeric", month: "2-digit", day: "2-digit" }, "en-CA").format(new Date(iso));
 // a moment as a field of date and time takes it ("2026-11-14T08:30"), on the clocks of a time zone
 const stampIn = (d, tz) => tzFormat(tz, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, "sv-SE").format(d).replace(" ", "T");
-// the countries with timetables, named in the language of the page
-function regionNames() {
-  try {
-    const names = new Intl.DisplayNames([UI], { type: "region" });
-    return JOURNEY_REGIONS.map((c) => names.of(c)).join(", ");
-  } catch { return JOURNEY_REGIONS.join(", "); }
+// where there are timetables, named in a language ("Switzerland, Bulgaria", "Europe"): a country by the browser, a
+// part of the world (150) by our own name (own: T.regions; not every browser names those)
+function regionNamesOf(codes, lang, own) {
+  let names = null;
+  try { names = new Intl.DisplayNames([lang], { type: "region" }); } catch { /* an old browser: the codes */ }
+  return codes.map((c) => {
+    if (own?.[c]) return own[c];
+    try { return names?.of(c) || c; } catch { return c; }
+  }).join(", ");
 }
+const regionNames = () => regionNamesOf(JOURNEY_REGIONS, UI, T.regions);
 const journeyError = (code) => (code === "no_stops_from" || code === "no_stops_to" ? T.noStops(code === "no_stops_from", regionNames())
   : code === "no_journey" ? T.noJourney(regionNames()) : T.routeErrors[code] || T.routeFailed);
 // when to travel: leaving now, or a departure or an arrival at a date and time

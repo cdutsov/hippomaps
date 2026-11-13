@@ -46,7 +46,7 @@ navigation, on OpenStreetMap data.**
 - **Directions** by car, bike and on foot with up to 8 stops, places along the route (fuel, charging, rest areas, food,
   drinking water…), lanes, junction signs, speed limits, and a height profile by bike and on foot
 - **Public transport**: connections by train, tram, metro, bus, boat and cable car where the server has timetables
-  (on hippomaps.ch: Switzerland and Bulgaria), leaving now or with a departure or an arrival at a chosen time, with
+  (on hippomaps.ch: Europe), leaving now or with a departure or an arrival at a chosen time, with
   tracks, the walks to and from the stops, and delays where an operator publishes them
 - **Signs beside a route by car**: stop signs, speed bumps and speed cameras. Cameras only in countries that allow a
   navigation app to show them: none in Switzerland, Liechtenstein, Germany, France, Cyprus, North Macedonia and Kuwait
@@ -115,7 +115,7 @@ The Docker build runs `go vet` and the tests.
 | `SEARCH_API` | `/labs/search/api` | search API as the browser reaches it, when not relayed |
 | `ROUTING_URL` | | Valhalla |
 | `JOURNEY_URL` | | MOTIS, for the mode Transit of directions (`server/journey.go`). The walks between an end and the stops around it come from `ROUTING_URL`; without it they are straight lines |
-| `JOURNEY_REGIONS` | | the countries MOTIS has timetables of, as codes (`CH,BG`): the page names them where it finds no stop or no connection |
+| `JOURNEY_REGIONS` | | where MOTIS has timetables: country codes (`CH,BG`), or a part of the world by its UN number (`150`: Europe). The page names them, in its language, where it finds no stop or no connection |
 | `OVERPASS_URL` | | Overpass API, asked without a key |
 | `ELEVATION_URL` | `https://api.overpass.ch` | elevation API |
 | `ELEVATION_KEY` | | overpass.ch key for elevation (and Overpass without `OVERPASS_URL`), server side only |

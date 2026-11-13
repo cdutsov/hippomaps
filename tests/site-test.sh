@@ -204,10 +204,19 @@ if grep -q "data-journey=" "$TMP/page"; then
 	[[ $code == 200 ]] && jq -e '.walk.s > 200 and .walk.s < 1200 and .walk.km > 0.4 and .walk.km < 1.2 and ([.trips[] | select(.s >= $w)] | length) == 0' --argjson w "$(jq '.walk.s // 0' "$TMP/b")" "$TMP/b" >/dev/null &&
 		ok "600 m apart: on foot $(jq -r '"\(.walk.s) s, \(.walk.km) km"' "$TMP/b"), $(jq '.trips | length' "$TMP/b") faster connections" || ko "ends near each other: HTTP $code $(head -c 200 "$TMP/b")"
 	# no timetable there: the page names the countries with one
-	code=$(get "$PAGE/api/journey?from=64.1466,-21.9426&to=64.1000,-21.8000")
-	[[ $code == 404 && $(jq -r '.error.code' "$TMP/b" 2>/dev/null) == no_stops_from ]] && ok "Reykjavik: no stop of the timetables near the start (404)" || ko "a start without a timetable: HTTP $code $(head -c 200 "$TMP/b")"
+	code=$(get "$PAGE/api/journey?from=12.1348,15.0557&to=12.1100,15.0900")
+	[[ $code == 404 && $(jq -r '.error.code' "$TMP/b" 2>/dev/null) == no_stops_from ]] && ok "N'Djamena: no stop of the timetables near the start (404)" || ko "a start without a timetable: HTTP $code $(head -c 200 "$TMP/b")"
 	regions=$(grep -o 'data-journey-regions="[^"]*"' "$TMP/page" | cut -d'"' -f2)
-	[[ $regions =~ ^[A-Z]{2}(,[A-Z]{2})*$ ]] && ok "the page names the countries with timetables ($regions)" || ko "data-journey-regions: '$regions'"
+	[[ $regions =~ ^([A-Z]{2}|[0-9]{3})(,([A-Z]{2}|[0-9]{3}))*$ ]] && ok "the page names where there are timetables ($regions)" || ko "data-journey-regions: '$regions'"
+	# Europe (150): journeys in other countries, and across a border
+	if [[ ,$regions, == *,150,* ]]; then
+		for j in "Berlin - Hamburg|52.5251,13.3694|53.5530,10.0066" "Paris - Lyon|48.8443,2.3744|45.7606,4.8594" "Zurich - Munich|47.3779,8.5403|48.1403,11.5600"; do
+			IFS='|' read -r name from to <<<"$j"
+			code=$(get "$PAGE/api/journey?from=$from&to=$to&time=$at")
+			[[ $code == 200 ]] && jq -e '[.trips[] | select([.legs[] | select(.k == "rail")] | length > 0)] | length > 0' "$TMP/b" >/dev/null &&
+				ok "$name: $(jq '.trips | length' "$TMP/b") connections, the first with $(jq -r '[.trips[0].legs[] | select(.k != "walk") | .name] | join(", ")' "$TMP/b")" || ko "$name by public transport: HTTP $code $(head -c 200 "$TMP/b")"
+		done
+	fi
 	# MOTIS next to the site: healthy, on no public address, its timetables not older than nine days
 	if docker inspect motis >/dev/null 2>&1; then
 		health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no health check{{end}}' motis)

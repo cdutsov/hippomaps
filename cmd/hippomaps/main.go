@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -46,6 +47,10 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// regionCode: a country (CH) or a part of the world by its number of the UN (150 Europe, 001 the world), as browsers
+// name them (Intl.DisplayNames)
+var regionCode = regexp.MustCompile(`^([A-Z]{2}|[0-9]{3})$`)
 
 func env(name, def string) string {
 	if v := os.Getenv(name); v != "" {
@@ -86,8 +91,8 @@ func config() (server.Config, error) {
 	for _, c := range strings.Split(env("JOURNEY_REGIONS", ""), ",") {
 		if c = strings.ToUpper(strings.TrimSpace(c)); c == "" {
 			continue
-		} else if len(c) != 2 || c[0] < 'A' || c[0] > 'Z' || c[1] < 'A' || c[1] > 'Z' {
-			err = errors.Join(err, fmt.Errorf("JOURNEY_REGIONS: country codes as CH,BG: %q", c))
+		} else if !regionCode.MatchString(c) {
+			err = errors.Join(err, fmt.Errorf("JOURNEY_REGIONS: country codes as CH,BG, or a part of the world as 150 (Europe): %q", c))
 		} else {
 			cfg.JourneyRegions = append(cfg.JourneyRegions, c)
 		}

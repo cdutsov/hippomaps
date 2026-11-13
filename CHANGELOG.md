@@ -9,7 +9,7 @@ On hippomaps.ch since 1.3.0.
 
 ### Added
 
-- Public transport in directions (Transit), in Switzerland and Bulgaria: the connections by train, tram, metro, bus,
+- Public transport in directions (Transit), across Europe: the connections by train, tram, metro, bus,
   boat and cable car, leaving now or with a departure or an arrival at a chosen time; each with its lines, changes,
   tracks and walks, delays where an operator publishes them, and drawn on the map in the colours of its lines.
 - The start panel says what the search reads, with two searches of the map view in the sentence, and more of them under

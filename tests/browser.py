@@ -1649,14 +1649,20 @@ try:
                   "from Transit to Car: the route by car with Start, no connection left in the panel or on the map")
         else:
             check(False, f"a shared journey by public transport opens its connections ({js('document.querySelector(\'.lm-route-msg\')?.textContent')})")
-        # no timetable near the start (Reykjavik): the message names the countries with one, in the language of the page
-        fresh(URL + "/?from=64.14660,-21.94260&fn=Reykjavik&to=64.10000,-21.80000&tn=Kopavogur&mode=transit")
+        # no timetable near the start (N'Djamena): the message names where there is one (the countries, or Europe), in
+        # the language of the page
+        fresh(URL + "/?from=12.13480,15.05570&fn=N%27Djamena&to=12.11000,15.09000&tn=Farcha&mode=transit")
         msg = "document.querySelector('.lm-route-msg')?.textContent || ''"
-        en = wait(f"/Switzerland/.test({msg})", 40) and js(msg)
+        # (a part of the world, 150, by the name of the page: this browser names countries only)
+        names = ("document.getElementById('app').dataset.journeyRegions.split(',').map(c => c === '150' ? { en: 'Europe', de: 'Europa' }[document.documentElement.lang]"
+                 " : new Intl.DisplayNames([document.documentElement.lang], { type: 'region' }).of(c)).join(', ')")
+        en_names = js(names)
+        en = wait(f"({msg}).includes({json.dumps(en_names)})", 40) and js(msg)
         page_lang("de")
-        de = wait(f"/Schweiz/.test({msg})", 20) and js(msg)
-        check(bool(en) and "Bulgaria" in en and "start" in en and bool(de) and "Bulgarien" in de and js("document.querySelectorAll('.lm-mode')[3].title") == "ÖV",
-              f"a start without a timetable: the message names the countries with one, in German after a change of language ({en} / {de})")
+        de_names = js(names)
+        de = wait(f"({msg}).includes({json.dumps(de_names)})", 20) and js(msg)
+        check(bool(en) and bool(en_names) and "start" in en and bool(de) and de_names != en_names and "Fahrpläne" in de and js("document.querySelectorAll('.lm-mode')[3].title") == "ÖV",
+              f"a start without a timetable: the message names where there is one, in German after a change of language ({en} / {de})")
         page_lang("en")
         js("localStorage.removeItem('hm-lang')")
     real = [e for e in errors if "Map cannot fit" not in e]

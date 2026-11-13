@@ -13,9 +13,9 @@ const fn = (name) => {
   assert.ok(a > 0 && b > a, name);
   return `${src.slice(a, b)}\n}\n`;
 };
-const { decodeShape, lateMin, tripParts, wallTime, journeyWhen, inkOn } = new Function(
-  `${["decodeShape", "lateMin", "tripParts", "wallTime", "journeyWhen", "inkOn"].map(fn).join("")}
-  return { decodeShape, lateMin, tripParts, wallTime, journeyWhen, inkOn };`)();
+const { decodeShape, lateMin, tripParts, wallTime, journeyWhen, inkOn, regionNamesOf } = new Function(
+  `${["decodeShape", "lateMin", "tripParts", "wallTime", "journeyWhen", "inkOn", "regionNamesOf"].map(fn).join("")}
+  return { decodeShape, lateMin, tripParts, wallTime, journeyWhen, inkOn, regionNamesOf };`)();
 
 // the inverse of decodeShape, as the servers write a line
 function encode(pts, p) {
@@ -97,6 +97,20 @@ test("the text on the colour of a line: dark on a light colour, white on the oth
   for (const c of ["#ffdd00", "#ffffff", "#9be36d", "#f8c300"]) assert.equal(inkOn(c), "#111827", c);
   for (const c of ["#1c75bc", "#eb0000", "#000000", "#6a1b9a", "#00796b", "#c62828", "#ef6c00"]) assert.equal(inkOn(c), "#fff", c);
   for (const c of ["", "red", "#fff", undefined]) assert.equal(inkOn(c), "#fff", String(c));
+});
+
+test("a country and a part of the world are named in the language of the page", () => {
+  const all = texts(String);
+  assert.equal(regionNamesOf(["CH", "BG"], "en", { 150: "Europe" }), "Switzerland, Bulgaria");
+  assert.equal(regionNamesOf(["CH", "BG"], "de", all.de.regions), "Schweiz, Bulgarien");
+  // a part of the world by our own name: a browser may answer its number (Chromium on Debian does)
+  assert.equal(regionNamesOf(["150"], "en", { 150: "Europe" }), "Europe");
+  for (const [lang, want] of [["de", "Europa"], ["fr", "Europe"], ["it", "Europa"]]) assert.equal(regionNamesOf(["150"], lang, all[lang].regions), want);
+  assert.equal(regionNamesOf(["150", "CH"], "it", all.it.regions), "Europa, Svizzera");
+  // no name of ours and none of the browser: the code, no error
+  assert.equal(regionNamesOf(["999"], "en", {}), new Intl.DisplayNames(["en"], { type: "region" }).of("999") || "999");
+  assert.equal(regionNamesOf(["ZZZZ"], "en", undefined), "ZZZZ");
+  assert.equal(regionNamesOf([], "en", {}), "");
 });
 
 test("the mode Transit and the texts of a journey in each language", () => {

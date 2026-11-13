@@ -58,7 +58,8 @@ type Config struct {
 	// JourneyURL: MOTIS, for journeys by public transport (journey.go); empty: none. The walks to the stops come from
 	// RoutingURL (without it: straight lines)
 	JourneyURL string
-	// JourneyRegions: where MOTIS has timetables, as country codes (CH, BG); the page names them where it finds no stop
+	// JourneyRegions: where MOTIS has timetables, as country codes (CH, BG) or parts of the world by their number of
+	// the UN (150: Europe); the page names them where it finds no stop
 	JourneyRegions []string
 	TTSURL         string        // a text-to-speech server for navigation (Piper); empty: the voices of the browser
 	SaysPerIP      int           // spoken sentences a visitor gets in RouteWindow, beyond those in memory

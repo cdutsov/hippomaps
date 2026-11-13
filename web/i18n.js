@@ -167,6 +167,7 @@ export function texts(num) {
       noStops: (start, regions) => `Keine Haltestelle des öffentlichen Verkehrs in der Nähe ${start ? "des Starts" : "des Ziels"}.${regions ? ` Fahrpläne: ${regions}.` : ""}`,
       noJourney: (regions) => `Keine Verbindung zu dieser Zeit gefunden.${regions ? ` Fahrpläne: ${regions}.` : ""}`,
       noFaster: "Keine Verbindung ist schneller als zu Fuss.",
+      regions: { 150: "Europa" },
       routeFailed: "Die Route wurde nicht gefunden. Bitte versuchen Sie es noch einmal.",
       routeErrors: {
         no_route: "Keine Route zwischen diesen Punkten.",
@@ -381,6 +382,7 @@ export function texts(num) {
       noStops: (start, regions) => `Aucun arrêt de transports publics près ${start ? "du départ" : "de la destination"}.${regions ? ` Horaires : ${regions}.` : ""}`,
       noJourney: (regions) => `Aucune correspondance trouvée à cette heure.${regions ? ` Horaires : ${regions}.` : ""}`,
       noFaster: "Aucune correspondance n’est plus rapide qu’à pied.",
+      regions: { 150: "Europe" },
       routeFailed: "L’itinéraire n’a pas pu être trouvé. Veuillez réessayer.",
       routeErrors: {
         no_route: "Aucun itinéraire entre ces points.",
@@ -593,6 +595,7 @@ export function texts(num) {
       noStops: (start, regions) => `Nessuna fermata dei trasporti pubblici vicino ${start ? "alla partenza" : "alla destinazione"}.${regions ? ` Orari: ${regions}.` : ""}`,
       noJourney: (regions) => `Nessun collegamento trovato a quest’ora.${regions ? ` Orari: ${regions}.` : ""}`,
       noFaster: "Nessun collegamento è più veloce che a piedi.",
+      regions: { 150: "Europa" },
       routeFailed: "Il percorso non è stato trovato. Riprova.",
       routeErrors: {
         no_route: "Nessun percorso tra questi punti.",
