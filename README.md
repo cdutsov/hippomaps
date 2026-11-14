@@ -150,7 +150,7 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | | |
 |---|---|
 | `GET picture?wikidata=Q…&brand=Q…&commons=File:…&w=120` | thumbnail of the place photo, else the chain logo, with credit headers |
-| `GET place?osm=node/123&pic=1` | more about a place from its website and free pictures near it: `web`, `site`, `menu` (places to eat and drink), `hours` (when it has no `opening_hours`), with `pic=1` a `picture` (`url`, `kind`, `credit`, `source`, `page`). The server looks up the tags in Overpass and reads only the website they name, on public addresses, as robots.txt allows; kept a week |
+| `GET place?osm=node/123&pic=1` | more about a place from its website and free pictures near it: `web`, `site`, `menu` (places to eat and drink), `hours` (when it has no `opening_hours`), with `pic=1` a `picture` (`url`, `kind`, `credit`, `source`, `page`). The server looks up the tags in Overpass and reads only the website they name, on public addresses, as robots.txt allows; kept a week (an hour when Commons or Panoramax did not answer, each waited for 5 s at most) |
 | `GET place/picture?osm=node/123` | that picture, written again by the server (500 px, no metadata) |
 | `GET kinds?lang=` | the names of the kinds of POIs of the map tiles (`supermarket`, `place_of_worship/christian`) in the language, for the popups |
 | `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=` | line, steps, stops, speed limits, lanes, traffic, tunnels, signs on the way (`marks`), height profile |

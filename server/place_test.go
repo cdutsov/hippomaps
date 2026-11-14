@@ -197,6 +197,46 @@ func TestPlace(t *testing.T) {
 	}
 }
 
+// Panoramax not answering: the answer comes within nearTime with the logo of the site, and is kept an hour only, so that
+// the picture of Panoramax comes once it answers again
+func TestPlaceSourceDown(t *testing.T) {
+	f, wm := newFakeWeb(t), newFake(t)
+	var down atomic.Bool
+	down.Store(true)
+	hang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			select {
+			case <-r.Context().Done():
+			case <-time.After(20 * time.Second):
+			}
+			return
+		}
+		f.pano.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(hang.Close)
+	s := placeServer(t, f, wm)
+	s.cfg.PanoramaxAPI = hang.URL
+	t0 := time.Now()
+	a := placeGet(t, s, "osm=way/4&pic=1")
+	if d := time.Since(t0); d > nearTime+3*time.Second || a.Picture == nil || a.Picture.Kind != "logo" {
+		t.Fatalf("Panoramax down: %v, %+v", d, a.Picture)
+	}
+	if _, ok := s.places.answers.get("way/4:true"); ok {
+		t.Error("an answer without Panoramax kept a week")
+	}
+	if _, ok := s.places.short.get("way/4:true"); !ok {
+		t.Error("an answer without Panoramax not kept for the hour")
+	}
+	down.Store(false)
+	s.places.short = newMemo(1<<20, time.Hour) // the hour gone
+	if a := placeGet(t, s, "osm=way/4&pic=1"); a.Picture == nil || a.Picture.Source != "Panoramax" {
+		t.Errorf("Panoramax back: %+v", a.Picture)
+	}
+	if _, ok := s.places.answers.get("way/4:true"); !ok {
+		t.Error("the answer with Panoramax not kept")
+	}
+}
+
 // without Overpass no lookups: no route, no data-place
 func TestPlaceOff(t *testing.T) {
 	s := testServer(t, nil, func(c *Config) { c.OverpassURL = ""; c.ElevationKey = "" })

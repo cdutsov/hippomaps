@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -52,6 +53,7 @@ type placePicture struct {
 // placeState: answers and pictures kept, and the lookups running (one per place at a time)
 type placeState struct {
 	answers  *memo
+	short    *memo // answers while a source of pictures failed: asked again within the hour
 	pictures *memo
 	mu       sync.Mutex
 	running  map[string]*placeRun
@@ -64,7 +66,8 @@ type placeRun struct {
 }
 
 func newPlaceState() *placeState {
-	return &placeState{answers: newMemo(16<<20, 7*24*time.Hour), pictures: newMemo(64<<20, 7*24*time.Hour), running: map[string]*placeRun{}}
+	return &placeState{answers: newMemo(16<<20, 7*24*time.Hour), short: newMemo(4<<20, time.Hour), pictures: newMemo(64<<20, 7*24*time.Hour),
+		running: map[string]*placeRun{}}
 }
 
 func (s *Server) place(w http.ResponseWriter, r *http.Request) {
@@ -128,10 +131,12 @@ func (s *Server) placePicture(w http.ResponseWriter, r *http.Request) {
 // in memory (its picture was dropped)
 func (s *Server) placeInfo(ctx context.Context, osm string, pic, again bool) (*placeAnswer, error) {
 	key := fmt.Sprintf("%s:%t", osm, pic)
-	if v, ok := s.places.answers.get(key); ok && !again {
-		var a placeAnswer
-		if json.Unmarshal(v, &a) == nil {
-			return &a, nil
+	for _, m := range []*memo{s.places.answers, s.places.short} {
+		if v, ok := m.get(key); ok && !again {
+			var a placeAnswer
+			if json.Unmarshal(v, &a) == nil {
+				return &a, nil
+			}
 		}
 	}
 	ps := s.places
@@ -161,10 +166,15 @@ func (s *Server) placeInfo(ctx context.Context, osm string, pic, again bool) (*p
 		run.err = ctx.Err()
 		return nil, run.err
 	}
-	run.a, run.err = s.lookUpPlace(ctx, osm, pic)
+	var failed bool
+	run.a, failed, run.err = s.lookUpPlace(ctx, osm, pic)
 	if run.err == nil {
 		if v, err := json.Marshal(run.a); err == nil {
-			ps.answers.put(key, v)
+			if failed {
+				ps.short.put(key, v)
+			} else {
+				ps.answers.put(key, v)
+			}
 		}
 	}
 	return run.a, run.err
@@ -222,11 +232,15 @@ func (s *Server) placeTags(ctx context.Context, osm string) (*osmPlace, error) {
 	return p, nil
 }
 
-// lookUpPlace reads the website of a place and, for a picture, Commons and Panoramax around it, at the same time
-func (s *Server) lookUpPlace(ctx context.Context, osm string, pic bool) (*placeAnswer, error) {
+// nearTime: Commons and Panoramax get at most this long (the menu and the hours of a website wait for them)
+const nearTime = 5 * time.Second
+
+// lookUpPlace reads the website of a place and, for a picture, Commons and Panoramax around it, at the same time; failed:
+// Commons or Panoramax did not answer (the answer is kept an hour only)
+func (s *Server) lookUpPlace(ctx context.Context, osm string, pic bool) (*placeAnswer, bool, error) {
 	p, err := s.placeTags(ctx, osm)
 	if err != nil || p == nil {
-		return &placeAnswer{}, err
+		return &placeAnswer{}, false, err
 	}
 	t := p.Tags
 	web := webURL(t["website"])
@@ -239,6 +253,7 @@ func (s *Server) lookUpPlace(ctx context.Context, osm string, pic bool) (*placeA
 		final *url.URL
 		file  string
 		pano  *panoPick
+		fails atomic.Int32
 	)
 	if web != nil {
 		wg.Add(1)
@@ -248,15 +263,23 @@ func (s *Server) lookUpPlace(ctx context.Context, osm string, pic bool) (*placeA
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			if f, err := s.commonsNear(ctx, t["name"], p.Lat, p.Lon); err == nil {
-				file = f
+			c, cancel := context.WithTimeout(ctx, nearTime)
+			defer cancel()
+			f, err := s.commonsNear(c, t["name"], p.Lat, p.Lon)
+			if err != nil {
+				fails.Add(1)
 			}
+			file = f
 		}()
 		go func() {
 			defer wg.Done()
-			if pk, err := s.panoramaxNear(ctx, p.Lat, p.Lon); err == nil {
-				pano = pk
+			c, cancel := context.WithTimeout(ctx, nearTime)
+			defer cancel()
+			pk, err := s.panoramaxNear(c, p.Lat, p.Lon)
+			if err != nil {
+				fails.Add(1)
 			}
+			pano = pk
 		}()
 	}
 	wg.Wait()
@@ -274,8 +297,9 @@ func (s *Server) lookUpPlace(ctx context.Context, osm string, pic bool) (*placeA
 			a.Hours = page.Hours
 		}
 	}
+	failed := fails.Load() > 0
 	if !pic {
-		return a, nil
+		return a, failed, nil
 	}
 	const width = 500
 	keep := func(w *webPicture, pp placePicture) {
@@ -288,7 +312,7 @@ func (s *Server) lookUpPlace(ctx context.Context, osm string, pic bool) (*placeA
 	if file != "" {
 		if th, err := s.thumbnail(ctx, file, width); err == nil && th != nil {
 			keep(&webPicture{Type: th.Type, Bytes: th.Bytes}, placePicture{Kind: "photo", Credit: th.Credit, Source: "Wikimedia Commons", Page: th.Page})
-			return a, nil
+			return a, failed, nil
 		}
 	}
 	// the picture of the website, when a photo; its logo kept for last
@@ -306,7 +330,7 @@ func (s *Server) lookUpPlace(ctx context.Context, osm string, pic bool) (*placeA
 			}
 			if !w.Logo && !sp.Logo {
 				keep(w, placePicture{Kind: "photo", Source: a.Site, Page: final.String()})
-				return a, nil
+				return a, failed, nil
 			}
 			if logo == nil {
 				logo = w
@@ -317,14 +341,14 @@ func (s *Server) lookUpPlace(ctx context.Context, osm string, pic bool) (*placeA
 	if pano != nil {
 		if w, err := s.panoPicture(ctx, pano, width); err == nil && w != nil {
 			keep(w, placePicture{Kind: "photo", Credit: pano.Credit, Source: "Panoramax", Page: "https://api.panoramax.xyz/#focus=pic&pic=" + url.QueryEscape(pano.ID)})
-			return a, nil
+			return a, failed, nil
 		}
 	}
 	if logo != nil {
 		logo.Logo = true
 		keep(logo, placePicture{Kind: "logo", Source: a.Site, Page: final.String()})
 	}
-	return a, nil
+	return a, failed, nil
 }
 
 // readSite reads the home page of a place, as robots.txt of its site allows; nil when it cannot. What it read is kept a
