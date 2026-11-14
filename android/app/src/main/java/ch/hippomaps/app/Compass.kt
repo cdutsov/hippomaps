@@ -137,25 +137,27 @@ object Heading {
     }
 
     /**
-     * Where the top of the screen points, in degrees clockwise from the north of [r], with the
-     * screen turned by [rotation] quarter turns against the phone (Surface.ROTATION_*). Held flat,
-     * the top of the screen; held upright, the way the back of the phone faces; tilted between,
-     * both point the same way and their sum stays clear. Null when the two cancel out (the phone
-     * over the head with the screen down).
+     * Where the phone points, in degrees clockwise from the north of [r], with the screen turned by
+     * [rotation] quarter turns against the phone (Surface.ROTATION_*): level and square to the
+     * left-right of the screen, so that a phone tipped forward, tilted sideways or turned in its own
+     * plane points the same way. Lying flat, the way its top points; held up, the way its back faces;
+     * held over the face with the screen down, the way its top points too. Null with the left-right
+     * of the screen upright (on its side, the screen not turned) or the phone tipped back halfway
+     * over the face.
      */
     fun degrees(r: DoubleArray, rotation: Int): Double? {
-        // the top of the screen in the axes of the phone: y, x, -y, -x; its east and north parts
-        val (upE, upN) = when (rotation and 3) {
-            0 -> r[1] to r[4]
-            1 -> r[0] to r[3]
-            2 -> -r[1] to -r[4]
-            else -> -r[0] to -r[3]
+        // the right and the top of the screen in the axes of the world (east, north, up): the columns of r
+        fun col(i: Int, sign: Double) = doubleArrayOf(sign * r[i], sign * r[3 + i], sign * r[6 + i])
+        val (right, top) = when (rotation and 3) {
+            0 -> col(0, 1.0) to col(1, 1.0)
+            1 -> col(1, -1.0) to col(0, 1.0)
+            2 -> col(0, -1.0) to col(1, -1.0)
+            else -> col(1, 1.0) to col(0, -1.0)
         }
-        // and the back of the phone: -z
-        val e = upE - r[2]
-        val n = upN - r[5]
-        if (e * e + n * n < 0.01) return null
-        return normal(Math.toDegrees(atan2(e, n)))
+        val side = top[2] + r[8] // below 0: the screen down over the face
+        if (right[0] * right[0] + right[1] * right[1] < 0.02 || abs(side) < 0.1) return null
+        val s = if (side > 0) 1.0 else -1.0
+        return normal(Math.toDegrees(atan2(-right[1] * s, right[0] * s)))
     }
 
     /**

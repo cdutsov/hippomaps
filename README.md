@@ -61,6 +61,8 @@ navigation, on OpenStreetMap data.**
 
 ### Map
 
+- The compass of a phone: a cone at the location shows where the phone points, and the location button turns the map
+  with the phone (Chrome and the other browsers on Android; Safari on the iPhone and iPad asks once from a tap)
 - Nine styles, the day map in the colours of Swiss topographic maps, day and night by the sun
 - 3D terrain and buildings, relief shading
 - Transit lines (metro, light rail, tram) in their colours

@@ -2405,6 +2405,7 @@ function meAt(pos) {
     { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} },
     { type: "Feature", geometry: { type: "Point", coordinates: c }, properties: {} },
   ] });
+  compass.src?.at?.(c);
   drawCone();
   return state.me.v;
 }
@@ -2439,7 +2440,17 @@ locBtn.addEventListener("click", () => {
     me.onAt = Date.now() + 1;
     return map.easeTo({ bearing: 0, duration: 500 });
   }
-  if (compass.h != null && state.me && meHeld()) return compassMode(true);
+  if (state.me && meHeld()) {
+    if (compass.h != null) return compassMode(true);
+    if (compassAsk()) { // Safari: its question from this tap; the map turns with the first heading
+      compass.pending = true;
+      compass.src.allow().then((ok) => {
+        if (!ok) compass.pending = false;
+        locLabel();
+      });
+      return;
+    }
+  }
   showMe(false);
 });
 // The dot moves with the visitor: once the browser has given a location (or allows it already), the page watches
@@ -2479,13 +2490,129 @@ document.addEventListener("visibilitychange", () => {
   compassSync();
 });
 
-// The compass of the phone: the app for Android gives the heading of the phone (window.hmCompass, from its rotation
-// sensor) while the page watches the location in view and does not navigate. A cone from the dot points where the
-// top of the phone points, wider when the heading is less sure. With the map on the visitor the button of the
-// location turns the map with the phone (compassMode): the map on the dot and turned to the heading a step at each
-// frame. A touch of the map, a search, directions or navigation end it and leave the map turned as it is; the page
-// hidden for a while (another app) does not.
-const compass = { src: window.hmCompass || null, stop: null, h: null, acc: 0, cone: null, coneOn: false, half: 0, turning: false, raf: 0, last: 0 };
+// The compass of the phone: the heading of the phone while the page watches the location in view and does not
+// navigate, from the app for Android (window.hmCompass, its rotation sensor) or from a phone browser (browserCompass).
+// A cone from the dot points where the phone points (headingOf), wider when the heading is less sure. With the map on
+// the visitor the button of the location turns the map with the phone (compassMode): the map on the dot and turned to
+// the heading a step at each frame. A touch of the map, a search, directions or navigation end it and leave the map
+// turned as it is; the page hidden for a while (another app) does not.
+
+// where the phone points, degrees clockwise from the north of the orientation (alpha, beta, gamma of the browser: turns
+// about z, x and y of the phone) with the screen turned by angle (screen.orientation.angle): level and square to the
+// left-right of the screen, so that a phone tipped forward, tilted sideways or turned in its own plane points the same
+// way. Lying flat, the way its top points; held up, the way its back faces; held over the face with the screen down,
+// the way its top points too. Null with the left-right of the screen upright (on its side, the screen not turned) or
+// the phone tipped back halfway over the face.
+const headingOf = (alpha, beta, gamma, angle = 0) => {
+  const r = Math.PI / 180, ca = Math.cos(alpha * r), sa = Math.sin(alpha * r), cb = Math.cos(beta * r), sb = Math.sin(beta * r);
+  const cg = Math.cos(gamma * r), sg = Math.sin(gamma * r);
+  // the axes of the phone in east, north, up: x to the right, y to the top, z out of the screen
+  const x = [ca * cg - sa * sb * sg, sa * cg + ca * sb * sg, -cb * sg], y = [-sa * cb, ca * cb, sb], z = [ca * sg + sa * sb * cg, sa * sg - ca * sb * cg, cb * cg];
+  const neg = (v) => v.map((c) => -c);
+  // the right and the top of the screen
+  const [right, top] = { 90: [neg(y), x], 180: [neg(x), neg(y)], 270: [y, neg(x)] }[angle] || [x, y];
+  const side = top[2] + z[2]; // below 0: the screen down over the face
+  if (right[0] ** 2 + right[1] ** 2 < 0.02 || Math.abs(side) < 0.1) return null;
+  return ((Math.atan2(-right[1] * Math.sign(side), right[0] * Math.sign(side)) * 180) / Math.PI + 360) % 360;
+};
+// The compass of a phone browser, as window.hmCompass of the app: Chrome and the others on Android give the orientation
+// against north (deviceorientationabsolute; Firefox: deviceorientation when absolute), Safari on the iPhone and iPad its
+// compass heading once the visitor allows it (DeviceOrientationEvent.requestPermission, from a tap: ask). The browsers
+// give magnetic north: true north by the declination where the visitor is (wmm.js, loaded when needed). Smoothed over
+// about a tenth of a second, at most 25 headings a second and only for a change of half a degree. None on a computer.
+function browserCompass() {
+  const DOE = window.DeviceOrientationEvent;
+  if (!DOE || !(navigator.maxTouchPoints > 0)) return null;
+  const type = "ondeviceorientationabsolute" in window ? "deviceorientationabsolute" : "deviceorientation";
+  // Safari asks (Chrome has requestPermission too, and its absolute event without a question)
+  const ask = typeof DOE.requestPermission === "function" && type === "deviceorientation";
+  const angle = () => (((Number(screen.orientation?.angle ?? window.orientation) || 0) % 360) + 360) % 360;
+  let fn = null, decl = 0, declAt = null, wmm = null, sx = 0, sy = 0, at = 0, lastAcc = 20, sentH = NaN, sentAcc = -1, sentAt = 0, quiet = false;
+  let lastEv = null; // the last reading, for a turn of the screen while the phone is still
+  const onEvent = (e, again = false) => {
+    const { alpha, beta, gamma, absolute, webkitCompassHeading, webkitCompassAccuracy } = e;
+    lastEv = { alpha, beta, gamma, absolute, webkitCompassHeading, webkitCompassAccuracy };
+    let h = null, acc = 20;
+    if (Number.isFinite(e.webkitCompassHeading) && e.webkitCompassHeading >= 0) { // Safari: of the top of the device
+      h = e.webkitCompassHeading + angle();
+      if (e.webkitCompassAccuracy >= 0) acc = e.webkitCompassAccuracy;
+    } else if ((type === "deviceorientationabsolute" || e.absolute) && e.alpha != null && e.beta != null && e.gamma != null) {
+      h = headingOf(e.alpha, e.beta, e.gamma, angle());
+    }
+    if (h == null || !fn) return;
+    const now = performance.now(), k = at ? 1 - Math.exp(-Math.min(500, Math.max(1, now - at)) / 100) : 1, rad = (h * Math.PI) / 180;
+    at = now;
+    sx += k * (Math.sin(rad) - sx);
+    sy += k * (Math.cos(rad) - sy);
+    lastAcc = Math.round(acc);
+    emit(now, again);
+  };
+  // the screen turned (landscape): the same reading, now for the other top of the screen, at once
+  const screenTurned = () => { if (lastEv && fn) { at = 0; onEvent(lastEv, true); } };
+  const orientation = screen.orientation || window, turnEvent = screen.orientation ? "change" : "orientationchange";
+  // the smoothed heading from true north to the page; again when the declination came (a phone held still sends none)
+  const emit = (now, again = false) => {
+    if (!fn || !at) return;
+    const s = (((Math.atan2(sx, sy) * 180) / Math.PI + decl) % 360 + 360) % 360;
+    const turned = Number.isNaN(sentH) || Math.abs(((s - sentH + 540) % 360) - 180) >= 0.5;
+    if (!again && ((!turned && lastAcc === sentAcc) || now - sentAt < 40)) return;
+    sentH = s;
+    sentAcc = lastAcc;
+    sentAt = now;
+    fn({ heading: Math.round(s * 10) / 10, accuracy: sentAcc });
+  };
+  const src = {
+    ask, allowed: !ask, denied: false,
+    watch(f) {
+      fn = f;
+      at = 0;
+      sentH = NaN;
+      addEventListener(type, onEvent);
+      orientation.addEventListener(turnEvent, screenTurned);
+      // Safari: allowed before, it says so without a tap (else it waits for one, and asks nothing now)
+      if (ask && !src.allowed && !src.denied && !quiet) {
+        quiet = true;
+        try {
+          Promise.resolve(DOE.requestPermission()).then((st) => {
+            if (st !== "granted") return;
+            src.allowed = true;
+            if (fn) { removeEventListener(type, onEvent); addEventListener(type, onEvent); }
+          }, () => {});
+        } catch {}
+      }
+      return () => {
+        fn = null;
+        removeEventListener(type, onEvent);
+        orientation.removeEventListener(turnEvent, screenTurned);
+      };
+    },
+    // Safari: its question, from a tap of the visitor (true when allowed)
+    allow() {
+      let p;
+      try { p = DOE.requestPermission(); } catch (err) { p = Promise.reject(err); }
+      return Promise.resolve(p).then((st) => st === "granted", () => false).then((ok) => {
+        src.allowed = ok;
+        src.denied = !ok;
+        if (ok && fn) { removeEventListener(type, onEvent); addEventListener(type, onEvent); }
+        return ok;
+      });
+    },
+    // where the visitor is: the declination there (again after 10 km)
+    at(ll) {
+      if (declAt && Math.abs(declAt[1] - ll[1]) < 0.1 && Math.abs(declAt[0] - ll[0]) < 0.1 / Math.max(0.1, Math.cos((ll[1] * Math.PI) / 180))) return;
+      declAt = ll;
+      (wmm ||= import("./wmm.js")).then((m) => {
+        const d = m.declination(ll[1], ll[0]) || 0, changed = Math.abs(d - decl) >= 0.1;
+        decl = d;
+        if (changed) emit(performance.now(), true);
+      }).catch(() => { wmm = null; });
+    },
+  };
+  return src;
+}
+const compass = { src: window.hmCompass || browserCompass(), stop: null, h: null, acc: 0, cone: null, coneOn: false, half: 0, turning: false, raf: 0, last: 0, pending: false };
+// a tap would ask the browser for the compass (Safari, not yet allowed or refused)
+const compassAsk = () => !!compass.src?.ask && !compass.src.allowed && !compass.src.denied;
 const TURNING_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3 19 20l-7-3.6L5 20z" fill="currentColor"/></svg>';
 function compassSync() {
   const want = !!compass.src && me.watch != null && !nav.on && document.visibilityState === "visible";
@@ -2495,6 +2622,7 @@ function compassSync() {
     compass.stop();
     compass.stop = null;
     compass.h = null;
+    compass.pending = false;
     if (document.visibilityState === "visible") compassMode(false);
     else { // hidden: turning again with the first heading back
       cancelAnimationFrame(compass.raf);
@@ -2510,6 +2638,10 @@ function onHeading({ heading, accuracy } = {}) {
   compass.h = ((heading % 360) + 360) % 360;
   compass.acc = Number.isFinite(accuracy) ? accuracy : 30;
   drawCone();
+  if (compass.pending) { // allowed by the tap on the button: the map turns with the phone from the first heading
+    compass.pending = false;
+    if (state.me && meHeld()) compassMode(true);
+  }
   if (compass.turning) turnSoon();
   if (first) locLabel();
 }
@@ -2548,7 +2680,7 @@ function drawCone() {
 // the button names what it does: with the map on the visitor and a heading, turning the map with the phone (pressed
 // while it does)
 function locLabel() {
-  const turn = compass.turning || (compass.h != null && meHeld());
+  const turn = compass.turning || ((compass.h != null || compassAsk()) && meHeld());
   const t = turn ? T.turnWithPhone : T.myLocation;
   if (locBtn.title !== t) {
     locBtn.title = t;
@@ -2557,7 +2689,7 @@ function locLabel() {
   if (turn) locBtn.setAttribute("aria-pressed", String(compass.turning));
   else locBtn.removeAttribute("aria-pressed");
 }
-map.on("moveend", () => { if (compass.h != null && !compass.turning) locLabel(); });
+map.on("moveend", () => { if ((compass.h != null || compassAsk()) && !compass.turning) locLabel(); });
 function compassMode(on) {
   if (on === compass.turning) return;
   compass.turning = on;

@@ -264,7 +264,7 @@ if grep -q "data-traffic=" "$TMP/page"; then
 else
 	echo "  SKIP  no traffic (TRAFFIC_URL not set)"
 fi
-for f in avatar.js i18n.js vendor/three-0.170.0/three.module.min.js; do
+for f in avatar.js i18n.js wmm.js vendor/three-0.170.0/three.module.min.js; do
 	code=$(get "$PAGE/static/$f")
 	[[ $code == 200 ]] && ok "$f" || ko "$f: HTTP $code"
 done

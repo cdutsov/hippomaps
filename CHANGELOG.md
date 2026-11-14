@@ -3,6 +3,18 @@
 What changed in hippomaps, newest first. The site at https://hippomaps.ch runs the latest commit of `main`; the
 version numbers are the releases of the Android app (`android/`), which shows the same page.
 
+## 1.4.1 (2026-11-14)
+
+### Added
+
+- The compass in phone browsers too: Chrome and the other browsers on Android, Safari on the iPhone and iPad (it asks
+  from a tap on the location button). True north from the World Magnetic Model 2025.
+
+### Fixed
+
+- Android: the compass keeps its heading when the phone is tilted sideways; in 1.4.0 it moved by about as much as the
+  tilt.
+
 ## 1.4.0 (2026-11-14)
 
 ### Added

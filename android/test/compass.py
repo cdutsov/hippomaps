@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """The compass of the app in the emulator of test/Dockerfile: poses of the phone given to the sensors of the emulator,
 the heading the page gets from window.hmCompass (degrees from true north toward which the top of the screen points),
-with the screen upright and turned; the rotation sensor on only while the page watches and the app is in front.
+with the screen upright and turned, tilted sideways and turned in its own plane; the rotation sensor on only while the
+page watches and the app is in front.
 
     docker cp android/test/compass.py hm-emu:/tmp/ && docker exec hm-emu python3 /tmp/compass.py
 
 Needs the debug build installed and its page open (cdp.py), with the location allowed. Prints "ok <what>" and
 "FAIL <what>"; exits 1 on a failure. Leaves the screen upright with rotation by the sensors off."""
 import json
+import math
 import subprocess
 import sys
 import time
@@ -42,9 +44,12 @@ def pose(x, y, z):
 
 
 def heading():
-    """The last heading the page gets within 2.5 s of a new watch (the sensors 3 s to settle)."""
-    time.sleep(3)
+    """The last heading the page gets within 2.5 s of a new watch. The sensor starts again for it (a message to the app
+    as the bridge sends them): the page may watch it already, and the fusion of the emulator, whose gyroscope says the
+    phone does not turn, takes seconds to follow a new pose."""
+    time.sleep(1)
     r = js("new Promise((ok) => { const got = []; const stop = hmCompass.watch((h) => got.push(h));"
+           " hmNative.postMessage(JSON.stringify({ type: 'compass', on: false })); hmNative.postMessage(JSON.stringify({ type: 'compass', on: true }));"
            " setTimeout(() => { stop(); ok(JSON.stringify(got[got.length - 1] || null)); }, 2500); })")
     h = json.loads(r) if r else None
     return h and h["heading"]
@@ -82,6 +87,13 @@ check(h is not None and apart(h, 90 + north) < 1.5, f"held up, the back to east 
 pose(N, W, U)  # flat on a table, the top to west
 h = heading()
 check(h is not None and apart(h, 270 + north) < 1.5, f"flat, the top to west ({h})")
+c20, s20 = math.cos(math.radians(20)), math.sin(math.radians(20))
+pose((0, -c20, -s20), E, (0, -s20, c20))  # flat, the top to east, tilted 20 degrees to the right
+h = heading()
+check(h is not None and apart(h, 90 + north) < 1.5, f"flat, the top to east, tilted to a side: still east ({h})")
+pose((c20, 0, s20), (-s20, 0, c20), S)  # held up, the back to north, turned 20 degrees in its plane
+h = heading()
+check(h is not None and apart(h, north) < 1.5, f"held up, turned in its own plane: still north ({h})")
 pose(E, S, D)  # held over the face lying down: the screen down, the top to south
 h = heading()
 check(h is not None and apart(h, 180 + north) < 1.5, f"over the face, the screen down, the top to south ({h})")
@@ -101,7 +113,7 @@ js("window.__hmTestStop = hmCompass.watch(() => {}); 1")
 time.sleep(1)
 check(active(), "a watch of the page: the rotation sensor on")
 adb("shell", "input", "keyevent", "KEYCODE_HOME")
-time.sleep(2)
+time.sleep(3)
 check(not active(), "the app in the background: the sensor off")
 adb("shell", "am", "start", "-n", "ch.hippomaps.app.debug/ch.hippomaps.app.MainActivity")
 time.sleep(3)

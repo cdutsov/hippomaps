@@ -29,7 +29,9 @@ car, bike and walk and Start in view; the POIs of every kind with a name at the 
 Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start); the map
 on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; the compass of
 the app for Android (a stand-in): the cone at the dot, the map turning with the phone from the button of the location and on the dot as it moves,
-north up again, a finger ending it, the page hidden a while and back, none in navigation, none in a browser; a shared route with
+north up again, a finger ending it, the page hidden a while and back, none in navigation; the compass of a phone browser (Chrome with a
+virtual orientation sensor: flat, held up, tilted, landscape, from true north; Safari with a stand-in: asked from a tap, turning with its
+first heading, refused), none on a computer; a shared route with
 9 stops (the first 8), a stop removed; Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
 coordinates in the search box; the POIs with a name in the Outdoor style; public transport (a shared journey from Zurich to
 Bern: its connections, the legs of the first, the rides and walks on the map, Later, an arrival by a time on the clocks of the
@@ -1604,7 +1606,102 @@ try:
     fresh(URL)
     wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
     time.sleep(0.5)
-    check(js(f"!window.hmCompass && !{cone}") and js(label) == ["Show my location", None], f"without a compass (a browser): no cone, the button shows the location ({js(label)})")
+    check(js(f"!window.hmCompass && !{cone}") and js(label) == ["Show my location", None],
+          f"a phone browser without an orientation sensor: no cone, the button shows the location ({js(label)})")
+
+    # the compass of a phone browser: Chrome and the others on Android, here with a virtual orientation sensor of Chromium
+    # (a quaternion from the axes of the phone to east, north, up): the cone toward the top of the phone from true north
+    # (magnetic north and the declination of wmm.js), held flat, tilted, in landscape; the button turns the map with it.
+    # Safari on the iPhone (a stand-in: its compass heading, its question allowed only from a tap): nothing until a tap of
+    # the button with the map on the visitor; then the map turns with the first heading; refused, the button shows the
+    # location. On a computer no compass.
+    def q_about(ax, deg):
+        h = math.radians(deg) / 2
+        q = [0.0, 0.0, 0.0, math.cos(h)]
+        q[ax] = math.sin(h)
+        return q
+    def q_then(a, b):  # a, then b about the axes of the world
+        return [b[3] * a[0] + b[0] * a[3] + b[1] * a[2] - b[2] * a[1], b[3] * a[1] - b[0] * a[2] + b[1] * a[3] + b[2] * a[0],
+                b[3] * a[2] + b[0] * a[1] - b[1] * a[0] + b[2] * a[3], b[3] * a[3] - b[0] * a[0] - b[1] * a[1] - b[2] * a[2]]
+    def pose(q):
+        call("Emulation.setSensorOverrideReadings", type="absolute-orientation", reading={"quaternion": {"x": q[0], "y": q[1], "z": q[2], "w": q[3]}})
+    def cone_at(h, d=1.0):
+        return f"(() => {{ const c = document.querySelector('.lm-heading'); return !!c && Math.abs(((+c.dataset.heading - {h}) % 360 + 540) % 360 - 180) < {d}; }})()"
+    def bearing_at(h, d=1.5):
+        return f"Math.abs(((hmMap.getBearing() - {h}) % 360 + 540) % 360 - 180) < {d}"
+    cone_h = "document.querySelector('.lm-heading')?.dataset.heading"
+    label = "[document.querySelector('.lm-locate').title, document.querySelector('.lm-locate').getAttribute('aria-pressed')]"
+    origin = URL.split("/labs")[0]
+    call("Browser.grantPermissions", origin=origin, permissions=["geolocation", "sensors"])
+    call("Emulation.setSensorOverrideEnabled", enabled=True, type="absolute-orientation", metadata={"available": True})
+    pose(q_about(2, -90))  # flat, the top to east
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+    fresh(URL)
+    wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
+    decl = js(f"import({json.dumps(URL + '/static/wmm.js')}).then((m) => m.declination({ZURICH[0]}, {ZURICH[1]}))")
+    check(isinstance(decl, (int, float)) and 2 < decl < 6 and wait(cone_at(90 + decl), 10) and js(label) == ["Turn the map with the phone", "false"],
+          f"a phone browser with an orientation sensor (Chrome): the cone toward the top of the phone from true north, flat to east ({js(cone_h)}, declination {decl})")
+    decl = decl if isinstance(decl, (int, float)) else 0
+    pose(q_then(q_about(0, 80), q_about(2, 90)))  # held up nearly upright, the back to west
+    check(wait(cone_at(270 + decl), 5), f"held up, the back to west: the cone to west ({js(cone_h)})")
+    tap(".lm-locate")
+    check(wait("document.querySelector('.lm-locate.lm-turning') && " + bearing_at(270 + decl), 5), f"the button: the map turns with the phone ({js('hmMap.getBearing()')})")
+    pose(q_then(q_about(0, 30), q_about(2, -150)))  # tilted, to south-south-east
+    check(wait(bearing_at(150 + decl), 5), f"the phone tilted and turned to south-south-east: the map with it ({js('hmMap.getBearing()')})")
+    tap(".lm-locate")
+    wait("!document.querySelector('.lm-locate.lm-turning') && !hmMap.isMoving()", 5)
+    # landscape, turned counterclockwise: the right side of the phone is the top of the screen; flat with its top to north
+    pose([0, 0, 0, 1])
+    upright = wait(cone_at(decl), 5)
+    call("Emulation.setDeviceMetricsOverride", width=844, height=390, deviceScaleFactor=2, mobile=True, screenOrientation={"type": "landscapePrimary", "angle": 90})
+    check(upright and wait(cone_at(90 + decl), 5),
+          f"the screen turned to landscape, the phone still with its top to north: the cone to east at once, where the top of the screen points ({js(cone_h)}, {js('screen.orientation.angle')})")
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setSensorOverrideEnabled", enabled=False, type="absolute-orientation")
+
+    # Safari: no deviceorientationabsolute, its compass heading in deviceorientation, once allowed from a tap
+    SAFARI = ("(() => { delete window.ondeviceorientationabsolute; delete Window.prototype.ondeviceorientationabsolute; window.hmAsked = 0; window.hmAllowed = false;"
+              " DeviceOrientationEvent.requestPermission = () => { hmAsked++;"
+              "  if (window.hmRefuse) return Promise.resolve('denied');"
+              "  if (!navigator.userActivation.isActive) return Promise.reject(new DOMException('a tap first', 'NotAllowedError'));"
+              "  hmAllowed = true; return Promise.resolve('granted'); };"
+              " window.hmSafari = (h, acc) => { if (!hmAllowed) return false; const e = new Event('deviceorientation');"
+              "  Object.assign(e, { alpha: 10, beta: 20, gamma: 0, absolute: false, webkitCompassHeading: h, webkitCompassAccuracy: acc }); dispatchEvent(e); return true; }; })();")
+    safari = call("Page.addScriptToEvaluateOnNewDocument", source=SAFARI)
+    fresh(URL)
+    wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
+    time.sleep(0.5)
+    check(js("!('ondeviceorientationabsolute' in window) && !hmAllowed && !hmSafari(10, 5) && !document.querySelector('.lm-heading')")
+          and js(label) == ["Turn the map with the phone", "false"],
+          f"Safari: no cone before it is allowed; the button with the map on the visitor offers to turn the map ({js(label)}, asked {js('hmAsked')})")
+    tap(".lm-locate")
+    allowed = wait("hmAllowed", 5)
+    js("hmSafari(120, 12)")
+    check(allowed and wait("document.querySelector('.lm-locate.lm-turning') && " + bearing_at(120 + decl), 5) and wait(cone_at(120 + decl), 3),
+          f"Safari: the tap asks; allowed, the map turns with its first heading, from true north ({js('hmMap.getBearing()')}, {js(cone_h)})")
+    js("hmSafari(200, 12)")
+    check(wait(bearing_at(200 + decl), 5), f"Safari: the phone turned, the map with it ({js('hmMap.getBearing()')})")
+    tap(".lm-locate")
+    check(wait("!document.querySelector('.lm-locate.lm-turning') && !hmMap.isMoving() && " + bearing_at(0, 0.5), 5), "Safari: tapped again, north up")
+    # refused: the button shows the location again, a tap moves the map to the visitor
+    fresh(URL)
+    wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
+    js("window.hmRefuse = true")
+    tap(".lm-locate")
+    check(wait("hmAsked >= 1", 5) and wait(f"{label}.join() === 'Show my location,'", 5) and not js("!!document.querySelector('.lm-locate.lm-turning')"),
+          f"Safari: refused, no turning, the button shows the location ({js(label)})")
+    call("Page.removeScriptToEvaluateOnNewDocument", identifier=safari.get("identifier", ""))
+    call("Browser.grantPermissions", origin=origin, permissions=["geolocation"])
+    # a computer: no touch screen, no compass (the button shows the location)
+    call("Emulation.setTouchEmulationEnabled", enabled=False)
+    call("Emulation.setDeviceMetricsOverride", width=1280, height=800, deviceScaleFactor=1, mobile=False)
+    fresh(URL)
+    wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
+    time.sleep(0.5)
+    check(js("navigator.maxTouchPoints === 0 && !document.querySelector('.lm-heading')") and js(label) == ["Show my location", None],
+          f"a computer: no compass ({js(label)})")
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setTouchEmulationEnabled", enabled=True)
 
     # a shared route with more stops than a route takes (9): the first 8, numbered, a route through them, no stop more
     stops9 = "&".join(f"via={47.3779 - 0.0011 * (i + 1):.5f},{8.5403 + 0.0005 * (i + 1):.5f}&vn=Stop+{i + 1}" for i in range(9))

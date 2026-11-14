@@ -71,11 +71,22 @@ class HeadingTest {
     }
 
     @Test
+    fun tiltedSidewaysOrTurnedInItsPlane() {
+        val Y = 1
+        // flat, the top to east, tilted to a side about its long axis
+        for (roll in listOf(-60.0, -20.0, -5.0, 5.0, 20.0, 60.0)) near(90.0, heading(then(about(Y, roll), about(Z, -90.0))))
+        // held up, the back to north, turned in its own plane like a wheel (about the axis toward the face: south)
+        val north = about(X, 90.0)
+        for (turn in listOf(-30.0, -10.0, 10.0, 30.0)) near(0.0, heading(then(north, about(Y, turn))))
+    }
+
+    @Test
     fun overTheHead() {
         // lying on the back, the screen down to the face, the top of the phone to north
         near(0.0, heading(about(1, 180.0)))
-        // tipped back so far that the top and the back point opposite ways: no heading
+        // tipped back halfway over the face: no heading; on its side with the screen not turned: none either
         assertNull(heading(about(X, 135.0)))
+        assertNull(heading(about(1, 90.0)))
     }
 
     @Test

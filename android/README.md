@@ -24,10 +24,11 @@ phone (`window.hmCompass.watch(fn)`, from `bridge.js`) and the app runs `Compass
 - the rotation vector sensor (gyroscope, accelerometer and magnetometer fused by Android; the
   geomagnetic one without a gyroscope) at 50 Hz, smoothed over about 0.1 s, at most 25 headings a
   second to the page and only for a change of half a degree
-- the heading is where the top of the screen points, also with the screen turned to landscape;
-  held upright, the way the back of the phone faces. Degrees from true north: the declination of
-  the magnetic field where the phone is (`GeomagneticField`, from the positions of the location)
-  is added
+- the heading is level and square to the left-right of the screen, also with the screen turned
+  to landscape: lying flat, the way the top points; held up, the way the back faces. A phone
+  tipped forward, tilted sideways or turned in its own plane points the same way. Degrees from
+  true north: the declination of the magnetic field where the phone is (`GeomagneticField`, from
+  the positions of the location) is added
 - with each heading how far off it may be (the estimate of the sensor, else its accuracy), which
   the page shows as a wider cone
 - the sensor is off while the app is in the background, when the page stops watching and when a
@@ -35,7 +36,8 @@ phone (`window.hmCompass.watch(fn)`, from `bridge.js`) and the app runs `Compass
 
 The page draws a cone from the dot of the location. With the map on the visitor the location
 button turns the map with the phone; tapped again, north up. A touch of the map, a search,
-directions or navigation end the turning.
+directions or navigation end the turning. In a phone browser the page reads the orientation of
+the browser itself, with the same heading (`headingOf` in `web/app.js`).
 
 ## Navigation in the background
 
@@ -60,7 +62,7 @@ The page and the app talk through a script injected at document start, for https
 only (`app/src/main/assets/bridge.js`, `WebViewCompat.addWebMessageListener`). The user agent ends
 in `hippomaps-android/<version>`.
 
-Package `ch.hippomaps.app`, version 1.4.0 (code 5), minSdk 26 (Android 8), targetSdk 36. Kotlin, one activity
+Package `ch.hippomaps.app`, version 1.4.1 (code 6), minSdk 26 (Android 8), targetSdk 36. Kotlin, one activity
 (`MainActivity.kt`) and one service, AndroidX core, activity, webkit and
 splashscreen.
 
