@@ -263,10 +263,12 @@ func TestJourney(t *testing.T) {
 	if !strings.Contains(page, `data-journey="/labs/maps/api/journey"`) || !strings.Contains(page, `data-journey-regions="CH,BG"`) {
 		t.Fatalf("the page has no data-journey with its regions")
 	}
-	a := journeyOf(t, s, "/labs/maps/api/journey?from=47.3779,8.5403&to=46.949,7.4391&time=2026-11-13T09:00:00%2B01:00&arrive=1&lang=de")
+	// an arrival tomorrow at a whole hour, written at +01:00: the server takes times from yesterday to a year ahead
+	when := time.Now().Add(24 * time.Hour).Truncate(time.Hour).In(time.FixedZone("", 3600))
+	a := journeyOf(t, s, "/labs/maps/api/journey?from=47.3779,8.5403&to=46.949,7.4391&time="+url.QueryEscape(when.Format(time.RFC3339))+"&arrive=1&lang=de")
 
 	q := m.query
-	if q.Get("fromPlace") != "47.377900,8.540300" || q.Get("toPlace") != "46.949000,7.439100" || q.Get("time") != "2026-11-13T08:00:00Z" ||
+	if q.Get("fromPlace") != "47.377900,8.540300" || q.Get("toPlace") != "46.949000,7.439100" || q.Get("time") != when.UTC().Format("2006-01-02T15:04:05Z") ||
 		q.Get("arriveBy") != "true" || q.Get("language") != "de" || q.Get("numItineraries") != "5" || q.Get("pageCursor") != "" {
 		t.Errorf("the question to MOTIS: %v", q)
 	}
