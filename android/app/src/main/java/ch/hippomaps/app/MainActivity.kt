@@ -117,6 +117,8 @@ class MainActivity : ComponentActivity() {
     private var toPage: ((String) -> Unit)? = null
     private lateinit var feed: LocationFeed
     private var geoWanted = false // the page has a position request or a watch open
+    private lateinit var compass: Compass
+    private var compassWanted = false // the page shows the heading of the phone
     private var navigating = false
 
     private val network = object : ConnectivityManager.NetworkCallback() {
@@ -148,7 +150,8 @@ class MainActivity : ComponentActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
-        feed = LocationFeed(this) { msg -> toPage?.invoke(msg) }
+        compass = Compass(this, ::screenRotation) { msg -> toPage?.invoke(msg) }
+        feed = LocationFeed(this, { compass.at(it) }) { msg -> toPage?.invoke(msg) }
         NavigationService.onStopRequested = { endNavigationInPage() }
         setUpWebView()
 
@@ -218,6 +221,8 @@ class MainActivity : ComponentActivity() {
                 toPage = null
                 geoWanted = false
                 feed.stop()
+                compassWanted = false
+                compass.stop()
                 setNavigating(false)
             }
 
@@ -293,6 +298,10 @@ class MainActivity : ComponentActivity() {
                 if (!geoWanted) feed.stop()
                 else if (hasLocation()) startFeed()
                 else requestLocation()
+            }
+            "compass" -> {
+                compassWanted = m.optBoolean("on")
+                if (compassWanted && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) compass.start() else compass.stop()
             }
             "nav" -> setNavigating(m.optBoolean("on"))
             "navinfo" -> NavigationService.instance?.update(m.optString("dist"), m.optString("instr"))
@@ -561,6 +570,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         if (geoWanted && hasLocation()) startFeed()
+        if (compassWanted) compass.start()
         // allowed meanwhile in the settings, or the service did not start: navigation goes on in the background
         if (navigating && hasLocation() && NavigationService.instance == null) startNavigationService()
     }
@@ -568,6 +578,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         // positions in the background only for navigation
         if (!navigating) feed.stop()
+        compass.stop() // the heading only for the page in view
         super.onStop()
     }
 
@@ -585,6 +596,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         feed.stop()
+        compass.stop()
         NavigationService.onStopRequested = null
         NavigationService.stop(this)
         try {
@@ -598,6 +610,11 @@ class MainActivity : ComponentActivity() {
         }
         super.onDestroy()
     }
+
+    // the turn of the screen against the phone (Surface.ROTATION_*), for the compass
+    @Suppress("DEPRECATION")
+    private fun screenRotation(): Int =
+        (if (Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay)?.rotation ?: 0
 
     private fun hasLocation(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||

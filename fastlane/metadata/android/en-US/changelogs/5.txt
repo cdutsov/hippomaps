@@ -1,0 +1,1 @@
+Compass: a cone at the location shows which way the phone points. With the map on the location, the location button turns the map with the phone; a second tap puts north up again.

@@ -5,6 +5,7 @@
 <li>Place pages with a picture from Wikimedia Commons, opening hours, website, phone, address and wheelchair access</li>
 <li>Directions by car, bike and on foot, with up to 8 stops and places along the route (fuel, charging, rest areas, food)</li>
 <li>Turn-by-turn navigation with spoken instructions; it goes on with the screen locked</li>
+<li>Compass: a cone at the location shows where the phone points; the map can turn with the phone</li>
 <li>Height profile by bike and on foot</li>
 <li>Live traffic in Switzerland: closures, queues and roadworks</li>
 <li>Metro, light rail and tram lines in their colours</li>

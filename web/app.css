@@ -171,6 +171,10 @@ button { font: inherit; color: inherit; }
 .lm-locate:hover { color: var(--fg); }
 .lm-locate.lm-on { color: #1a73e8; }
 .lm-locate.lm-busy svg { animation: lm-spin 1.2s linear infinite; }
+/* the cone of the heading of the phone at the dot of the location (app for Android); none in navigation */
+.lm-heading { pointer-events: none; }
+.lm-heading svg { display: block; }
+.lm-navigating .lm-heading { display: none; }
 @keyframes lm-spin { to { transform: rotate(360deg); } }
 .lm-area { display: inline-flex; align-items: center; gap: .4rem; animation: lm-in .18s ease-out; }
 /* no connection: a note at the top of the map in place of the quick searches (they need it), in navigation

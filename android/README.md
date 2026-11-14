@@ -10,10 +10,32 @@ adds what a browser tab lacks:
 - `navigator.share` opens the Android share sheet; `navigator.wakeLock` keeps the screen on
 - location from the Android location service (GPS and network providers, no Google Play
   services), asked for with the Android permission dialog
+- the compass: the heading of the phone for the page (below)
 - navigation goes on with the screen locked or another app in front (below)
 - the back button closes what the page has open (menu, place card, directions), then goes back
   in the page history, then leaves the app; while navigating it puts the app in the background
 - a native screen when the page cannot load, which loads the page again once the phone is online
+
+## Compass
+
+While the page shows the location in view and does not navigate, it watches the heading of the
+phone (`window.hmCompass.watch(fn)`, from `bridge.js`) and the app runs `Compass.kt`:
+
+- the rotation vector sensor (gyroscope, accelerometer and magnetometer fused by Android; the
+  geomagnetic one without a gyroscope) at 50 Hz, smoothed over about 0.1 s, at most 25 headings a
+  second to the page and only for a change of half a degree
+- the heading is where the top of the screen points, also with the screen turned to landscape;
+  held upright, the way the back of the phone faces. Degrees from true north: the declination of
+  the magnetic field where the phone is (`GeomagneticField`, from the positions of the location)
+  is added
+- with each heading how far off it may be (the estimate of the sensor, else its accuracy), which
+  the page shows as a wider cone
+- the sensor is off while the app is in the background, when the page stops watching and when a
+  page loads
+
+The page draws a cone from the dot of the location. With the map on the visitor the location
+button turns the map with the phone; tapped again, north up. A touch of the map, a search,
+directions or navigation end the turning.
 
 ## Navigation in the background
 
@@ -38,7 +60,7 @@ The page and the app talk through a script injected at document start, for https
 only (`app/src/main/assets/bridge.js`, `WebViewCompat.addWebMessageListener`). The user agent ends
 in `hippomaps-android/<version>`.
 
-Package `ch.hippomaps.app`, version 1.2.0 (code 3), minSdk 26 (Android 8), targetSdk 35. Kotlin, one activity
+Package `ch.hippomaps.app`, version 1.4.0 (code 5), minSdk 26 (Android 8), targetSdk 36. Kotlin, one activity
 (`MainActivity.kt`) and one service, AndroidX core, activity, webkit and
 splashscreen.
 
@@ -137,6 +159,14 @@ docker rm -f hm-emu
 
 `test/cdp.py '<expression>'` (in the emulator container) evaluates JavaScript in the page of the
 debug build over the DevTools protocol, e.g. the banner text while the screen is off.
+
+`test/compass.py` checks the compass in the emulator with the debug build open: poses of the phone
+given to the sensors of the emulator and the headings the page gets, upright, flat, over the face
+and in landscape; the sensor on and off with the watch of the page and the app in the background:
+
+```
+docker cp android/test/compass.py hm-emu:/tmp/ && docker exec hm-emu python3 /tmp/compass.py
+```
 
 ## Not done yet
 

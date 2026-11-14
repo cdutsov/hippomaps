@@ -1,0 +1,1 @@
+Kompass: Ein Kegel am Standort zeigt die Richtung des Telefons. Steht die Karte auf dem Standort, dreht der Standortknopf die Karte mit dem Telefon; ein zweiter Tipp stellt Norden wieder nach oben.

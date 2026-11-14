@@ -5,6 +5,7 @@
 <li>Ortsseiten mit Bild von Wikimedia Commons, Öffnungszeiten, Website, Telefon, Adresse und Rollstuhlzugang</li>
 <li>Routen mit dem Auto, dem Velo und zu Fuss, mit bis zu 8 Zwischenstopps und Orten entlang der Route (Tankstellen, Ladestationen, Raststätten, Essen)</li>
 <li>Navigation mit gesprochenen Anweisungen, auch bei gesperrtem Bildschirm</li>
+<li>Kompass: Ein Kegel am Standort zeigt die Richtung des Telefons; die Karte kann sich mit dem Telefon drehen</li>
 <li>Höhenprofil mit dem Velo und zu Fuss</li>
 <li>Verkehrslage in der Schweiz: Sperrungen, Staus und Baustellen</li>
 <li>Metro-, Stadtbahn- und Tramlinien in ihren Farben</li>

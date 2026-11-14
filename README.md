@@ -71,6 +71,8 @@ navigation, on OpenStreetMap data.**
 
 - The site in a WebView with native location, navigation in the background, and links from other map apps (`geo:`,
   Google Maps, OpenStreetMap, Apple Maps)
+- The compass of the phone: a cone at the location shows where the phone points; the location button turns the map
+  with the phone
 
 ## How it works
 

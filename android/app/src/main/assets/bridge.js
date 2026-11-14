@@ -157,6 +157,30 @@
   define(navigator, "geolocation", geo);
   addEventListener("pagehide", () => send({ type: "geo", watch: false }));
 
+  // window.hmCompass: the heading of the phone from its rotation sensor, while the page watches it.
+  // watch(fn) calls fn({ heading, accuracy }) (degrees clockwise from true north toward which the top
+  // of the screen points; how far off it may be, in degrees) and returns the function that stops it.
+  const compass = (() => {
+    const fns = new Set();
+    const sync = () => send({ type: "compass", on: fns.size > 0 });
+    handlers.heading = (m) => {
+      for (const fn of [...fns]) {
+        try { fn({ heading: m.h, accuracy: m.acc }); } catch (err) { setTimeout(() => { throw err; }); }
+      }
+    };
+    return {
+      watch(fn) {
+        if (typeof fn !== "function") throw new TypeError("hmCompass.watch needs a function");
+        const f = (h) => fn(h); // one entry per watch, also for the same function twice
+        fns.add(f);
+        if (fns.size === 1) sync();
+        return () => { if (fns.delete(f) && fns.size === 0) sync(); };
+      },
+    };
+  })();
+  define(window, "hmCompass", Object.freeze(compass));
+  addEventListener("pagehide", () => send({ type: "compass", on: false }));
+
   // navigation: on and off from the class of #app, and the banner (distance, instruction) for the
   // notification of the app
   let navOn = false, lastInfo = "";

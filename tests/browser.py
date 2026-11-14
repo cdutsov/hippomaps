@@ -27,7 +27,9 @@ focus at the start on a phone, with it on a computer (no list until a click); a 
 destination by Directions; the dot of the location and the map on it following the visitor; a route on a small phone with
 car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; fewer places at the middle zooms; the start: what the search reads with two searches, and searches of the map view (a river of
 Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start); the map
-on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; a shared route with
+on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; the compass of
+the app for Android (a stand-in): the cone at the dot, the map turning with the phone from the button of the location and on the dot as it moves,
+north up again, a finger ending it, the page hidden a while and back, none in navigation, none in a browser; a shared route with
 9 stops (the first 8), a stop removed; Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
 coordinates in the search box; the POIs with a name in the Outdoor style; public transport (a shared journey from Zurich to
 Bern: its connections, the legs of the first, the rides and walks on the map, Later, an arrival by a time on the clocks of the
@@ -1512,6 +1514,97 @@ try:
         js("document.querySelector('.lm-input').blur()")
     else:
         check(False, "a search for cafés for the back button")
+
+    # the compass of the app for Android (window.hmCompass; here a stand-in the test turns with hmTurn): a cone from the
+    # dot of the location where the phone points; with the map on the visitor the button of the location turns the map
+    # with the phone, on the dot as it moves; tapped again, north up; a finger on the map ends the turning and leaves the
+    # map turned; no compass in navigation. Without a compass (a browser) no cone, and the button shows the location.
+    COMPASS = ("(() => { const fns = new Set(); window.hmCompassOn = 0;"
+               " window.hmCompass = { watch(fn) { fns.add(fn); window.hmCompassOn = fns.size; return () => { fns.delete(fn); window.hmCompassOn = fns.size; }; } };"
+               " window.hmTurn = (h, acc = 10) => { for (const f of [...fns]) f({ heading: h, accuracy: acc }); return fns.size; }; })();")
+    fake = call("Page.addScriptToEvaluateOnNewDocument", source=COMPASS)
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+    fresh(URL)
+    wait("location.hash.includes('/47.37')", 20)
+    on_me = wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
+    check(on_me and wait("window.hmCompassOn === 1", 10), "the app with a compass: the page watches it while it shows the location")
+    bearing = "hmMap.getBearing()"
+    def bearing_near(h, d=1.5):
+        return f"Math.abs(((({bearing} - {h}) % 360) + 540) % 360 - 180) < {d}"
+    cone = "document.querySelector('.lm-heading')"
+    cone_turn = f"parseFloat(({cone}?.style.transform.match(/rotateZ\\((-?[0-9.e-]+)deg\\)/) || [])[1])"  # on the screen, from up
+    def cone_near(h, d=0.5):
+        return f"Math.abs(((({cone_turn} - {h}) % 360) + 540) % 360 - 180) < {d}"
+    cone_on_dot = (f"(() => {{ const r = {cone}.getBoundingClientRect(), m = document.querySelector('.lm-map').getBoundingClientRect(), p = hmMap.project({me_dot});"
+                   " return Math.hypot(r.left + r.width / 2 - m.left - p.x, r.top + r.height / 2 - m.top - p.y) < 3; })()")
+    label = "[document.querySelector('.lm-locate').title, document.querySelector('.lm-locate').getAttribute('aria-pressed')]"
+    js("hmTurn(90, 10)")
+    check(wait(f"{cone} && {cone}.dataset.heading === '90.0' && {cone_near(90)}", 5) and js(bearing_near(0)) and js(cone_on_dot),
+          f"a heading: the cone from the dot points east, the map stays north up ({js(cone + '?.style.transform')})")
+    check(js(label) == ["Turn the map with the phone", "false"], f"the map on the visitor: the button of the location turns the map with the phone ({js(label)})")
+    tap(".lm-locate")
+    check(wait("document.querySelector('.lm-locate.lm-turning') && " + bearing_near(90), 5) and js(label) == ["Turn the map with the phone", "true"],
+          f"the button tapped: the map turns with the phone ({js(bearing)}, {js(label)})")
+    js("hmTurn(200, 10)")
+    check(wait(bearing_near(200), 5) and wait(cone_near(0, 1.5), 3), f"the phone turned: the map with it, the cone up ({js(bearing)}, {js(cone_turn)})")
+    p = (ZURICH[0] + 0.0012, ZURICH[1] + 0.0015)
+    call("Emulation.setGeolocationOverride", latitude=p[0], longitude=p[1], accuracy=10)
+    check(wait(close_to(me_dot, *p), 10) and wait(close_to(map_mid, *p, 3), 5) and js(bearing_near(200)) and js("!!document.querySelector('.lm-locate.lm-turning')") and js(cone_on_dot),
+          f"the visitor moves: the map turned with the phone on the dot, the cone with it ({js(map_mid)}, {js(bearing)})")
+    # another app in front (here another tab): the page hidden, the compass off; back, the map turns with the phone again
+    tab = call("Target.createTarget", url="about:blank").get("targetId")
+    time.sleep(1)
+    hidden = js("document.visibilityState === 'hidden' && window.hmCompassOn === 0")
+    call("Page.bringToFront")
+    call("Target.closeTarget", targetId=tab)
+    time.sleep(1.5)
+    wait("document.visibilityState === 'visible' && window.hmCompassOn === 1", 5)
+    js("hmTurn(150, 10)")
+    check(hidden and wait("document.querySelector('.lm-locate.lm-turning') && " + bearing_near(150), 5),
+          f"the page hidden a while: the compass off; back, the map turns with the phone again ({hidden}, {js(bearing)})")
+    tap(".lm-locate")
+    check(wait("!document.querySelector('.lm-locate.lm-turning') && !hmMap.isMoving() && " + bearing_near(0, 0.5), 5) and js(label) == ["Turn the map with the phone", "false"],
+          f"tapped again: north up, the map on the visitor still ({js(bearing)}, {js(label)})")
+    js("hmTurn(250, 10)")
+    time.sleep(0.6)
+    check(js(bearing_near(0, 0.5)) and js(cone_near(250)), f"north up: the cone turns with the phone, the map not ({js(bearing)})")
+    tap(".lm-locate")
+    turning = wait(bearing_near(250), 5)
+    drag(195, 260, 330)
+    time.sleep(0.5)
+    b0 = js(bearing)
+    js("hmTurn(300, 10)")
+    time.sleep(0.8)
+    b1 = js(bearing)
+    check(turning and js("!document.querySelector('.lm-locate.lm-turning')") and abs((b1 - b0 + 540) % 360 - 180) < 0.5 and abs((b0 - 250 + 540) % 360 - 180) < 3
+          and js(label) == ["Show my location", None],
+          f"a finger moves the map: it stops turning with the phone and stays turned ({b0}, {b1}, {js(label)})")
+    tap(".lm-locate")
+    check(wait("!hmMap.isMoving() && " + close_to(map_mid, *p, 15), 10) and js("!document.querySelector('.lm-locate.lm-turning')")
+          and wait(f"{json.dumps(['Turn the map with the phone', 'false'])}.join() === {label}.join()", 3),
+          f"then the button: the map on the visitor again, not turning yet ({js(label)})")
+    # navigation: no compass and no cone; after it both again
+    js("localStorage.setItem('hm-mute', '1')")
+    call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+    fresh(URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=47.37650,8.54400&tn=Central&mode=car")
+    if wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && document.querySelector('.lm-nav-go .lm-chip') && window.hmCompassOn === 1", 40):
+        js("hmTurn(45, 10)")
+        wait(f"{cone}", 3)
+        js("document.querySelector('.lm-nav-go .lm-chip').click()")
+        on = wait("document.getElementById('app').classList.contains('lm-navigating')", 5)
+        check(on and wait(f"window.hmCompassOn === 0 && !{cone}", 5), f"navigation: the compass off, no cone ({js('window.hmCompassOn')})")
+        js("document.querySelector('.lm-nav-x')?.click()")
+        off = wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+        js("hmTurn(60, 10)")
+        check(off and wait(f"window.hmCompassOn === 1 && {cone}?.dataset.heading === '60.0'", 5), f"navigation ended: the compass and the cone again ({js('window.hmCompassOn')})")
+    else:
+        check(False, "a route for navigation with the compass")
+    js("localStorage.removeItem('hm-mute')")
+    call("Page.removeScriptToEvaluateOnNewDocument", identifier=fake.get("identifier", ""))
+    fresh(URL)
+    wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
+    time.sleep(0.5)
+    check(js(f"!window.hmCompass && !{cone}") and js(label) == ["Show my location", None], f"without a compass (a browser): no cone, the button shows the location ({js(label)})")
 
     # a shared route with more stops than a route takes (9): the first 8, numbered, a route through them, no stop more
     stops9 = "&".join(f"via={47.3779 - 0.0011 * (i + 1):.5f},{8.5403 + 0.0005 * (i + 1):.5f}&vn=Stop+{i + 1}" for i in range(9))

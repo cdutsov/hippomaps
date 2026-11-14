@@ -103,6 +103,7 @@ const EN = {
   searchArea: "Search this area",
   myLocation: "Show my location",
   north: "Turn the map to north",
+  turnWithPhone: "Turn the map with the phone",
   inArea: (name, kind) => `In ${name}${kind ? ` (${kind})` : ""}`,
   here: "Here",
   around: "Around here",
@@ -2404,6 +2405,7 @@ function meAt(pos) {
     { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} },
     { type: "Feature", geometry: { type: "Point", coordinates: c }, properties: {} },
   ] });
+  drawCone();
   return state.me.v;
 }
 // the button asks the browser, which asks the visitor the first time; quiet: at the start of the
@@ -2429,37 +2431,168 @@ function showMe(quiet) {
     { enableHighAccuracy: true, timeout: quiet ? 60000 : 15000, maximumAge: 60000 }, // at the start, time to answer the question
   );
 }
-locBtn.addEventListener("click", () => showMe(false));
+// the button of the location: the map on the visitor; on them already, with the compass of the phone, the map
+// turns with the phone; once more, north up again (and on the visitor still)
+locBtn.addEventListener("click", () => {
+  if (compass.turning) {
+    compassMode(false);
+    me.onAt = Date.now() + 1;
+    return map.easeTo({ bearing: 0, duration: 500 });
+  }
+  if (compass.h != null && state.me && meHeld()) return compassMode(true);
+  showMe(false);
+});
 // The dot moves with the visitor: once the browser has given a location (or allows it already), the page watches
 // it while it is in view. The map goes along while it is on the visitor: after the button or the start put it
 // there, until the visitor takes the map, searches or opens directions, or the dot is out of view.
 const me = { watch: null, onAt: 0 };
-const meFollowed = () => {
-  if (!me.onAt || touchedAt > me.onAt || nav.on || !routeView.hidden || state.text || !state.me || map.isMoving()) return false;
+// the map is on the visitor (meFollowed: and not moving now)
+const meHeld = () => {
+  if (!me.onAt || touchedAt > me.onAt || nav.on || !routeView.hidden || state.text || !state.me) return false;
   const p = map.project(state.me.at2), q = pad();
   return p.x >= q.left / 2 && p.x <= mapEl.clientWidth - q.right / 2 && p.y >= q.top / 2 && p.y <= mapEl.clientHeight - q.bottom;
 };
+const meFollowed = () => meHeld() && !map.isMoving();
 function watchMe() {
   if (me.watch != null || !navigator.geolocation || document.visibilityState !== "visible") return;
   me.watch = navigator.geolocation.watchPosition((pos) => {
     const was = state.me?.at2, follow = meFollowed();
     meAt(pos);
     locBtn.classList.add("lm-on");
+    if (compass.turning) return turnSoon(); // the map turning with the phone goes along in its own steps
     if (!follow) return;
     const c = state.me.at2, [ax, ay] = flat(was, c[1]), [bx, by] = flat(c, c[1]);
     if (Math.hypot(ax - bx, ay - by) < 2) return;
     fit(() => map.easeTo({ center: c, padding: pad(), duration: 500 }), 600);
   }, (err) => { if (err.code === 1) unwatchMe(); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 60000 });
+  compassSync();
 }
 function unwatchMe() {
   if (me.watch != null) navigator.geolocation.clearWatch(me.watch);
   me.watch = null;
+  compassSync();
 }
 // a hidden page asks for no location (the battery of a phone); back in view it does again
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") unwatchMe();
   else if (state.me) watchMe();
+  compassSync();
 });
+
+// The compass of the phone: the app for Android gives the heading of the phone (window.hmCompass, from its rotation
+// sensor) while the page watches the location in view and does not navigate. A cone from the dot points where the
+// top of the phone points, wider when the heading is less sure. With the map on the visitor the button of the
+// location turns the map with the phone (compassMode): the map on the dot and turned to the heading a step at each
+// frame. A touch of the map, a search, directions or navigation end it and leave the map turned as it is; the page
+// hidden for a while (another app) does not.
+const compass = { src: window.hmCompass || null, stop: null, h: null, acc: 0, cone: null, coneOn: false, half: 0, turning: false, raf: 0, last: 0 };
+const TURNING_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3 19 20l-7-3.6L5 20z" fill="currentColor"/></svg>';
+function compassSync() {
+  const want = !!compass.src && me.watch != null && !nav.on && document.visibilityState === "visible";
+  if (want && !compass.stop) {
+    try { compass.stop = compass.src.watch(onHeading); } catch { compass.src = null; }
+  } else if (!want && compass.stop) {
+    compass.stop();
+    compass.stop = null;
+    compass.h = null;
+    if (document.visibilityState === "visible") compassMode(false);
+    else { // hidden: turning again with the first heading back
+      cancelAnimationFrame(compass.raf);
+      compass.raf = 0;
+    }
+    drawCone();
+    locLabel();
+  }
+}
+function onHeading({ heading, accuracy } = {}) {
+  if (!compass.stop || !Number.isFinite(heading)) return;
+  const first = compass.h == null;
+  compass.h = ((heading % 360) + 360) % 360;
+  compass.acc = Number.isFinite(accuracy) ? accuracy : 30;
+  drawCone();
+  if (compass.turning) turnSoon();
+  if (first) locLabel();
+}
+// the cone: a fan from the edge of the dot (its radius with the white ring), on each side one and a half times what the
+// heading may be off, 18 to 55 degrees
+const fanPath = (half) => {
+  const a = (half * Math.PI) / 180, s = Math.sin(a), c = Math.cos(a), r0 = 10, r1 = 56, f = (v) => v.toFixed(2);
+  return `M${f(-r0 * s)} ${f(-r0 * c)}L${f(-r1 * s)} ${f(-r1 * c)}A${r1} ${r1} 0 0 1 ${f(r1 * s)} ${f(-r1 * c)}` +
+    `L${f(r0 * s)} ${f(-r0 * c)}A${r0} ${r0} 0 0 0 ${f(-r0 * s)} ${f(-r0 * c)}Z`;
+};
+function drawCone() {
+  if (compass.h == null || !state.me || nav.on) {
+    if (compass.coneOn) compass.cone.remove();
+    compass.coneOn = false;
+    return;
+  }
+  if (!compass.cone) {
+    const e = el("div", "lm-heading");
+    e.innerHTML = '<svg viewBox="-60 -60 120 120" width="120" height="120" aria-hidden="true"><defs>' +
+      '<radialGradient id="lm-heading-fill" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="56">' +
+      '<stop offset=".18" stop-color="#1a73e8" stop-opacity=".55"/><stop offset="1" stop-color="#1a73e8" stop-opacity="0"/></radialGradient></defs>' +
+      '<path fill="url(#lm-heading-fill)"/></svg>';
+    compass.cone = new maplibregl.Marker({ element: e, rotationAlignment: "map", pitchAlignment: "map" });
+  }
+  const half = Math.round(Math.min(55, Math.max(18, compass.acc * 1.5)) / 5) * 5;
+  const e = compass.cone.getElement();
+  if (half !== compass.half) {
+    compass.half = half;
+    e.querySelector("path").setAttribute("d", fanPath(half));
+  }
+  e.dataset.heading = compass.h.toFixed(1);
+  compass.cone.setLngLat(state.me.at2).setRotation(compass.h);
+  if (!compass.coneOn) compass.cone.addTo(map);
+  compass.coneOn = true;
+}
+// the button names what it does: with the map on the visitor and a heading, turning the map with the phone (pressed
+// while it does)
+function locLabel() {
+  const turn = compass.turning || (compass.h != null && meHeld());
+  const t = turn ? T.turnWithPhone : T.myLocation;
+  if (locBtn.title !== t) {
+    locBtn.title = t;
+    locBtn.setAttribute("aria-label", t);
+  }
+  if (turn) locBtn.setAttribute("aria-pressed", String(compass.turning));
+  else locBtn.removeAttribute("aria-pressed");
+}
+map.on("moveend", () => { if (compass.h != null && !compass.turning) locLabel(); });
+function compassMode(on) {
+  if (on === compass.turning) return;
+  compass.turning = on;
+  locBtn.classList.toggle("lm-turning", on);
+  locBtn.innerHTML = on ? TURNING_ICON : svg(ICON.locate, 22);
+  if (on) {
+    me.onAt = Date.now() + 1;
+    turnSoon();
+  } else {
+    cancelAnimationFrame(compass.raf);
+    compass.raf = 0;
+  }
+  locLabel();
+}
+const turnSoon = () => {
+  if (compass.raf) return;
+  compass.last = performance.now();
+  compass.raf = requestAnimationFrame(turnStep);
+};
+// a step toward the heading and the dot, about a fifth of the way at 60 frames a second; none once there
+function turnStep(t) {
+  compass.raf = 0;
+  if (!compass.turning || compass.h == null) return; // (no heading yet, back in view: the first one goes on)
+  if (!meHeld()) return compassMode(false);
+  const k = 1 - Math.exp(-Math.min(100, Math.max(1, t - compass.last)) / 70);
+  compass.last = t;
+  const b = map.getBearing(), d = ((((compass.h - b) % 360) + 540) % 360) - 180;
+  const c = map.getCenter().toArray(), to = state.me.at2, p = pad(), q = map.getPadding();
+  const [ax, ay] = flat(c, to[1]), [bx, by] = flat(to, to[1]);
+  const turned = Math.abs(d) < 0.2, there = Math.hypot(ax - bx, ay - by) < 0.2;
+  const padded = ["top", "bottom", "left", "right"].every((s) => Math.abs((q[s] || 0) - p[s]) < 1);
+  if (turned && there && padded) return;
+  map.jumpTo({ bearing: turned ? compass.h : b + d * k, center: there ? to : [c[0] + (to[0] - c[0]) * k, c[1] + (to[1] - c[1]) * k], padding: p });
+  compass.raf = requestAnimationFrame(turnStep);
+}
 // allowed already: the dot without a question and without a move of the map. Allowed later (the question of the
 // browser answered after a while, or in its settings): the map goes there
 navigator.permissions?.query({ name: "geolocation" }).then((st) => {
@@ -2467,7 +2600,9 @@ navigator.permissions?.query({ name: "geolocation" }).then((st) => {
   st.addEventListener("change", () => { if (st.state === "granted" && !nav.on) showMe(false); });
 }).catch(() => {});
 map.once("dragstart", () => { state.touched = true; });
-map.on("moveend", () => setTimeout(() => store.set("hm-last-view", location.hash), 0)); // after the hash follows the map
+// after the hash follows the map; once per change (the map turning with the phone ends a move at each frame)
+let savedView = null;
+map.on("moveend", () => setTimeout(() => { if (location.hash !== savedView) store.set("hm-last-view", (savedView = location.hash)); }, 0));
 
 // run searches a text; extra holds place, place2, region and what, as the API takes them
 async function run(text, extra = {}, { push = true, bbox = null, sel = null } = {}) {
@@ -2935,7 +3070,12 @@ function glide(o) {
 // moves of the map itself, to show a search, do not count
 let touched = false, touchedAt = 0;
 for (const ev of ["pointerdown", "wheel", "touchstart", "keydown"]) {
-  mapEl.addEventListener(ev, () => { touched = true; touchedAt = Date.now(); }, { passive: true, capture: true });
+  mapEl.addEventListener(ev, (e) => {
+    if (e.target.closest?.(".lm-locate")) return; // the button of the location: the map goes to the visitor
+    touched = true;
+    touchedAt = Date.now();
+    if (compass.turning) compassMode(false); // the map in the hand of the visitor: it stays as it is turned
+  }, { passive: true, capture: true });
 }
 // fitBox shows the box of an answer. On a phone the keyboard closes while a fast answer comes, and
 // the view changes size after the map moved: when the view settles within 2.5 s, the box is
@@ -5787,6 +5927,7 @@ function navStart(sim) {
   const styles = route.mode === "car" ? [shownStyle(), "driving", "driving-night"] : [shownStyle()];
   for (const k of styles) styleJSON(styleURL(k), k.endsWith("-night")).catch(() => {});
   nav.on = true;
+  compassSync();
   fpsCap(true);
   nav.trip = (nav.trip || 0) + 1;
   unfollowMe();
@@ -5874,6 +6015,7 @@ async function keepAwake() {
 document.addEventListener("visibilitychange", keepAwake);
 function navStop() {
   nav.on = false;
+  compassSync();
   routeCache.ctl?.abort();
   fpsCap(false);
   setSource("turns", empty);

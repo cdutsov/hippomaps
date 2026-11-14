@@ -12,9 +12,9 @@ import org.json.JSONObject
 /**
  * Positions for the page from the platform LocationManager (GPS and network providers, no Google
  * Play services). Runs while the page has a watch or a request open. [push] gets each position as
- * the JSON message the bridge expects ({type: "pos", ...}).
+ * the JSON message the bridge expects ({type: "pos", ...}), [onLocation] the position itself.
  */
-class LocationFeed(context: Context, private val push: (String) -> Unit) {
+class LocationFeed(context: Context, private val onLocation: (Location) -> Unit = {}, private val push: (String) -> Unit) {
 
     private val lm = context.applicationContext.getSystemService(LocationManager::class.java)
     private var running = false
@@ -87,6 +87,7 @@ class LocationFeed(context: Context, private val push: (String) -> Unit) {
         if (l.hasVerticalAccuracy()) m.put("altAcc", l.verticalAccuracyMeters.toDouble())
         if (l.hasBearing()) m.put("heading", l.bearing.toDouble())
         if (l.hasSpeed()) m.put("speed", l.speed.toDouble())
+        onLocation(l)
         push(m.toString())
     }
 }

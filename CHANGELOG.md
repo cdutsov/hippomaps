@@ -3,12 +3,12 @@
 What changed in hippomaps, newest first. The site at https://hippomaps.ch runs the latest commit of `main`; the
 version numbers are the releases of the Android app (`android/`), which shows the same page.
 
-## Unreleased
-
-On hippomaps.ch since 1.3.0.
+## 1.4.0 (2026-11-14)
 
 ### Added
 
+- Android: a compass. A cone at the dot of the location shows where the phone points; with the map on the location,
+  the location button turns the map with the phone, and tapped again puts north up.
 - Counts of visits that last over restarts (`STATS_DIR`): per day the page loads, the visitors and the sites they came
   from, with no cookie and no address kept; `hippomaps stats` prints them. The privacy page says so.
 - Public transport in directions (Transit), across Europe: the connections by train, tram, metro, bus,
