@@ -25,7 +25,8 @@ directions in their field, the panel at the height of its state when the keyboar
 (speed cameras in the Netherlands, none in Switzerland, stop signs in Berkeley) drawn beside it; the search box without the
 focus at the start on a phone, with it on a computer (no list until a click); a place written in the search moved to the
 destination by Directions; the dot of the location and the map on it following the visitor; a route on a small phone with
-car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; fewer places at the middle zooms; the start: what the search reads with two searches, and searches of the map view (a river of
+car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; the popup of a POI (under the
+mouse, clicked, tapped on a phone); the picture and menu of a restaurant from its website (its page, its card when found by name); fewer places at the middle zooms; the start: what the search reads with two searches, and searches of the map view (a river of
 Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start); the map
 on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; the compass of
 the app for Android (a stand-in): the cone at the dot, the map turning with the phone from the button of the location and on the dot as it moves,
@@ -50,6 +51,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 
 import websocket
@@ -1426,6 +1428,52 @@ try:
     m14, m15 = middle(14.5), middle(15.5)
     check(m14["n"] > 3 and m14["top"] <= 15 and m15["n"] > 3 and m15["top"] <= 16 and m14["gap"] and m15["gap"] and m15["alone"],
           f"the middle zooms are not full of places: zoom 14.5 {m14}, zoom 15.5 {m15}")
+    # the popup of a POI: the mouse on it, its name and kind above it, the pointer a hand; off it, gone; a click, the popup
+    # above the pin and the page of the place (one popup with the mouse still on it); the X of the card, gone
+    # (directions closed first: there a click on the map sets the start or the destination)
+    js("document.querySelector('.lm-route:not([hidden]) > .lm-back')?.click()")
+    wait("document.querySelector('.lm-route').hidden", 5)
+    POP_LAYERS = "['pois', 'pois_more', 'lm-pois-near', 'lm-pois-more', 'lm-pois-late']"
+    # a named POI near the middle of the map, alone under a point of the page
+    poi_near_mid = ("(() => { const c = hmMap.getCanvas().getBoundingClientRect(), ls = %s.filter((l) => hmMap.getLayer(l));"
+                    " const fs = hmMap.queryRenderedFeatures({ layers: ls }).filter((f) => f.properties.name && f.geometry.type === 'Point')"
+                    "  .map((f) => { const p = hmMap.project(f.geometry.coordinates); return { name: f.properties.name, x: p.x, y: p.y }; })"
+                    "  .filter((f) => f.x > 80 && f.y > 160 && f.x < c.width - 80 && f.y < c.height - 80)"
+                    "  .filter((f) => hmMap.queryRenderedFeatures([[f.x - 3, f.y - 3], [f.x + 3, f.y + 3]], { layers: ls }).find((g) => g.properties.name)?.properties.name === f.name)"
+                    "  .sort((a, b) => Math.hypot(a.x - c.width / 2, a.y - c.height / 2) - Math.hypot(b.x - c.width / 2, b.y - c.height / 2));"
+                    " return fs[0] ? { name: fs[0].name, px: c.left + fs[0].x, py: c.top + fs[0].y } : null; })()") % POP_LAYERS
+    hover_pop, tap_pop = "document.querySelector('.lm-poi-popup.lm-poi-hover')", "document.querySelector('.lm-poi-popup:not(.lm-poi-hover)')"
+    pop_box = "(() => { const b = %s?.getBoundingClientRect(); return b ? [b.left, b.right, b.bottom] : null; })()"
+    def pointer(x, y, click=False):
+        call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y)
+        if click:
+            for t in ("mousePressed", "mouseReleased"):
+                call("Input.dispatchMouseEvent", type=t, x=x, y=y, button="left", clickCount=1)
+    js("hmMap.jumpTo({ center: [8.54235, 47.37185], zoom: 18, pitch: 0, bearing: 0 })")
+    time.sleep(1)
+    wait("hmMap.loaded() && !hmMap.isMoving() && hmMap.areTilesLoaded()", 20)
+    time.sleep(1)
+    pp = js(poi_near_mid)
+    if pp:
+        name = json.dumps(pp["name"])
+        pointer(pp["px"] - 40, pp["py"] + 40)
+        pointer(pp["px"], pp["py"])
+        shown = wait(f"{hover_pop}?.querySelector('strong')?.textContent === {name}", 5)
+        b = js(pop_box % hover_pop)
+        check(shown and js(f"!!{hover_pop}.querySelector('.lm-poi-pop-sub')?.textContent") and js("hmMap.getCanvas().style.cursor === 'pointer'")
+              and b and b[2] <= pp["py"] - 4 and b[0] < pp["px"] < b[1],
+              f"the mouse on a POI: a popup above it with its name and kind, the pointer a hand ({pp['name']}, {b})")
+        pointer(pp["px"], pp["py"] + 400 if pp["py"] < 380 else pp["py"] - 140)
+        check(wait(f"!{hover_pop} || {hover_pop}.querySelector('strong')?.textContent !== {name}", 3), "the mouse off the POI: its popup goes")
+        pointer(pp["px"], pp["py"], click=True)
+        b = wait(f"{tap_pop}?.querySelector('strong')?.textContent === {name}", 5) and js(pop_box % tap_pop)
+        check(b and b[2] <= pp["py"] - 36 and wait(f"!document.querySelector('.lm-detail').hidden || !document.querySelector('.lm-here').hidden", 20)
+              and js("document.querySelectorAll('.lm-poi-popup').length === 1"),
+              f"a click on the POI: its popup above the pin, its page in the panel, one popup with the mouse still on it ({b})")
+        js("document.querySelector('.lm-detail:not([hidden]) .lm-card-x, .lm-here:not([hidden]) .lm-card-x')?.click()")
+        check(wait(f"!{tap_pop}", 3), "the X of the page of the POI: its popup goes")
+    else:
+        check(False, "a POI with a name in Zurich at zoom 18 for its popup")
     js("document.querySelector('.lm-style[data-style=auto]').click()")
     js("localStorage.removeItem('hm-recent')")
     call("Page.removeScriptToEvaluateOnNewDocument", identifier=mouse.get("identifier", ""))
@@ -1441,6 +1489,42 @@ try:
         return f"(() => {{ const c = {expr}; return !!c && Math.hypot((c[1] - {lat}) * 111320, (c[0] - {lon}) * 75000) < {m}; }})()"
     me_dot = "hmMap.getStyle().sources['lm-me'].data.features[1]?.geometry.coordinates"
     map_mid = "hmMap.getCenter().toArray()"
+    # on a phone a tap on a POI: its popup above the pin, within the screen, none under a finger alone
+    fresh(URL)
+    js("hmMap.jumpTo({ center: [8.54235, 47.37185], zoom: 18, pitch: 0, bearing: 0 })")
+    time.sleep(1)
+    wait("hmMap.loaded() && !hmMap.isMoving() && hmMap.areTilesLoaded()", 20)
+    time.sleep(1)
+    pp = js(poi_near_mid)
+    if pp:
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": pp["px"], "y": pp["py"]}])
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+        shown = wait(f"{tap_pop}?.querySelector('strong')?.textContent === {json.dumps(pp['name'])}", 5)
+        wait("!document.querySelector('.lm-detail').hidden || !document.querySelector('.lm-here').hidden", 20)
+        time.sleep(1)
+        b = js(pop_box % tap_pop)
+        check(shown and b and b[0] >= 0 and b[1] <= js("innerWidth") and js(f"!{hover_pop}"),
+              f"on a phone a tap on a POI: its popup within the screen, no popup of a mouse ({pp['name']}, {b})")
+        js("document.querySelector('.lm-detail:not([hidden]) .lm-card-x, .lm-here:not([hidden]) .lm-card-x')?.click()")
+    else:
+        check(False, "a POI with a name in Zurich at zoom 18 on a phone")
+    # more about a place from its website and free pictures near it (data-place): the page of Ristorante Italia (Zurich) shows
+    # what the server answers (the site may change): its picture with its source linked, Menu after Website; found by its
+    # name, the same on its card
+    if js("!!document.getElementById('app').dataset.place"):
+        ans = json.loads(js("fetch(document.getElementById('app').dataset.place + '?osm=node/327453260&pic=1').then((r) => r.text())") or "{}")
+        fresh(URL + "/?q=restaurants&sel=node%2F327453260#map=18/47.37637/8.52929", "window.hmMap?.loaded() && !document.querySelector('.lm-detail').hidden")
+        pic = ans.get("picture")
+        shown = wait("document.querySelector('.lm-detail .lm-pic:not([hidden]) img')?.naturalWidth > 0", 20) if pic else True
+        link = js("document.querySelector('.lm-detail .lm-pic:not([hidden]) figcaption a')?.href || ''")
+        menu = js("document.querySelector('.lm-detail [data-t=foodMenu]')?.closest('a')?.href || ''")
+        after = js("document.querySelector('.lm-detail [data-t=foodMenu]')?.closest('a')?.previousElementSibling?.textContent.trim() || ''")
+        check(shown and (not pic or link == pic["page"]) and menu == ans.get("menu", "") and (not menu or after == "Website"),
+              f"the page of a restaurant: the picture and menu of its website, or near it ({ans.get('site')}, {pic and pic['source']}, {menu or 'no menu'})")
+        fresh(URL + "/?q=" + urllib.parse.quote("Ristorante Italia Zürich") + "#map=16/47.3763/8.5293", "window.hmMap?.loaded() && document.querySelector('.lm-place-acts')?.children.length >= 2")
+        card = wait("document.querySelector('.lm-place-pic:not([hidden]) img')?.naturalWidth > 0", 20) if pic else True
+        acts = js("[...document.querySelectorAll('.lm-place-acts > *')].map((e) => e.textContent.trim()).join('|')") or ""
+        check(card and "Website" in acts and ("Menu" in acts) == bool(ans.get("menu")), f"a restaurant found by its name: its picture, Website and menu on its card ({acts})")
     panel = ("JSON.stringify([!document.querySelector('.lm-listview').hidden, !document.querySelector('.lm-detail').hidden, !document.querySelector('.lm-start').hidden,"
              " document.querySelector('.lm-input').value, location.search, document.querySelectorAll('.lm-listview .lm-results .lm-card').length])")
 

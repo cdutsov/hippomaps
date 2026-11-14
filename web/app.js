@@ -14,6 +14,9 @@ const side = root.querySelector(".lm-side");
 const mapEl = root.querySelector(".lm-map");
 const API = root.dataset.api.replace(/\/$/, "");
 const PICTURES = root.dataset.pictures || "";
+// more about a place for its page (data-place): a picture, the menu and opening hours from its website, free pictures near
+// it, when OpenStreetMap does not have them; looked up by the server
+const PLACE = root.dataset.place || "";
 const ROUTE = root.dataset.route || "";
 const ALONG = (ROUTE && root.dataset.along) || ""; // places along a route (Overpass, through this server)
 // journeys by public transport, the mode Transit of directions (MOTIS, through this server), and where it has
@@ -257,8 +260,12 @@ const EN = {
   allTags: "All tags",
   photo: "Photo",
   logo: "Logo",
+  fromSite: (site) => `from ${site}`,
   menu: "Menu",
   closeMenu: "Close the menu",
+  // the menu of a restaurant: after the menu of the page, which keeps the word on a change of language (setLang writes this
+  // one again by its key, data-t)
+  foodMenu: "Menu",
   mapStyle: "Map style",
   show: "Show",
   buildings3D: "3D buildings",
@@ -316,6 +323,7 @@ const ICON = {
   map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
   wheel: "M12 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM11 8v6h5l2 5M8 11a5 5 0 1 0 6 7",
   book: "M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4zM5 16a4 4 0 0 1 4-4h10",
+  dish: "M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 21V3c-2.2 1.2-3 4.2-3 8h3",
   burger: "M4 7h16M4 12h16M4 17h16",
   locate: "M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3",
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
@@ -747,7 +755,11 @@ const routeView = el("section", "lm-route");
 routeView.hidden = true;
 body.append(listView, hereView, detailView, routeView);
 // show one of the views of the side bar: the list, what is here, the page of a place, directions
+// the popups of places on the map (made when first shown, showPop): of the place tapped (tap) and of that under the mouse
+// (hover); key: the name and place of what they show
+const pops = { tap: { pop: null, key: "", f: null, tile: null }, hover: { pop: null, key: "", f: null, tile: null } };
 const showView = (v) => {
+  if (v !== detailView && v !== hereView) hidePop("tap"); // it belongs to the page of the place or the point tapped
   if (v !== routeView && !routeView.hidden && !route.keep) routeDone(); // a point looked at from the route keeps it
   if (v !== hereView) route.keep = false;
   listView.hidden = v !== listView;
@@ -3292,13 +3304,21 @@ function show(d, sel) {
     const id = place.properties.id;
     if (PICTURES && /^relation\/\d+$/.test(id || "")) {
       picture({}, 500, id).then((pic) => {
-        if (!pic || state.answer !== d) return;
-        placePic.hidden = false;
-        placePic.append(el("img", "", { src: pic.url, alt: place.properties.name || "" }));
-        const cap = el("figcaption");
-        cap.append(`${T.photo}${pic.credit ? `: ${pic.credit}` : ""} · `);
-        cap.append(el("a", "", { href: pic.page, target: "_blank", rel: "noopener" }, "Wikimedia Commons"));
-        placePic.append(cap);
+        if (pic && state.answer === d) fillPic(placePic, { ...pic, kind: "photo" }, place.properties.name || "");
+      });
+    } else if (PLACE && /^(node|way)\/\d+$/.test(id || "")) {
+      // a place found by its name (a restaurant, a shop): its picture, its website and menu (data-place)
+      placeExtras(id, true).then((x) => {
+        if (!x || state.answer !== d) return;
+        if (x.picture) fillPic(placePic, x.picture, place.properties.name || "");
+        const link = (label, href, icon, key = "") => {
+          const a = el("a", "lm-action", { href, target: "_blank", rel: "noopener nofollow" });
+          a.innerHTML = svg(icon, 18);
+          a.append(el("span", "", key ? { "data-t": key } : {}, label));
+          placeActs.append(a);
+        };
+        if (safeURL(x.web)) link(T.website, safeURL(x.web), ICON.globe);
+        if (x.menu) link(T.foodMenu, x.menu, ICON.dish, "foodMenu");
       });
     }
     return;
@@ -3456,6 +3476,28 @@ function picture(t, w, osm) {
   }
   return pictures.get(key);
 }
+// placeExtras: the answer of data-place for a place (pic: with a picture), asked once per page; null when it failed (asked
+// again next time)
+const extrasOf = new Map();
+function placeExtras(id, pic) {
+  const key = `${id}|${pic ? 1 : 0}`;
+  if (!extrasOf.has(key)) {
+    extrasOf.set(key, fetch(`${PLACE}?${new URLSearchParams({ osm: id, pic: pic ? "1" : "0" })}`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      .then((x) => { if (!x) extrasOf.delete(key); return x; }));
+  }
+  return extrasOf.get(key);
+}
+// fillPic shows a picture in a figure with its credit and its source linked (Wikimedia Commons, Panoramax, a website)
+function fillPic(fig, pic, alt) {
+  fig.hidden = false;
+  fig.classList.toggle("lm-pic-logo", pic.kind === "logo");
+  fig.append(el("img", "", { src: pic.url, alt }));
+  const cap = el("figcaption");
+  cap.append(`${pic.kind === "logo" ? T.logo : T.photo}${pic.credit ? `: ${pic.credit}` : ""} · `);
+  cap.append(el("a", "", { href: pic.page, target: "_blank", rel: "noopener nofollow" }, pic.source || "Wikimedia Commons"));
+  fig.append(cap);
+}
 const seen = new IntersectionObserver((entries) => {
   for (const e of entries) {
     if (!e.isIntersecting) continue;
@@ -3568,7 +3610,8 @@ function showList() {
   if (state.from === "here" && state.herePoint) setSource("pin", one({ type: "Feature", geometry: { type: "Point", coordinates: state.herePoint.ll }, properties: {} }));
   showView(state.from === "here" ? hereView : listView);
 }
-function select(f, { push = true, fly = true, from = null } = {}) {
+function select(f, { push = true, fly = true, from = null, keepPop = false } = {}) {
+  if (!keepPop) hidePop("tap");
   state.selected = f;
   setSource("selected", one(f));
   if (push) {
@@ -3601,19 +3644,25 @@ function renderDetail(f) {
   detailView.append(back, closeX());
   const fig = el("figure", "lm-pic"); // under the buttons: a picture arriving late does not move them
   fig.hidden = true;
+  // the picture: of Wikimedia when the tags name one, else what the server finds (data-place: a photo of Commons that
+  // names the place, the picture of its website, one of Panoramax looking at it, the logo of its website), with its
+  // source linked: Wikimedia Commons, Panoramax, or the website
+  const showPic = (pic) => {
+    if (pic && state.selected === f && fig.hidden) fillPic(fig, pic, p.name || "");
+  };
+  const web = safeURL(t.website || t["contact:website"]);
+  const osmId = PLACE && /^(node|way|relation)\/\d+$/.test(p.id || "") ? p.id : "";
+  let extrasDone = false;
+  const extras = (x) => { // the menu and the opening hours of the website, once
+    if (!x || extrasDone || state.selected !== f) return;
+    extrasDone = true;
+    placeMore(x);
+  };
+  const picOf = (x) => { showPic(x?.picture); extras(x); };
   if (hasPicture(t)) {
-    picture(t, 500).then((pic) => {
-      if (!pic || state.selected !== f) return;
-      fig.hidden = false;
-      fig.classList.toggle("lm-pic-logo", pic.kind === "logo");
-      fig.append(el("img", "", { src: pic.url, alt: p.name || "" }));
-      const cap = el("figcaption");
-      cap.append(`${pic.kind === "logo" ? T.logo : T.photo}${pic.credit ? `: ${pic.credit}` : ""} · `);
-      const a = el("a", "", { href: pic.page, target: "_blank", rel: "noopener" }, "Wikimedia Commons");
-      cap.append(a);
-      fig.append(cap);
-    });
-  }
+    picture(t, 500).then((pic) => (pic ? showPic(pic) : osmId && placeExtras(osmId, true).then(picOf)));
+    if (osmId && web) placeExtras(osmId, false).then(extras);
+  } else if (osmId) placeExtras(osmId, true).then(picOf);
   detailView.append(el("h2", "lm-dname", {}, p.name || T.noName));
   const sub = [k.label, t.brand && t.brand !== p.name ? t.brand : "", t.cuisine ? human(t.cuisine.split(";").join(", ")) : ""].filter(Boolean).join(" · ");
   if (sub) detailView.append(el("p", "lm-dsub", {}, sub));
@@ -3625,11 +3674,12 @@ function renderDetail(f) {
 
   const c = center(f);
   const actions = el("div", "lm-actions");
-  const action = (label, href, icon) => {
+  const action = (label, href, icon, after = null, key = "") => {
     const a = el("a", "lm-action", { href, target: "_blank", rel: "noopener nofollow" });
     a.innerHTML = svg(icon, 18);
-    a.append(el("span", "", {}, label));
-    actions.append(a);
+    a.append(el("span", "", key ? { "data-t": key } : {}, label));
+    if (after) after.after(a); else actions.append(a);
+    return a;
   };
   if (c && ROUTE) actions.append(routeButton(() => directions({ ll: c, label: p.name || kindOf(p).label || T.noName })));
   else if (c) {
@@ -3638,8 +3688,7 @@ function renderDetail(f) {
   }
   if (c) actions.append(starButton({ ll: c, name: p.name || kindOf(p).label || T.noName, detail: kindOf(p).label }));
   if (c) actions.append(shareButton(() => ({ title: p.name || kindOf(p).label || "hippomaps", url: location.href.includes("sel=") ? location.href : pointLink(c, p.name) })));
-  const web = safeURL(t.website || t["contact:website"]);
-  if (web) action(T.website, web, ICON.globe);
+  const webAction = web ? action(T.website, web, ICON.globe) : null;
   const phone = (t.phone || t["contact:phone"] || "").split(";")[0].trim();
   if (phone) action(T.call, `tel:${phone.replace(/[^+\d]/g, "")}`, ICON.phone);
   if (/^(node|way|relation)\/\d+$/.test(p.id || "")) action(T.osm, `https://www.openstreetmap.org/${p.id}`, ICON.map);
@@ -3671,6 +3720,36 @@ function renderDetail(f) {
   const wp = /^([a-z-]{2,12}):(.+)$/.exec(t.wikipedia || "");
   if (wp) row(ICON.book, el("a", "", { href: `https://${wp[1]}.wikipedia.org/wiki/${encodeURIComponent(wp[2].replace(/ /g, "_"))}`, target: "_blank", rel: "noopener" }, `Wikipedia: ${wp[2]}`));
   if (rows.children.length) detailView.append(rows);
+  // from the website (data-place, arriving late): the menu after Website (later buttons move along, nothing moves down);
+  // its opening hours when the place has none, with where they come from
+  const placeMore = (x) => {
+    if (x.menu) action(T.foodMenu, x.menu, ICON.dish, webAction, "foodMenu");
+    if (!x.hours || p.opening_hours) return;
+    const show = () => {
+      if (state.selected !== f) return;
+      const oh = hoursOf({ ...f, properties: { ...p, id: `${p.id}#site`, opening_hours: x.hours } });
+      if (oh) {
+        let st = null;
+        try { st = stateText(oh); } catch {}
+        if (st) (detailView.querySelector(".lm-dsub") || detailView.querySelector(".lm-dname")).after(el("p", `lm-dstate ${st.open ? "lm-open" : "lm-closed"}`, {}, st.text));
+      }
+      const box = el("span", "lm-hours");
+      let text = x.hours;
+      try { if (oh) text = oh.prettifyValue({ conf: { locale: "en" } }); } catch {}
+      for (const part of text.split(/\s*;\s*/)) box.append(el("span", "", {}, part));
+      box.append(el("span", "lm-hours-src", {}, T.fromSite(x.site)));
+      const li = el("li", "lm-site-hours");
+      const i = el("span", "lm-row-icon");
+      i.innerHTML = svg(ICON.clock, 18);
+      li.append(i, box);
+      rows.insertBefore(li, rows.children[addr ? 1 : 0] || null);
+      if (!rows.isConnected) {
+        const tags = detailView.querySelector(".lm-tags");
+        if (tags) tags.before(rows); else detailView.append(rows);
+      }
+    };
+    if (OH) show(); else loadHours().then(show);
+  };
 
   const keys = Object.keys(t);
   if (keys.length) {
@@ -3700,6 +3779,7 @@ map.on("click", (e) => {
   tapTimer = setTimeout(() => onTap(e), 280);
 });
 function onTap(e) {
+  hidePop("tap");
   if (trafficAt(e)) return;
   if (!nav.on && routeView.hidden && transitAt(e)) return;
   if (!nav.on && routeView.hidden && map.getLayer("lm-stars")) { // a starred place
@@ -3730,12 +3810,15 @@ function onTap(e) {
     return setFrom(p);
   }
   const fromRoute = !routeView.hidden || route.keep; // the place's card goes back to the route
-  if (hit) select(hit, { fly: false });
-  else {
+  if (hit) {
+    select(hit, { fly: false });
+    tapPop(hit, null);
+  } else {
     // a name of the map tapped (or just beside it): the point is the place of that name, not where the finger was,
     // so the pin stands on it and not next to it
     const sym = symbolPoint(e.point);
     here(sym ? { lng: sym.ll[0], lat: sym.ll[1] } : e.lngLat, sym?.name || "", fromRoute);
+    tapPop(null, sym);
   }
   keepInView(e.lngLat);
 }
@@ -3765,15 +3848,150 @@ function resultAt(pt) {
   }
   return bestD <= r * 1.42 ? best : null;
 }
-// symbolAt is the name of a symbol of the map (a shop, a stop) under a point
-function symbolPoint(pt) {
-  const layers = (map.getStyle()?.layers || []).filter((l) => l.type === "symbol" && /poi|pois/i.test(l.id)).map((l) => l.id);
-  const f = layers.length ? map.queryRenderedFeatures([[pt.x - 6, pt.y - 6], [pt.x + 6, pt.y + 6]], { layers })[0] : null;
-  const name = f?.properties?.name || "";
-  return name ? { name, ll: f.geometry.type === "Point" ? f.geometry.coordinates : map.unproject(pt).toArray() } : null;
+// the layers of the POIs of the map (of the style and ours), known again after each change of the style: getStyle
+// copies the whole style, too slow for every move of the mouse
+let poiLayerIds = null;
+map.on("styledata", () => { poiLayerIds = null; });
+const poiLayers = () => {
+  if (!poiLayerIds?.length) poiLayerIds = (map.getStyle()?.layers || []).filter((l) => l.type === "symbol" && /poi|pois/i.test(l.id)).map((l) => l.id);
+  return poiLayerIds.filter((l) => map.getLayer(l));
+};
+// symbolAt is the name of a symbol of the map (a shop, a stop) under a point; symbolPoint the symbol with its place,
+// its kind and the detail of its kind (kind_detail of the tiles: "christian" of a church)
+function symbolPoint(pt, r = 6) {
+  const layers = poiLayers();
+  const f = layers.length ? map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers }).find((x) => x.properties?.name) : null;
+  if (!f) return null;
+  const p = f.properties;
+  return { name: p.name, kind: p.kind || "", detail: p.kind_detail || "", ll: f.geometry.type === "Point" ? f.geometry.coordinates : map.unproject(pt).toArray() };
 }
 const symbolAt = (pt) => symbolPoint(pt)?.name || "";
+
+// ------------------------------------------------------------------ the popup of a place on the map
+// A POI of the map or a result tapped: a popup above it with its name and kind and, once its page is there, whether it
+// is open now and its address. With a mouse the same while the pointer is on a POI or on the point of a result (an area
+// of the results lights up its card in the list instead). A POI of the tiles carries only a name and a kind (the value
+// of a tag): the name of its kind in the language of the page comes from data-kinds; a place the page already has (of a
+// search, or of the places around a tap: state.byId) by that name, close by, gives the rest.
+const KINDS = root.dataset.kinds || "";
+let kindNames = { lang: "", names: null }, kindsLoading = null;
+function loadKinds() {
+  if (!KINDS || kindNames.lang === UI) return Promise.resolve();
+  const lang = UI;
+  return (kindsLoading ||= fetch(`${KINDS}?lang=${lang}`).then((r) => (r.ok ? r.json() : null))
+    .then((names) => { if (names) kindNames = { lang, names }; }).catch(() => {}).finally(() => { kindsLoading = null; }));
+}
+// the name of the kind of a POI of the tiles: that of its detail first ("Christian Church"); not known, the value in
+// English, nothing in another language
+const tileKind = (kind, detail) => {
+  const n = kindNames.lang === UI ? kindNames.names : null;
+  return (n && ((detail && n[`${kind}/${detail}`]) || n[kind])) || (UI === "en" ? human(kind) : "");
+};
+// knownPlace: the place the page has with the name of a POI of the tiles, the closest within 60 m of it
+function knownPlace(name, ll) {
+  const n = fold(name);
+  let best = null, bestD = 0.06;
+  for (const f of state.byId.values()) {
+    const pn = f.properties?.name;
+    if (!pn || (pn !== name && fold(pn) !== n)) continue;
+    const c = center(f), d = c ? km(c, ll) : Infinity;
+    if (d < bestD) { best = f; bestD = d; }
+  }
+  return best;
+}
+// popInfo: the lines of a popup, of a place (f) or else of a POI of the tiles (tile)
+function popInfo(f, tile) {
+  if (!f) return { name: tile.name, sub: tileKind(tile.kind, tile.detail), state: null, addr: "" };
+  const p = f.properties, t = tagsOf(p), k = kindOf(p);
+  const oh = hoursOf(f);
+  let st = null;
+  try { st = oh ? stateText(oh) : null; } catch {}
+  return { name: p.name || k.label || T.noName, sub: [p.name ? k.label : "", t.cuisine ? human(t.cuisine.split(";").join(", ")) : ""].filter(Boolean).join(" · "),
+    state: st, addr: addressOf(t) };
+}
+function popBox(info) {
+  const box = el("div", "lm-poi-pop");
+  box.append(el("strong", "", {}, info.name));
+  if (info.sub) box.append(el("span", "lm-poi-pop-sub", {}, info.sub));
+  if (info.state) box.append(el("span", `lm-poi-pop-state ${info.state.open ? "lm-open" : "lm-closed"}`, {}, info.state.text));
+  if (info.addr) box.append(el("span", "lm-poi-pop-addr", {}, info.addr));
+  return box;
+}
+const POP = { closeButton: false, closeOnClick: false, closeOnMove: false, maxWidth: "260px", focusAfterOpen: false };
+// the offset of a popup from its place on each side it may take (maplibre takes the side that fits in the map): above by
+// h (a pin, an icon), below close (a pin stands above the point), beside half way up
+const popOffset = (h) => ({ bottom: [0, -h], "bottom-left": [0, -h], "bottom-right": [0, -h], top: [0, 6], "top-left": [0, 6], "top-right": [0, 6],
+  left: [12, -h / 2], right: [-12, -h / 2] });
+const popKey = (name, ll) => `${fold(name || "")}|${ll[0].toFixed(5)},${ll[1].toFixed(5)}`;
+const drawPop = (s) => s.pop.setDOMContent(popBox(popInfo(s.f, s.tile)));
+// showPop puts a popup above a place: a point tapped has the pin (42 px high) under it, the rest a dot or an icon
+function showPop(which, ll, f, tile) {
+  const s = pops[which];
+  s.pop ||= new maplibregl.Popup({ ...POP, className: which === "hover" ? "lm-poi-popup lm-poi-hover" : "lm-poi-popup" });
+  Object.assign(s, { f, tile, key: popKey(f && !tile ? f.properties.name : tile.name, ll) });
+  const pinned = which === "tap" && (!f || f.geometry.type === "Point");
+  s.pop.setOffset(popOffset(pinned ? 44 : 12)).setLngLat(ll);
+  drawPop(s);
+  if (!s.pop.isOpen()) s.pop.addTo(map);
+  if (which === "tap") hidePop("hover"); // the place clicked, under the mouse: one popup
+  const again = () => { if (s.f === f && s.tile === tile && s.pop.isOpen()) drawPop(s); };
+  if (!f) loadKinds().then(again);
+  else if (f.properties.opening_hours && !OH) loadHours().then(again);
+}
+// the place of the POI tapped, once the page has it (its page opened): the popup shows it
+function popPlace(f) {
+  const s = pops.tap;
+  if (!s.pop?.isOpen() || !s.tile || fold(s.tile.name) !== fold(f.properties.name || "")) return;
+  s.f = f;
+  drawPop(s);
+  if (f.properties.opening_hours && !OH) loadHours().then(() => { if (s.f === f && s.pop.isOpen()) drawPop(s); });
+}
+function hidePop(which) {
+  const s = pops[which];
+  if (!s.key) return;
+  Object.assign(s, { key: "", f: null, tile: null });
+  s.pop.remove();
+}
+// tapPop: the popup of a tap at a point: of the result hit, else of the POI of the tiles there (sym)
+function tapPop(hit, sym) {
+  if (hit) showPop("tap", center(hit), hit, null);
+  else if (sym) showPop("tap", sym.ll, knownPlace(sym.name, sym.ll), sym);
+}
+// with a mouse: what is under the pointer, once a frame
+const mouse = matchMedia("(hover: hover) and (pointer: fine)");
+let hoverPt = null, hoverFrame = 0, poiCursor = false;
+const setPoiCursor = (on) => {
+  const c = map.getCanvas().style;
+  if (on && !c.cursor) c.cursor = "pointer";
+  else if (!on && poiCursor && c.cursor === "pointer") c.cursor = "";
+  poiCursor = on;
+};
+function hoverAt() {
+  hoverFrame = 0;
+  const pt = hoverPt;
+  if (!pt || !mouse.matches || nav.on || map.isMoving()) {
+    setPoiCursor(false);
+    return hidePop("hover");
+  }
+  let f = null, tile = null, ll = null, name = "";
+  const layers = ["lm-point", "lm-dot"].filter((l) => map.getLayer(l));
+  const r = layers.length ? map.queryRenderedFeatures([[pt.x - 8, pt.y - 8], [pt.x + 8, pt.y + 8]], { layers }).map((x) => state.byId.get(x.properties.id)).find(Boolean) : null;
+  if (r) { f = r; ll = center(r); name = r.properties.name; }
+  else if ((tile = symbolPoint(pt, 3))) { ll = tile.ll; name = tile.name; }
+  setPoiCursor(!!ll);
+  const key = ll && popKey(name, ll);
+  if (!key || key === pops.tap.key) return hidePop("hover"); // the place tapped has its popup
+  if (key !== pops.hover.key) showPop("hover", ll, f || knownPlace(tile.name, tile.ll), tile);
+}
+map.on("mousemove", (e) => {
+  hoverPt = e.point;
+  if (!hoverFrame) hoverFrame = requestAnimationFrame(hoverAt);
+});
+map.on("mouseout", () => { hoverPt = null; setPoiCursor(false); hidePop("hover"); });
+map.on("movestart", () => hidePop("hover"));
+map.on("moveend", () => { if (hoverPt && !hoverFrame) hoverFrame = requestAnimationFrame(hoverAt); }); // the mouse resting on a POI
 function hereDone() {
+  hidePop("tap");
   hereCtl?.abort();
   state.herePoint = null;
   setSource("pin", empty);
@@ -3912,7 +4130,8 @@ async function here(ll, symbol, backToRoute = false) {
   const hit = symbol && fs.find((f) => fold(f.properties.name || "") === fold(symbol));
   if (hit) {
     setSource("pin", empty); // one marker: that of the place
-    select(hit, { push: false, fly: false, from: "tap" }); // a name tapped: no lookup page to go back to
+    select(hit, { push: false, fly: false, from: "tap", keepPop: true }); // a name tapped: no lookup page to go back to
+    popPlace(hit);
   }
 }
 
@@ -6463,6 +6682,7 @@ function setLang(chosen) {
   }
   // the labels that share a word with another in some language, by their key
   for (const b of bubbles.children) b.textContent = T.bubbles[b.dataset.n][1];
+  for (const e of document.querySelectorAll("[data-t]")) e.textContent = T[e.dataset.t];
   for (const c of document.querySelectorAll(".lm-along-cats [data-cat]")) c.textContent = T.alongCats[c.dataset.cat];
   fillAbout();
   privacyLink.href = privacyHref();

@@ -46,6 +46,12 @@ func newFake(t *testing.T) *fakeWikimedia {
 			default:
 				io.WriteString(w, `{"claims":{}}`)
 			}
+		case r.URL.Path == "/commons" && q.Get("list") == "geosearch": // files near a place (place_test.go)
+			if q.Get("gscoord") == "47.000000|8.000000" {
+				io.WriteString(w, `{"query":{"geosearch":[{"title":"File:Other building.jpg","dist":5},{"title":"File:Zürich - Zebra_Mode, front.jpg","dist":12}]}}`)
+				return
+			}
+			io.WriteString(w, `{"query":{"geosearch":[]}}`)
 		case r.URL.Path == "/commons":
 			file := strings.TrimPrefix(q.Get("titles"), "File:")
 			if file == "Missing.jpg" {

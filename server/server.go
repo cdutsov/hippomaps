@@ -49,6 +49,8 @@ type Config struct {
 	CommonsAPI    string        // https://commons.wikimedia.org/w/api.php
 	ThumbHosts    []string      // hosts of thumbnails: upload.wikimedia.org, thumb.wikimedia.org
 	UserAgent     string        // for Wikimedia, with a way to reach the operator
+	// PanoramaxAPI: the pictures of streets of Panoramax, for places without a picture (near.go); empty: none
+	PanoramaxAPI string
 
 	RoutingURL   string // Valhalla, for directions; empty: no directions
 	ElevationURL string // the elevation API of overpass.ch, for height profiles of routes by bike and on foot
@@ -92,7 +94,7 @@ func DefaultConfig() Config {
 		WikidataAPI: "https://www.wikidata.org/w/api.php", CommonsAPI: "https://commons.wikimedia.org/w/api.php",
 		ThumbHosts: []string{"upload.wikimedia.org", "thumb.wikimedia.org"}, UserAgent: "hippomaps (+https://gitlab.com/cdutsov/hippomaps)",
 		RoutesPerIP: 120, RouteWindow: 10 * time.Minute, ElevationURL: "https://api.overpass.ch", SaysPerIP: 600, SearchesPerIP: 100,
-		StripeAPI: "https://api.stripe.com", ServiceWorker: true, Log: slog.Default(),
+		StripeAPI: "https://api.stripe.com", ServiceWorker: true, PanoramaxAPI: "https://api.panoramax.xyz", Log: slog.Default(),
 	}
 }
 
@@ -143,6 +145,11 @@ type Server struct {
 	stats *stats // nil without StatsDir
 
 	donatesPerIP *window // checkouts of donations
+
+	siteClient  *http.Client // the websites of places and pictures of the web (site.go): public addresses only
+	places      *placeState  // more about places: answers and pictures kept (place.go)
+	placesPerIP *window
+	placeCalls  chan struct{} // places looked up at once
 }
 
 // New makes the server.
@@ -154,7 +161,8 @@ func New(cfg Config) *Server {
 		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4),
 		transitPerIP: newWindow(300, 10*time.Minute), transitCalls: make(chan struct{}, 2),
 		searchesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), queriesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), herePerIP: newWindow(3*cfg.SearchesPerIP, cfg.RouteWindow),
-		donatesPerIP: newWindow(10, 10*time.Minute)}
+		donatesPerIP: newWindow(10, 10*time.Minute), siteClient: newSiteClient(publicDial),
+		places: newPlaceState(), placesPerIP: placeWindow(cfg), placeCalls: make(chan struct{}, 4)}
 	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
 	s.cfg.TrafficURL = strings.TrimRight(cfg.TrafficURL, "/")
 	s.cfg.SearchUpstream = strings.TrimRight(cfg.SearchUpstream, "/")
@@ -205,6 +213,12 @@ func New(cfg Config) *Server {
 	if cfg.Pictures {
 		s.mux.HandleFunc("GET "+base+"/api/picture", s.picture)
 	}
+	if s.placeExtras() { // more about a place: its website, free pictures near it (place.go)
+		s.mux.HandleFunc("GET "+base+"/api/place", s.place)
+		s.mux.HandleFunc("GET "+base+"/api/place/picture", s.placePicture)
+	}
+	// the names of the kinds of POIs of the tiles, for their popups (kinds.go)
+	s.mux.HandleFunc("GET "+base+"/api/kinds", s.kinds)
 	if s.cfg.RoutingURL != "" {
 		s.mux.HandleFunc("GET "+base+"/api/route", s.route)
 	}
@@ -298,7 +312,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	s.stats.record(r, own)
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Place": s.placeExtras(), "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}

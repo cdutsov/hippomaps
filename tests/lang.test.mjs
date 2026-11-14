@@ -44,11 +44,12 @@ test("between any two languages only the labels written again by their key share
     if (from === to) continue;
     const told = [];
     const swap = textSwaps(T(from), T(to), (path, text) => told.push(`${path} "${text}"`));
-    assert.deepEqual(told.filter((x) => !/^(bubbles\.\d+\.1|alongCats\.\w+|trafficKinds\.closure) /.test(x)), [], `${from} to ${to}`);
+    assert.deepEqual(told.filter((x) => !/^(bubbles\.\d+\.1|alongCats\.\w+|trafficKinds\.closure|foodMenu) /.test(x)), [], `${from} to ${to}`);
     // the other label of each such word is one written again too: the swap gives it the first translation
     for (const x of told) {
       const text = x.slice(x.indexOf('"') + 1, -1), first = swap.get(text);
-      const owners = [...Object.values(T(to).alongCats), ...T(to).bubbles.map((b) => b[1]), T(to).closed];
+      // (the menu of the page keeps "Menu"; the menu of a restaurant, a label with data-t, is written again by its key)
+      const owners = [...Object.values(T(to).alongCats), ...T(to).bubbles.map((b) => b[1]), T(to).closed, T(to).menu];
       assert.ok(owners.includes(first), `${from} to ${to}: "${text}" first means ${first}`);
     }
   }
@@ -56,6 +57,7 @@ test("between any two languages only the labels written again by their key share
 test("the page writes the bubbles and the kinds along a route again by their key, and the hint of a field of directions in the language of now", () => {
   const body = cut("function setLang(", "\n}\n");
   assert.match(body, /for \(const b of bubbles\.children\) b\.textContent = T\.bubbles\[b\.dataset\.n\]\[1\];/);
+  assert.match(body, /querySelectorAll\("\[data-t\]"\)\) e\.textContent = T\[e\.dataset\.t\]/);
   assert.match(body, /\.lm-along-cats \[data-cat\]"\)\) c\.textContent = T\.alongCats\[c\.dataset\.cat\];/);
   assert.match(body, /end\?\.label === old\.mapPoint\) end\.label = T\.mapPoint/);
   const field = cut("function placeField(", "\n}\n");

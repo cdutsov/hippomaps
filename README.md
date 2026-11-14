@@ -38,7 +38,11 @@ navigation, on OpenStreetMap data.**
 - **Search** in plain words: "cafés in Zurich by the Limmat", "peaks over 4000 m in Valais". Once the map is zoomed or
   moved, the list shows the results in view
 - **Place pages**: photo or logo from Wikimedia Commons, opening hours with the next change, website, phone, wheelchair
-  access, Wikipedia, all tags
+  access, Wikipedia, all tags. Without a picture of Wikimedia: a photo on Commons taken there that names the place, the
+  picture its website shows when shared, a picture of Panoramax looking at it, or the logo of its website. The menu of a
+  restaurant, café or bar from its website; the opening hours of the website when OpenStreetMap has none
+- **Popups on the map**: the name, kind and, when known, the opening hours and address of a place tapped, and of a place
+  under the mouse on a computer
 - **What is here**: a tap on the map shows the address and the named places around it
 
 ### Directions and navigation
@@ -92,6 +96,7 @@ to other services:
 | [Piper](https://github.com/OHF-Voice/piper1-gpl) 1.5 or later behind `/say?lang=&text=`, a voice for each language of `sayLangs` (`server/say.go`) | spoken navigation (else the voices of the browser) | `TTS_URL` |
 | A traffic service with `/incidents.json` | live traffic | `TRAFFIC_URL` |
 | Wikidata and Wikimedia Commons | photos and logos | `PICTURES` |
+| The websites of places (their `website` tag, as robots.txt allows), Commons around a place, [Panoramax](https://panoramax.fr) | a picture, the menu and opening hours of a place without them in OpenStreetMap (`server/place.go`) | `PICTURES` and an Overpass API; `PANORAMAX_API` |
 | [DB-IP City Lite](https://db-ip.com/db/download/ip-to-city-lite) (MMDB file, monthly, CC BY 4.0) | the map opens at the town of the IP address of the visitor | `GEOIP_DB` |
 | `STATS_DIR` | | a directory on a volume for the counts of visits: `stats.json` with, for each day (UTC), the page loads, the visitors and the sites they came from (`Referer` host, or `?ref=name` in the link). No address and no cookie are written; a visitor is counted once a day by a hash with a salt of the day, in memory only. Bots, headless browsers and prefetches are not counted. `hippomaps stats [DAYS [DIR]]` prints the table (`docker exec hippomaps hippomaps stats`) |
 | `STATS_IGNORE` | | addresses and networks (comma separated) that are not counted: our own |
@@ -132,6 +137,7 @@ The Docker build runs `go vet` and the tests.
 | `STRIPE_KEY` | | a restricted key of Stripe with Checkout Sessions: Write, for donations (`server/donate.go`; needs `PUBLIC_URL` for the way back), server side only. The payment methods of the account but Klarna and Amazon Pay. 10 checkouts per visitor in 10 minutes |
 | `PICTURES` | `true` | photos and logos from Wikimedia |
 | `PICTURE_CACHE_MB` | `64` | memory for Wikimedia answers and thumbnails |
+| `PANORAMAX_API` | `https://api.panoramax.xyz` | pictures of streets for places without a picture; empty: none |
 | `PICTURES_PER_IP`, `ROUTES_PER_IP`, `SAYS_PER_IP`, `SEARCHES_PER_IP` | `600`, `120`, `600`, `100` | per visitor in 10 minutes (map taps: three times the searches; journeys by public transport count as directions) |
 | `USER_AGENT` | `hippomaps/<version> (+https://gitlab.com/cdutsov/hippomaps)` | for Wikimedia and the other services |
 
@@ -144,6 +150,9 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | | |
 |---|---|
 | `GET picture?wikidata=Q…&brand=Q…&commons=File:…&w=120` | thumbnail of the place photo, else the chain logo, with credit headers |
+| `GET place?osm=node/123&pic=1` | more about a place from its website and free pictures near it: `web`, `site`, `menu` (places to eat and drink), `hours` (when it has no `opening_hours`), with `pic=1` a `picture` (`url`, `kind`, `credit`, `source`, `page`). The server looks up the tags in Overpass and reads only the website they name, on public addresses, as robots.txt allows; kept a week |
+| `GET place/picture?osm=node/123` | that picture, written again by the server (500 px, no metadata) |
+| `GET kinds?lang=` | the names of the kinds of POIs of the map tiles (`supermarket`, `place_of_worship/christian`) in the language, for the popups |
 | `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=` | line, steps, stops, speed limits, lanes, traffic, tunnels, signs on the way (`marks`), height profile |
 | `GET journey?from=lat,lon&to=…&time=2026-11-13T08:00:00Z&arrive=1&page=&lang=` | connections by public transport around a time (now without `time`; `arrive=1`: there by then): legs with line, direction, tracks, stops, delays and their way; `earlier` and `later` are the `page` of the connections before and after; the way on foot when the ends are near |
 | `POST along` `{"line","cat","mode","lang"}` | places of a kind near a route, in route order |

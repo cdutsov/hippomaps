@@ -33,7 +33,7 @@ of your device and what the request needs:</p>
 <li>Directions: the points of the route (start, stops, destination) and the means of travel. If you choose your location as
 start, or navigation computes a new route on the way, your position is one of these points.</li>
 <li>Navigation: the sentences the app speaks (street names and distances), when the voice is on.</li>
-<li>Places: the identifiers of a place, to fetch its picture.</li>
+<li>Places: the identifiers of a place, to fetch its picture and what its website says (a picture, the menu, opening hours).</li>
 </ul>
 <p>When the page loads, our server looks up the approximate place of your IP address (usually the town) in a database on
 the server (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>), and the map opens there until your device tells
@@ -79,7 +79,8 @@ clauses.</li>
 <li><a href="https://overpass.ch">overpass.ch</a> (the same controller): map tiles, place search and heights. Its
 <a href="https://overpass.ch/legal/privacy">privacy policy</a> applies to these requests.</li>
 </ul>
-<p>Pictures of places come from Wikimedia Commons through our server: your device does not contact Wikimedia. Links to
+<p>Pictures of places come from Wikimedia Commons, Panoramax and the websites of the places through our server: your device
+contacts none of them. When you open the page of a place, our server reads its website; the website does not learn who asked. Links to
 OpenStreetMap open in your browser. We do not sell personal data and do not share it with anyone else unless the law
 requires it.</p>
 

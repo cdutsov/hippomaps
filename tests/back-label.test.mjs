@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 const src = readFileSync(new URL("../web/app.js", import.meta.url), "utf8");
 
 test("the card of a tapped name is selected with its own origin, not inferred from the lookup page", () => {
-  assert.match(src, /select\(hit, \{ push: false, fly: false, from: "tap" \}\)/);
+  assert.match(src, /select\(hit, \{ push: false, fly: false, from: "tap"(, [a-zA-Z]+: [a-z]+)* \}\)/);
   assert.match(src, /state\.from = from \|\| \(hereView\.hidden \? "list" : "here"\)/);
 });
 

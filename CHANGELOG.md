@@ -3,6 +3,18 @@
 What changed in hippomaps, newest first. The site at https://hippomaps.ch runs the latest commit of `main`; the
 version numbers are the releases of the Android app (`android/`), which shows the same page.
 
+## Unreleased
+
+### Added
+
+- A popup above a place of the map when it is tapped or clicked, and on a computer while the mouse is on it: its name,
+  its kind and, once its page is there, whether it is open and its address.
+- More on the page of a place that OpenStreetMap does not have, looked up by the server: a picture (a photo on
+  Wikimedia Commons taken there that names the place, the picture its website shows when shared, a picture of
+  Panoramax looking at it, or the logo of the website), the menu of a restaurant, café or bar, and the opening hours of
+  the website when the place has none. The card of a place found by its name gets the picture, Website and Menu. The
+  privacy and licences pages say so.
+
 ## 1.4.1 (2026-11-14)
 
 ### Added

@@ -115,6 +115,28 @@ case $code in
 *) ko "the logo: HTTP $code" ;;
 esac
 
+echo "More about places"
+if grep -q "data-place=" "$TMP/page"; then
+	origin=$(sed -E 's#^(https?://[^/]+).*#\1#' <<<"$PAGE")
+	code=$(get "$PAGE/api/place?osm=foo/1")
+	[[ $code == 400 ]] && ok "a bad place: 400" || ko "a bad place: HTTP $code"
+	# a restaurant in Zurich with a website (Ristorante Italia): the website read, a picture of it (its site, Commons or
+	# Panoramax), its menu when the site still links one
+	code=$(get "$PAGE/api/place?osm=node/327453260&pic=1")
+	site=$(jq -r '.site // empty' "$TMP/b" 2>/dev/null)
+	pic=$(jq -r '.picture.url // empty' "$TMP/b" 2>/dev/null)
+	menu=$(jq -r '.menu // "no menu"' "$TMP/b" 2>/dev/null)
+	if [[ $code == 200 && -n $site && -n $pic ]]; then
+		ok "a restaurant: its website read ($site, $menu)"
+		code=$(get "$origin$pic")
+		[[ $code == 200 && $(hdr Content-Type) == image/* && $(hdr X-Content-Type-Options) == nosniff ]] && ok "its picture ($(hdr Content-Type))" || ko "its picture: HTTP $code $(hdr Content-Type)"
+	elif [[ $code == 200 ]]; then
+		echo "  SKIP  the website of the restaurant gave nothing now ($(head -c 200 "$TMP/b"))"
+	else
+		ko "a restaurant: HTTP $code"
+	fi
+fi
+
 echo "Directions"
 if grep -q "data-route=" "$TMP/page"; then
 	code=$(get "$PAGE/api/route?from=47.3779,8.5403&to=91,7&mode=car")
