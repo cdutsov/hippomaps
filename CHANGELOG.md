@@ -21,6 +21,11 @@ version numbers are the releases of the Android app (`android/`), which shows th
   Start navigates it. Their times count live traffic and closures, as that of the route does. None with stops on the
   way.
 
+### Fixed
+
+- A business or other place tapped on the map in directions: its page has Use as destination, Add as stop and Use as
+  start, as a point of the map has, and goes back to Directions; the route stays on the map meanwhile.
+
 ## 1.4.1 (2026-11-14)
 
 ### Added

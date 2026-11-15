@@ -34,7 +34,8 @@ north up again, a finger ending it, the page hidden a while and back, none in na
 virtual orientation sensor: flat, held up, tilted, landscape, from true north; Safari with a stand-in: asked from a tap, turning with its
 first heading, refused), none on a computer; a shared route with
 9 stops (the first 8), a stop removed; other routes by car (a row under Start, their times in pills on the map, one picked from the row and
-from a tap on its line; none with a stop); Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
+from a tap on its line; none with a stop); a business tapped in directions (its page back to Directions, as the
+destination, a stop or the start); Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
 coordinates in the search box; the POIs with a name in the Outdoor style; public transport (a shared journey from Zurich to
 Bern: its connections, the legs of the first, the rides and walks on the map, Later, an arrival by a time on the clocks of the
 journey, back to the car; a start without a timetable); and no errors
@@ -864,6 +865,40 @@ try:
             check(wait("document.querySelectorAll('.lm-alt')[0]?.getAttribute('aria-checked') === 'true'", 5), f"a tap on another route on the map shows it ({pt})")
         else:
             check(False, "the line of another route in view above the panel, away from the route")
+        # a business tapped in directions: its page has Directions to go back, and the place as the destination, a stop or
+        # the start; the route stays on the map. Use as start: the route from there
+        js("hmMap.jumpTo({ center: [8.5390, 47.3722], zoom: 17.5 })")
+        wait("hmMap.loaded() && !hmMap.isMoving() && hmMap.areTilesLoaded()", 20)
+        time.sleep(1)
+        cands = json.loads(js("""JSON.stringify((() => { const top = document.querySelector('.lm-side').getBoundingClientRect().top, c = hmMap.getCanvas().getBoundingClientRect();
+          const ls = hmMap.getStyle().layers.filter(l => /pois/.test(l.id) && l.type === 'symbol').map(l => l.id);
+          const avoid = ['lm-route-line', 'lm-route-alt-line', 'lm-route-alt-label'].filter(l => hmMap.getLayer(l)), seen = new Set();
+          return hmMap.queryRenderedFeatures({ layers: ls }).filter(f => f.properties.name && f.geometry.type === 'Point' && !seen.has(f.properties.name) && seen.add(f.properties.name))
+            .map(f => [f.properties.name, hmMap.project(f.geometry.coordinates)])
+            .filter(([, p]) => p.y > 120 && p.y + c.top < top - 40 && p.x > 40 && p.x < c.width - 90
+              && !hmMap.queryRenderedFeatures([[p.x - 30, p.y - 30], [p.x + 30, p.y + 30]], { layers: avoid }).length)
+            .slice(0, 6).map(([n, p]) => [n, p.x + c.left, p.y + c.top]); })())""") or "[]")
+        got = None
+        for name, x, y in cands:
+            time.sleep(0.6)  # (no double tap with the tap before)
+            call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y}])
+            call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+            if wait(f"!document.querySelector('.lm-detail').hidden && document.querySelector('.lm-detail .lm-dname')?.textContent === {json.dumps(name)}", 10):
+                got = name
+                break
+            js("document.querySelector('.lm-here:not([hidden]) .lm-back, .lm-detail:not([hidden]) .lm-back')?.click()")  # back to directions
+            wait("!document.querySelector('.lm-route').hidden", 5)
+        if got:
+            page = json.loads(js("""JSON.stringify({ back: document.querySelector('.lm-detail .lm-back').textContent, chips: [...document.querySelectorAll('.lm-detail .lm-swap-acts .lm-chip')].map(c => c.textContent),
+              line: hmMap.getStyle().sources['lm-route'].data.features.some(f => f.geometry.type === 'LineString') })"""))
+            check(page["back"] == "Directions" and page["chips"] == ["Use as destination", "Add as stop", "Use as start"] and page["line"],
+                  f"a business tapped in directions: its page goes back to Directions, as the destination, a stop or the start, the route kept ({got}: {page})")
+            js("[...document.querySelectorAll('.lm-detail .lm-swap-acts .lm-chip')].pop().click()")
+            check(wait(f"!document.querySelector('.lm-route').hidden && document.querySelector('.lm-end-from input').value === {json.dumps(got)}"
+                       " && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30),
+                  f"Use as start on the page of a business: the route from {got}")
+        else:
+            check(False, f"a business tapped in directions opens its page ({[c[0] for c in cands]})")
         js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
     else:
         check(False, "other routes from Zurich to Bern by car")

@@ -796,7 +796,7 @@ const pops = { tap: { pop: null, key: "", f: null, tile: null }, hover: { pop: n
 const showView = (v) => {
   if (v !== detailView && v !== hereView) hidePop("tap"); // it belongs to the page of the place or the point tapped
   if (v !== routeView && !routeView.hidden && !route.keep) routeDone(); // a point looked at from the route keeps it
-  if (v !== hereView) route.keep = false;
+  if (v !== hereView && v !== detailView) route.keep = false; // a point or a place looked at from the route
   listView.hidden = v !== listView;
   hereView.hidden = v !== hereView;
   detailView.hidden = v !== detailView;
@@ -3712,6 +3712,7 @@ function select(f, { push = true, fly = true, from = null, keepPop = false } = {
     else fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 17 }));
   }
   state.from = from || (hereView.hidden ? "list" : "here");
+  if (!routeView.hidden) route.keep = true; // a place tapped in directions: its page goes back to them
   renderDetail(f);
   showView(detailView);
   setSheet(sheet.state === "full" ? "full" : "half");
@@ -3721,14 +3722,19 @@ function renderDetail(f) {
   detailView.innerHTML = "";
   const back = el("button", "lm-back", { type: "button" });
   back.innerHTML = svg(ICON.back, 18);
-  back.append(state.from === "here" ? T.here : state.from === "tap" && !state.answer ? T.close : T.back);
+  back.append(route.keep ? T.directions : state.from === "here" ? T.here : state.from === "tap" && !state.answer ? T.close : T.back);
   back.addEventListener("click", () => {
+    if (route.keep) return backToDirections();
     if (state.from === "tap" && !state.answer) return closeCard();
     if (state.pushedSel && state.from !== "here") return history.back();
     showList();
     if (state.from !== "here") writeURL(null, true);
   });
-  detailView.append(back, closeX());
+  detailView.append(back);
+  // looked at from directions: the place as the destination, a stop or the start
+  const at = center(f);
+  if (route.keep && at) detailView.append(routeSwap(() => ({ ll: [+at[0].toFixed(5), +at[1].toFixed(5)], label: p.name || kindOf(p).label || T.noName })));
+  detailView.append(closeX());
   const fig = el("figure", "lm-pic"); // under the buttons: a picture arriving late does not move them
   fig.hidden = true;
   // the picture: of Wikimedia when the tags name one, else what the server finds (data-place: a photo of Commons that
@@ -3899,7 +3905,7 @@ function onTap(e) {
   }
   const fromRoute = !routeView.hidden || route.keep; // the place's card goes back to the route
   if (hit) {
-    select(hit, { fly: false });
+    select(hit, { fly: false, push: !fromRoute });
     tapPop(hit, null);
   } else {
     // a name of the map tapped (or just beside it): the point is the place of that name, not where the finger was,
@@ -4100,6 +4106,31 @@ const closeX = () => {
   x.addEventListener("click", closeCard);
   return x;
 };
+// back to directions from a point or a place looked at from them (route.keep)
+function backToDirections() {
+  hereDone();
+  setSource("selected", empty);
+  state.selected = null;
+  showView(routeView);
+  renderRoute();
+  findRoute();
+}
+// the chips of a point or a place looked at from directions: it as the destination, a stop on the way (with start and
+// destination, not by public transport) or the start; place() gives {ll, label}
+function routeSwap(place) {
+  const swap = el("div", "lm-swap-acts");
+  for (const [label, end] of [[T.useAsTo, "to"], [T.useAsStop, "stop"], [T.useAsFrom, "from"]]) {
+    if (end === "stop" && (!route.from || !route.to || route.stops.length >= MAX_STOPS || route.mode === "transit")) continue;
+    const b = el("button", "lm-chip", { type: "button" }, label);
+    b.addEventListener("click", () => {
+      const p = place();
+      if (end === "stop") insertStop(p); else route[end] = p;
+      backToDirections();
+    });
+    swap.append(b);
+  }
+  return swap;
+}
 // back: from directions, the card has Directions to go back to the route
 async function here(ll, symbol, backToRoute = false) {
   hereCtl?.abort();
@@ -4115,22 +4146,10 @@ async function here(ll, symbol, backToRoute = false) {
     const back = el("button", "lm-back", { type: "button" });
     back.innerHTML = svg(ICON.back, 18);
     back.append(T.directions);
-    const toRoute = () => { hereDone(); showView(routeView); renderRoute(); findRoute(); };
-    back.addEventListener("click", toRoute);
+    back.addEventListener("click", backToDirections);
     hereView.append(back);
     // the point instead of the destination, or of the start
-    const swap = el("div", "lm-swap-acts");
-    for (const [label, end] of [[T.useAsTo, "to"], [T.useAsStop, "stop"], [T.useAsFrom, "from"]]) {
-      if (end === "stop" && (!route.from || !route.to || route.stops.length >= MAX_STOPS || route.mode === "transit")) continue; // (no stops by public transport)
-      const b = el("button", "lm-chip", { type: "button" }, label);
-      b.addEventListener("click", () => {
-        const p = { ll: [+ll.lng.toFixed(5), +ll.lat.toFixed(5)], label: hereView.querySelector(".lm-dname")?.textContent || T.mapPoint };
-        if (end === "stop") insertStop(p); else route[end] = p;
-        toRoute();
-      });
-      swap.append(b);
-    }
-    hereView.append(swap);
+    hereView.append(routeSwap(() => ({ ll: [+ll.lng.toFixed(5), +ll.lat.toFixed(5)], label: hereView.querySelector(".lm-dname")?.textContent || T.mapPoint })));
   } else if (state.answer) {
     const back = el("button", "lm-back", { type: "button" });
     back.innerHTML = svg(ICON.back, 18);
