@@ -589,7 +589,7 @@ try:
              " URL.createObjectURL = (b) => { const u = u0(b); blobs[u] = b; return u; };"
              " HTMLAnchorElement.prototype.click = function () { if (this.download) files.push(this); else c0.call(this); };"
              " try { for (const b of row.querySelectorAll('button')) b.click(); } finally { HTMLAnchorElement.prototype.click = c0; URL.createObjectURL = u0; }"
-             " const t = await Promise.all(files.map((a) => blobs[a.href].text()));"
+             " const t = await Promise.all(files.map((a) => blobs[a.href].arrayBuffer().then((b) => new TextDecoder('utf-8', { ignoreBOM: true }).decode(b))));"
              " return { shown: !row.hidden && row.offsetHeight > 0, names: files.map((a) => a.download), csv: t[0] || '', gj: t[1] || '' }; })()")
     rows = [l for l in got["csv"].split("\r\n") if l]
     gj = json.loads(got["gj"] or "{}")
