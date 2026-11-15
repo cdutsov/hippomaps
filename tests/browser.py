@@ -19,7 +19,7 @@ directions at their top when the keyboard goes; up and down in one movement when
 directions takes it to the top); a place searched in navigation as the destination; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
 enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
 twice (the voice answered with silence in the test); German texts after the language of the menu, also the words of
-the search; the search box on one or two lines, Enter searching; the list of results after a move of the map: those in view, the map keeps all; without a connection the note over the map, a search, navigation off the route (no new route asked), the
+the search; the search box on one or two lines, Enter searching; the list of results after a move of the map: those in view, the map keeps all; the results as CSV and GeoJSON; without a connection the note over the map, a search, navigation off the route (no new route asked), the
 map of a route saved at Start and shown from the device, the page opening (the service worker); the suggestions of
 directions in their field, the panel at the height of its state when the keyboard goes; the signs along a route by car
 (speed cameras in the Netherlands, none in Switzerland, stop signs in Berkeley) drawn beside it; the search box without the
@@ -584,7 +584,21 @@ try:
         time.sleep(0.08)
     check(wait("!hmMap.isMoving() && document.querySelector('.lm-count').textContent === " + json.dumps(first), 10),
           f"zoomed out over all results: all of them again ({count_text()})")
+    # the results as a file under the query: CSV and GeoJSON, a row and a feature per result on the map
+    got = js("(async () => { const row = document.querySelector('.lm-dl'), files = [], blobs = {}, c0 = HTMLAnchorElement.prototype.click, u0 = URL.createObjectURL;"
+             " URL.createObjectURL = (b) => { const u = u0(b); blobs[u] = b; return u; };"
+             " HTMLAnchorElement.prototype.click = function () { if (this.download) files.push(this); else c0.call(this); };"
+             " try { for (const b of row.querySelectorAll('button')) b.click(); } finally { HTMLAnchorElement.prototype.click = c0; URL.createObjectURL = u0; }"
+             " const t = await Promise.all(files.map((a) => blobs[a.href].text()));"
+             " return { shown: !row.hidden && row.offsetHeight > 0, names: files.map((a) => a.download), csv: t[0] || '', gj: t[1] || '' }; })()")
+    rows = [l for l in got["csv"].split("\r\n") if l]
+    gj = json.loads(got["gj"] or "{}")
+    check(got["shown"] and [n.rsplit(".", 1)[-1] for n in got["names"]] == ["csv", "geojson"] and all(n.startswith("hippomaps-hotels") for n in got["names"])
+          and rows and rows[0].startswith("\ufeffid,name,lat,lon") and len(rows) - 1 == all_drawn
+          and len(gj.get("features", [])) == all_drawn and "OpenStreetMap" in gj.get("attribution", "") and gj.get("query"),
+          f"the results as CSV and GeoJSON ({got['names']}, {len(rows) - 1} rows, {len(gj.get('features', []))} features, {all_drawn} on the map)")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+    check(js("document.querySelector('.lm-dl').hidden"), "the X: no download without results")
 
     # near a kind of place: the results, the places they are near (each stop a point) and the circle of the radius around each
     js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Migros near a bus stop in Zurich'; document.querySelector('.lm-form').requestSubmit() })()")

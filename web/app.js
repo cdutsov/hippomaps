@@ -123,6 +123,7 @@ const EN = {
   query: "Overpass query",
   copy: "Copy",
   copied: "Copied",
+  download: "Download",
   share: "Share",
   useAsTo: "Use as destination",
   useAsFrom: "Use as start",
@@ -374,6 +375,37 @@ const center = (f) => {
   const b = extent(f.geometry);
   return b ? [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2] : null;
 };
+// dataCSV: one row per result, the id (node/1), the name, the point (the middle of a line or area), then the
+// tags, the most common first. Fields are quoted as RFC 4180 says; a text that a spreadsheet would read as a
+// formula gets a ' before it. A BOM so that Excel reads UTF-8.
+function dataCSV(features, centerOf) {
+  const rows = features.map((f) => {
+    const p = f.properties || {}, c = centerOf(f) || [];
+    const tags = { ...(p.opening_hours ? { opening_hours: p.opening_hours } : {}), ...(p.tags || {}) };
+    delete tags.name;
+    return { head: [p.id || "", p.name || "", c[1] != null ? +c[1].toFixed(7) : "", c[0] != null ? +c[0].toFixed(7) : ""], tags };
+  });
+  const n = new Map();
+  for (const r of rows) for (const k of Object.keys(r.tags)) n.set(k, (n.get(k) || 0) + 1);
+  const keys = [...n.keys()].sort((a, b) => n.get(b) - n.get(a) || (a < b ? -1 : 1));
+  const cell = (v) => {
+    let s = String(v ?? "");
+    if (typeof v === "string" && /^[=+@\t\r]|^-(?![\d.])/.test(s)) s = `'${s}`;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [["id", "name", "lat", "lon", ...keys], ...rows.map((r) => [...r.head, ...keys.map((k) => r.tags[k] ?? "")])];
+  return "\ufeff" + lines.map((l) => l.map(cell).join(",")).join("\r\n") + "\r\n";
+}
+// dataGeoJSON: the results as they came, with the query and the credit the ODbL asks for
+function dataGeoJSON(features, query) {
+  return JSON.stringify({
+    type: "FeatureCollection",
+    attribution: "© OpenStreetMap contributors",
+    license: "ODbL 1.0, https://opendatacommons.org/licenses/odbl/",
+    ...(query ? { query } : {}),
+    features: features.map((f) => ({ type: "Feature", geometry: f.geometry, properties: f.properties })),
+  }, null, 1);
+}
 // bandWidth is the width in pixels of a band of "radius" metres on each side of a line, at a latitude
 // (512 pixels for the world at zoom 0, twice as many each zoom)
 let bandLat = 47;
@@ -2853,6 +2885,25 @@ const qPre = el("pre");
 const qCopy = el("button", "lm-copy", { type: "button" }, T.copy);
 query.append(qSum, qPre, qCopy);
 query.hidden = true;
+// the results of the answer as a file (those on the map: an opening-hours filter applies). Not in the app: its
+// WebView cannot save a file made in the page.
+const dl = el("div", "lm-dl");
+const dlCSV = el("button", "lm-copy", { type: "button" }, "CSV");
+const dlJSON = el("button", "lm-copy", { type: "button" }, "GeoJSON");
+dl.append(el("span", "", { "data-t": "download" }, T.download), dlCSV, dlJSON);
+dl.hidden = true;
+const IN_APP = /\bhippomaps-android\//.test(navigator.userAgent);
+const showDl = () => { dl.hidden = IN_APP || query.hidden || !state.features?.length; };
+const save = (text, type, ext) => {
+  const name = `hippomaps-${fold(state.text || state.answer?.understood || "results").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "results"}.${ext}`;
+  const a = el("a", "", { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+};
+dlCSV.addEventListener("click", () => save(dataCSV(state.features, center), "text/csv;charset=utf-8", "csv"));
+dlJSON.addEventListener("click", () => save(dataGeoJSON(state.features, state.answer?.query), "application/geo+json", "geojson"));
 const placeActs = el("div", "lm-actions lm-place-acts"); // Directions when the search found one place
 head.append(title, notes, placeActs);
 const placePic = el("figure", "lm-pic lm-place-pic"); // the photo of a town or region found
@@ -2865,7 +2916,7 @@ const startText = el("p", "lm-start-text");
 const startHead = el("p", "lm-start-head", {}, T.startArea);
 startBox.append(startText, startHead, startList);
 startBox.hidden = true;
-listView.append(startBox, head, placePic, chips, count, results, moreBtn, query);
+listView.append(startBox, head, placePic, chips, count, results, moreBtn, query, dl);
 qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textContent).then(() => {
   qCopy.textContent = T.copied;
   setTimeout(() => { qCopy.textContent = T.copy; }, 1500);
@@ -2917,6 +2968,7 @@ function clear() {
   count.textContent = "";
   moreBtn.hidden = true;
   query.hidden = true;
+  dl.hidden = true;
   showView(listView);
 }
 const chip = (label, onClick, cls = "") => {
@@ -2936,6 +2988,7 @@ function showReading(p) {
   notes.textContent = (p.notes || []).join(" ");
   qPre.textContent = p.query || "";
   query.hidden = !p.query;
+  showDl();
 }
 
 // ------------------------------------------------------------------ ideas at the start
@@ -3289,6 +3342,7 @@ function show(d, sel) {
   }));
   qPre.textContent = d.query || "";
   query.hidden = !d.query;
+  showDl();
   setSheet(place ? "peek" : "half");
   const pick = sel && state.byId.get(sel);
   if (bb?.length === 4 && !pick) fitBox(aroundView(d) && nearBox(found.map(center), fromHere()) || bb, place ? 16 : 16.5);
@@ -3597,6 +3651,7 @@ async function openNow(o) {
   const keep = new Set(state.features.map((f) => f.properties.id));
   setSource("results", { ...state.answer.results, features: state.answer.results.features.filter((f) => keep.has(f.properties.id)) });
   state.countText = T.withHours(state.features.length, o.label, all);
+  showDl();
   notes.textContent = notes.textContent.replace(/The opening hours were not checked[^.]*\./, "").trim();
   state.listIds = null;
   relist();

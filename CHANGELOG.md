@@ -14,6 +14,8 @@ version numbers are the releases of the Android app (`android/`), which shows th
   Panoramax looking at it, or the logo of the website), the menu of a restaurant, café or bar, and the opening hours of
   the website when the place has none. The card of a place found by its name gets the picture, Website and Menu. The
   privacy and licences pages say so.
+- The results of a search as a file, under the Overpass query: CSV (a row per result with its point and tags) or
+  GeoJSON (with the query and the credit to OpenStreetMap). Not in the Android app yet.
 
 ## 1.4.1 (2026-11-14)
 
