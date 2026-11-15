@@ -102,7 +102,7 @@ code=$(get "$PAGE/static/vendor/maplibre-gl-6.13.0/maplibre-gl.mjs")
 # what the map needs before its first tile, asked for by a small script as the page starts: the script and the worker
 # of MapLibre it asks for are there, each kept for a year
 early=$(grep -o '/static/early.js?v=[0-9a-f]*' "$TMP/page" | head -n1)
-worker=$(grep -o 'data-worker="[^"]*"' "$TMP/page" | cut -d'"' -f2)
+worker=$(grep -o 'data-worker="[^"]*"' "$TMP/page" | head -n1 | cut -d'"' -f2)
 origin=$(grep -oE '^https?://[^/]*' <<<"$PAGE")
 code=$(get "$PAGE$early")
 c2=$(get "$origin$worker")
@@ -110,8 +110,8 @@ c2=$(get "$origin$worker")
 
 echo "Map tiles"
 # the key of the page, as the browser sends it: with the site as Referer (it is not printed)
-tiles=$(grep -o 'data-tiles="[^"]*"' "$TMP/page" | cut -d'"' -f2)
-key=$(grep -o 'data-key="[^"]*"' "$TMP/page" | cut -d'"' -f2)
+tiles=$(grep -o 'data-tiles="[^"]*"' "$TMP/page" | head -n1 | cut -d'"' -f2) # (the page has both twice: early.js takes them too)
+key=$(grep -o 'data-key="[^"]*"' "$TMP/page" | head -n1 | cut -d'"' -f2)
 if [[ -n $key ]]; then
 	code=$(get -H "Referer: $PAGE/" "$tiles/v1/$key/maps/styles/light.json")
 	[[ $code == 200 ]] && ok "the key of the page gets the style" || ko "the style: HTTP $code"
