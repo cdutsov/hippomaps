@@ -5,6 +5,7 @@
 //	hippomaps healthcheck            the server answers
 //	hippomaps stats [DAYS [DIR]]     the counts of visits of the last DAYS (30) days, from STATS_DIR
 //	hippomaps geoip FILE ADDRESS...  the place of each address in a database file (GEOIP_DB)
+//	hippomaps feedback [N [DIR]]     the last N (20) messages of visitors, from FEEDBACK_DIR
 package main
 
 import (
@@ -42,8 +43,10 @@ func main() {
 		err = geoip(os.Args[2:])
 	case "stats":
 		err = stats(os.Args[2:])
+	case "feedback":
+		err = feedback(os.Args[2:])
 	default:
-		err = fmt.Errorf("unknown command %q (serve | healthcheck | geoip | stats)", cmd)
+		err = fmt.Errorf("unknown command %q (serve | healthcheck | geoip | stats | feedback)", cmd)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hippomaps:", err)
@@ -112,6 +115,15 @@ func config() (server.Config, error) {
 	cfg.StatsDir = env("STATS_DIR", "")
 	cfg.StatsIgnore = strings.Split(env("STATS_IGNORE", ""), ",")
 	cfg.StripeKey = env("STRIPE_KEY", "")
+	cfg.FeedbackDir = env("FEEDBACK_DIR", "")
+	cfg.FeedbackTo = env("FEEDBACK_TO", "")
+	cfg.SMTPHost = env("SMTP_HOST", "")
+	cfg.SMTPPort = env("SMTP_PORT", "587")
+	cfg.SMTPUser = env("SMTP_USER", "")
+	cfg.SMTPPassword = env("SMTP_PASSWORD", "")
+	if cfg.FeedbackTo != "" && (cfg.SMTPHost == "" || cfg.SMTPUser == "") {
+		err = errors.Join(err, errors.New("FEEDBACK_TO needs SMTP_HOST and SMTP_USER"))
+	}
 	switch sw := env("SERVICE_WORKER", "on"); sw {
 	case "on", "off":
 		cfg.ServiceWorker = sw == "on"
@@ -141,7 +153,7 @@ func serve() error {
 		defer cancel()
 		srv.Shutdown(c)
 	}()
-	cfg.Log.Info("listening", "addr", srv.Addr, "version", Version, "base", cfg.Base, "pictures", cfg.Pictures, "routes", cfg.RoutingURL != "", "journeys", cfg.JourneyURL != "", "heights", cfg.ElevationKey != "", "voice", cfg.TTSURL != "", "traffic", cfg.TrafficURL != "", "geoip", cfg.GeoIPDB != "", "key", cfg.MapsKey != "")
+	cfg.Log.Info("listening", "addr", srv.Addr, "version", Version, "base", cfg.Base, "pictures", cfg.Pictures, "routes", cfg.RoutingURL != "", "journeys", cfg.JourneyURL != "", "heights", cfg.ElevationKey != "", "voice", cfg.TTSURL != "", "traffic", cfg.TrafficURL != "", "geoip", cfg.GeoIPDB != "", "feedback", cfg.FeedbackDir != "", "feedback mail", cfg.FeedbackTo != "", "key", cfg.MapsKey != "")
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -207,5 +219,37 @@ func stats(args []string) error {
 		return err
 	}
 	fmt.Print(server.FormatStats(days, n))
+	return nil
+}
+
+// feedback prints the last messages of visitors kept in FEEDBACK_DIR (or DIR), the newest last.
+func feedback(args []string) error {
+	n, dir := 20, os.Getenv("FEEDBACK_DIR")
+	if len(args) > 0 {
+		v, err := strconv.Atoi(args[0])
+		if err != nil || v < 1 {
+			return errors.New("usage: hippomaps feedback [N [DIR]]")
+		}
+		n = v
+	}
+	if len(args) > 1 {
+		dir = args[1]
+	}
+	if dir == "" {
+		return errors.New("FEEDBACK_DIR is not set")
+	}
+	all, err := server.ReadFeedback(dir)
+	if err != nil {
+		return err
+	}
+	if len(all) > n {
+		all = all[len(all)-n:]
+	}
+	for _, f := range all {
+		fmt.Printf("=== %s\n%s\n", f.ID, server.FormatFeedback(f))
+	}
+	if len(all) == 0 {
+		fmt.Println("no messages")
+	}
 	return nil
 }

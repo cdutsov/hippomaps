@@ -103,6 +103,29 @@ const EN = {
   donate: "Donate",
   donateFailed: "The donation could not be started. Try again later.",
   donated: "Thank you for your donation.",
+  // feedback (data-feedback, server/feedback.go): the row of the menu, its form, the link under a search or a route that
+  // failed
+  feedback: "Feedback",
+  feedbackNote: "Report a problem or suggest an idea",
+  feedbackKind: "What is it about?",
+  feedbackKinds: [["bug", "Problem"], ["map", "Wrong on the map"], ["idea", "Idea"], ["other", "Other"]],
+  feedbackAsk: { bug: "What did you do, and what happened?", map: "What is wrong, and where?", idea: "What would you like hippomaps to do?",
+    other: "Your message" },
+  feedbackOsm: "Places, roads and names come from OpenStreetMap. A note there reaches the people who map this area.",
+  feedbackOsmLink: "Leave a note on OpenStreetMap",
+  feedbackEmail: "E-mail, if you want an answer",
+  feedbackDetails: "Add details of the page",
+  feedbackDetailsNote: "The map view and what is open, the browser, recent errors",
+  feedbackWhat: "What is sent",
+  feedbackLines: { link: "Page", style: "Map style", screen: "Screen", agent: "Browser", errors: "Errors", none: "none" },
+  feedbackSend: "Send",
+  // [ ] marks the link to the privacy policy
+  feedbackKept: "Kept for a year at most, without your IP address. [Privacy policy]",
+  feedbackThanks: "Thank you for your message.",
+  feedbackFailed: "The message could not be sent. Please try again later.",
+  feedbackTooMany: "Too many messages. Please try again in an hour.",
+  reportThis: "Report this problem",
+  menuBack: "Back to the menu",
   searchArea: "Search this area",
   myLocation: "Show my location",
   north: "Turn the map to north",
@@ -313,6 +336,9 @@ const svg = (d, size = 18) =>
 const ICON = {
   search: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13zM15.5 15.5 21 21",
   back: "M15 18l-6-6 6-6",
+  next: "M9 18l6-6-6-6",
+  check: "M20 6 9 17l-5-5",
+  message: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
   close: "M18 6 6 18M6 6l12 12",
   pin: "M12 21s-7-6.2-7-11.2A7 7 0 0 1 19 9.8C19 14.8 12 21 12 21zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
   clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
@@ -491,6 +517,17 @@ addEventListener("online", netAsk);
 if (navigator.onLine === false) setTimeout(() => setOffline(true));
 // the text of a request that failed: no connection, when that is why
 const failText = (t) => (net.down || navigator.onLine === false ? T.offline : t);
+// the last errors of the page (at most 10, with the time UTC), for a message of feedback: errors of the scripts, and
+// searches and routes that failed (noteError where they fail)
+const pageErrors = [];
+function noteError(what) {
+  const t = String(what || "").replace(/\s+/g, " ").trim().slice(0, 300);
+  if (!t) return;
+  pageErrors.push(`${new Date().toISOString().slice(11, 19)} ${t}`);
+  if (pageErrors.length > 10) pageErrors.shift();
+}
+addEventListener("error", (e) => noteError(`${e.message}${e.filename ? ` (${e.filename.split("/").pop().split("?")[0]}:${e.lineno})` : ""}`));
+addEventListener("unhandledrejection", (e) => noteError(`unhandled: ${e.reason?.message || e.reason}`));
 // the service worker (web/sw.js): the page and the map of a route without a connection; none when the server has it
 // off (SERVICE_WORKER=off): one there before goes, with its caches
 if (root.dataset.sw && "serviceWorker" in navigator) navigator.serviceWorker.register(root.dataset.sw, { scope: root.dataset.scope }).catch(() => {});
@@ -1600,7 +1637,7 @@ async function transitSearch(q, text, signal) {
     place = (await r.json()).features?.[0];
   } catch {}
   if (signal?.aborted) return;
-  if (!place) return say(failText(T.failed), true);
+  if (!place) return say(failText(T.failed), true, true);
   const name = place.properties.name || q.place, ext = place.properties.extent; // [west, north, east, south]
   title.textContent = T.transitIn(name);
   const done = new Promise((ok) => map.once("moveend", ok));
@@ -1765,6 +1802,177 @@ donateForm.addEventListener("submit", async (e) => {
 });
 // back from the page of Stripe with the back button: the page from the cache of the browser, the button disabled
 addEventListener("pageshow", () => { donateBtn.disabled = false; });
+
+// ------------------------------------------------------------------ feedback
+// A message to us (data-feedback, server/feedback.go): a problem, a mistake of the map, an idea. The row Feedback of the
+// menu opens the form in the menu, as does "Report this problem" under a search or a route that failed (reportLink).
+// Unless turned off, the message carries what was on the screen (feedbackCtx): a link to the search, the place or the
+// route with the map view (a start at the location of the visitor stays out), the map style, the screen, the browser
+// or the app, and the last errors of the page. "Wrong on the map" also links to a note on OpenStreetMap at the map view.
+const FEEDBACK = root.dataset.feedback || "";
+const fb = { kind: "" };
+const menuMain = el("div", "lm-menu-main");
+const fbView = el("div", "lm-fb");
+fbView.hidden = true;
+const fbRow = el("button", "lm-toggle lm-fb-row", { type: "button" });
+const fbRowText = el("span", "lm-toggle-text");
+fbRowText.append(el("span", "", {}, T.feedback), el("span", "lm-toggle-note", {}, T.feedbackNote));
+fbRow.innerHTML = svg(ICON.message, 20);
+fbRow.append(fbRowText);
+fbRow.insertAdjacentHTML("beforeend", svg(ICON.next, 18));
+fbRow.addEventListener("click", () => openFeedback());
+const fbBack = el("button", "lm-fb-back", { type: "button" });
+fbBack.innerHTML = svg(ICON.back, 18);
+fbBack.append(el("span", "", {}, T.menu));
+fbBack.setAttribute("aria-label", T.menuBack);
+fbBack.addEventListener("click", () => showFeedback(false));
+const fbTitle = el("h2", "lm-fb-title", {}, T.feedback);
+const fbForm = el("form", "lm-fb-form", { novalidate: "" });
+const fbKindLabel = el("p", "lm-fb-label", { id: "lm-fb-kind" }, T.feedbackKind);
+const fbKinds = el("div", "lm-fb-kinds", { role: "radiogroup", "aria-labelledby": "lm-fb-kind" });
+const fbOsm = el("p", "lm-fb-osm");
+fbOsm.hidden = true;
+const fbText = el("textarea", "lm-fb-text", { rows: "6", maxlength: "4000", required: "", "aria-label": T.feedbackAsk.other });
+const fbEmail = el("input", "lm-fb-email", { type: "email", autocomplete: "email", maxlength: "254", placeholder: T.feedbackEmail, "aria-label": T.feedbackEmail });
+const fbDetailsRow = toggle(T.feedbackDetails, T.feedbackDetailsNote, true, () => fillFeedbackWhat());
+fbDetailsRow.classList.add("lm-fb-details");
+const fbDetails = fbDetailsRow.querySelector("input");
+const fbWhat = el("details", "lm-fb-what");
+const fbWhatList = el("dl", "lm-fb-what-list");
+fbWhat.append(el("summary", "", {}, T.feedbackWhat), fbWhatList);
+const fbSend = el("button", "lm-donate-btn lm-fb-send", { type: "submit" }, T.feedbackSend);
+const fbMsg = el("p", "lm-donate-msg lm-fb-msg", { role: "status" });
+fbMsg.hidden = true;
+const fbKept = el("p", "lm-fb-kept");
+const fbDone = el("div", "lm-fb-done", { role: "status" });
+fbDone.hidden = true;
+const fbDoneText = el("p", "", {}, T.feedbackThanks);
+const fbDoneMark = el("span", "lm-fb-mark");
+fbDoneMark.innerHTML = svg(ICON.check, 22);
+const fbDoneBtn = el("button", "lm-chip", { type: "button" }, T.close);
+fbDone.append(fbDoneMark, fbDoneText, fbDoneBtn);
+fbDoneBtn.addEventListener("click", () => { openMenu(false); showFeedback(false); });
+fbForm.append(fbKindLabel, fbKinds, fbOsm, fbText, fbEmail, fbDetailsRow, fbWhat, fbSend, fbMsg, fbKept);
+fbView.append(fbBack, fbTitle, fbForm, fbDone);
+function fillFeedback() { // the texts, in the language of the page (again from setLang)
+  fbRowText.firstChild.textContent = T.feedback;
+  fbRowText.lastChild.textContent = T.feedbackNote;
+  fbBack.lastChild.textContent = T.menu;
+  fbBack.setAttribute("aria-label", T.menuBack);
+  fbTitle.textContent = T.feedback;
+  fbKindLabel.textContent = T.feedbackKind;
+  fbKinds.replaceChildren(...T.feedbackKinds.map(([k, label]) => {
+    const b = el("button", "lm-chip", { type: "button", role: "radio", "data-kind": k, "aria-checked": String(k === fb.kind) }, label);
+    b.addEventListener("click", () => pickFeedbackKind(k));
+    return b;
+  }));
+  fbText.placeholder = T.feedbackAsk[fb.kind] || T.feedbackAsk.other;
+  fbText.setAttribute("aria-label", fbText.placeholder);
+  fbEmail.placeholder = T.feedbackEmail;
+  fbEmail.setAttribute("aria-label", T.feedbackEmail);
+  const [t, n] = fbDetailsRow.querySelectorAll(".lm-toggle-text > span");
+  t.textContent = T.feedbackDetails;
+  n.textContent = T.feedbackDetailsNote;
+  fbWhat.firstChild.textContent = T.feedbackWhat;
+  fbSend.textContent = T.feedbackSend;
+  const [before, link, after] = T.feedbackKept.split(/[[\]]/);
+  fbKept.replaceChildren(before, el("a", "", { href: privacyHref() }, link), after || "");
+  fbDoneText.textContent = T.feedbackThanks;
+  fbDoneBtn.textContent = T.close;
+  fillFeedbackOsm();
+}
+function pickFeedbackKind(k) {
+  fb.kind = k;
+  fbKinds.querySelectorAll("[data-kind]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.kind === k)));
+  fbText.placeholder = T.feedbackAsk[k] || T.feedbackAsk.other;
+  fbText.setAttribute("aria-label", fbText.placeholder);
+  fillFeedbackOsm();
+}
+// "Wrong on the map": the data are of OpenStreetMap, where a note at the map view reaches the mappers of the area
+function fillFeedbackOsm() {
+  fbOsm.hidden = fb.kind !== "map";
+  if (fbOsm.hidden) return;
+  const c = map.getCenter(), z = Math.max(3, Math.round(map.getZoom()));
+  fbOsm.replaceChildren(T.feedbackOsm, " ", el("a", "", { href: `https://www.openstreetmap.org/note/new#map=${z}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}`,
+    target: "_blank", rel: "noopener" }, T.feedbackOsmLink));
+}
+// what the page adds to a message: a link to what is on the screen and the map view, the style, the screen, the browser
+function feedbackCtx() {
+  const c = map.getCenter();
+  const at = `#map=${map.getZoom().toFixed(2)}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}`;
+  const link = (!routeView.hidden && route.to ? routeLink() : location.href.split("#")[0]) + at;
+  return { link, style: shownStyle() + (look.threeD ? ", 3D" : ""), screen: `${innerWidth}x${innerHeight}@${Math.round(devicePixelRatio * 100) / 100}`,
+    agent: navigator.userAgent, errors: [...pageErrors] };
+}
+function fillFeedbackWhat() {
+  fbWhat.hidden = !fbDetails.checked;
+  if (fbWhat.hidden) return;
+  const x = feedbackCtx(), L = T.feedbackLines;
+  let link = x.link;
+  try { link = decodeURI(link); } catch { /* as it is */ }
+  fbWhatList.replaceChildren(...[["link", link], ["style", x.style], ["screen", x.screen], ["agent", x.agent],
+    ["errors", x.errors.length ? x.errors.join("\n") : L.none]].flatMap(([k, v]) => [el("dt", "", {}, L[k]), el("dd", "", {}, v)]));
+}
+function showFeedback(on) {
+  menuMain.hidden = on;
+  fbView.hidden = !on;
+  menu.scrollTop = 0;
+  if (!on) fbRow.focus();
+}
+// opens the form in the menu; kind: chosen at once (a problem, from reportLink); shown: the message of the page that
+// failed, added to the errors
+function openFeedback(kind = "", shown = "") {
+  if (shown) noteError(`shown: ${shown}`);
+  if (!fbDone.hidden) { fbDone.hidden = true; fbForm.hidden = false; }
+  fbMsg.hidden = true;
+  if (kind) pickFeedbackKind(kind);
+  else fillFeedbackOsm();
+  fillFeedbackWhat();
+  if (menu.hidden) openMenu(true);
+  showFeedback(true);
+  if (matchMedia("(hover: hover) and (pointer: fine)").matches) fbText.focus({ preventScroll: true }); // no keyboard over the form on a phone
+}
+// "Report this problem" after a message of a search or a route that failed: the places that fail ask for it (say with
+// report, routeFail); never for a lost connection. Messages that tell what to do (zoom in, the location blocked, too many
+// requests, a pass closed, no timetable there) have none.
+function reportable(t) {
+  return !!FEEDBACK && !!t && t !== T.offline;
+}
+// the codes of directions and journeys that say what to do, or that there is no timetable: no report
+const NO_REPORT = new Set(["too_many", "busy", "closed_now", "too_far", "no_stops_from", "no_stops_to"]);
+function reportLink(shown) {
+  const b = el("button", "lm-report", { type: "button" }, T.reportThis);
+  b.addEventListener("click", () => openFeedback("bug", shown));
+  return b;
+}
+fbForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = fbText.value.trim();
+  if (!text) return void (fbText.setCustomValidity(" "), fbText.reportValidity(), fbText.setCustomValidity(""), fbText.focus());
+  if (!fbEmail.checkValidity()) return void fbEmail.reportValidity();
+  fbSend.disabled = true;
+  fbMsg.hidden = true;
+  try {
+    const r = await fetch(FEEDBACK, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: fb.kind || "other", text, email: fbEmail.value.trim(), lang: UI, ...(fbDetails.checked ? { ctx: feedbackCtx() } : {}) }) });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      if (d.error === "email") { fbEmail.setCustomValidity(T.feedbackEmail); fbEmail.reportValidity(); fbEmail.setCustomValidity(""); return; }
+      throw new Error(r.status === 429 ? "many" : `feedback ${r.status}`);
+    }
+    fbText.value = fbEmail.value = "";
+    fb.kind = "";
+    fillFeedback();
+    fbForm.hidden = true;
+    fbDone.hidden = false;
+    fbDoneBtn.focus();
+  } catch (err) {
+    fbMsg.textContent = err.message === "many" ? T.feedbackTooMany : failText(T.feedbackFailed);
+    fbMsg.hidden = false;
+  } finally {
+    fbSend.disabled = false;
+  }
+});
 const trafficRow = toggle(T.traffic, T.trafficNote, look.traffic, setTraffic);
 const transitRow = toggle(T.transit, T.transitNote, look.transit, setTransit);
 transitBox = transitRow.querySelector("input");
@@ -1815,7 +2023,7 @@ const navLangRow = el("label", "lm-toggle lm-lang");
 const navLangText = el("span", "lm-toggle-text");
 navLangText.append(el("span", "", {}, T.navLanguage), el("span", "lm-toggle-note", {}, T.navLanguageNote));
 navLangRow.append(navLangText, navLangSel);
-menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "lm-menu-title", {}, T.show),
+menuMain.append(el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "lm-menu-title", {}, T.show),
   buildingsRow,
   toggle(T.shading, T.shadingNote, look.shading, (on) => {
     look.shading = on;
@@ -1827,9 +2035,12 @@ menu.append(menuHead, el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("
   langRow,
   ...(ROUTE ? [navLangRow] : []),
   ...(ROUTE && SAVE_ROUTE ? [saveRouteRow] : []),
+  ...(FEEDBACK ? [fbRow] : []),
   forgetBtn, about,
   poweredLink, privacyLink, licencesLink);
+menu.append(menuHead, menuMain, fbView);
 root.append(backdrop, menu);
+fillFeedback(); // (after privacyHref)
 // poweredBy is the line "Powered by overpass.ch" of the menu, with the logo of overpass.ch
 function poweredBy() {
   const a = el("a", "lm-powered", { href: overpassHref(), title: "overpass.ch" });
@@ -1972,6 +2183,7 @@ function nightStyle(st) {
 }
 const openMenu = (open) => {
   menu.hidden = backdrop.hidden = !open;
+  if (!open && !fbView.hidden) { menuMain.hidden = false; fbView.hidden = true; } // the form keeps what was written
   if (open) forgetBtn.disabled = !saved.recent.length; // something to forget (a search since the last time)
   for (const b of [menuBtn, mapMenuBtn]) b.setAttribute("aria-expanded", String(open));
   if (open) closeMenuBtn.focus();
@@ -2450,10 +2662,12 @@ function coordsOf(text) {
 
 // ------------------------------------------------------------------ searching
 let runCtl = null;
-const say = (msg, bad) => {
+// report: a failure, with "Report this problem" (reportable)
+const say = (msg, bad, report = false) => {
   status.textContent = msg || "";
   status.hidden = !msg;
   status.classList.toggle("lm-bad", !!bad);
+  if (bad && report && reportable(msg)) status.append(" ", reportLink(msg));
 };
 const problem = (d) => T.errors[d.error?.code] || d.error?.message || T.failed;
 const locate = () => {
@@ -2841,7 +3055,7 @@ async function run(text, extra = {}, { push = true, bbox = null, sel = null } = 
     const p = await qr.json().catch(() => ({}));
     if (ctl.signal.aborted) return;
     const wants = p.wants_location || p.error?.code === "need_location";
-    if (!qr.ok && !wants) return say(problem(p), true);
+    if (!qr.ok && !wants) return void (noteError(`query ${qr.status} ${p.error?.code || ""}`), say(problem(p), true, !T.errors[p.error?.code]));
     if (qr.ok) showReading(p);
     if (wants) {
       say(T.locating);
@@ -2853,12 +3067,13 @@ async function run(text, extra = {}, { push = true, bbox = null, sel = null } = 
     const r = await fetch(`${API}/search?${params}`, { signal: ctl.signal });
     const d = await r.json().catch(() => ({}));
     if (ctl.signal.aborted) return;
-    if (!r.ok) return say(problem(d), true);
+    if (!r.ok) return void (noteError(`search ${r.status} ${d.error?.code || ""}`), say(problem(d), true, !T.errors[d.error?.code]));
     say("");
     show(d, sel);
   } catch (err) {
-    if (ctl.signal.reason === "timeout") say(T.tooLong, true);
-    else if (err.name !== "AbortError") say(failText(T.failed), true);
+    if (ctl.signal.reason === "timeout" || err.name !== "AbortError") noteError(`search: ${ctl.signal.reason === "timeout" ? "timeout" : err.message}`);
+    if (ctl.signal.reason === "timeout") say(T.tooLong, true, true);
+    else if (err.name !== "AbortError") say(failText(T.failed), true, true);
   } finally {
     clearTimeout(limit);
   }
@@ -4551,6 +4766,11 @@ function setFrom(from) {
 }
 const routeHead = el("div", "lm-route-head");
 const routeMsg = el("p", "lm-notes lm-route-msg", { role: "status", "aria-live": "polite" });
+// a route that failed: its message, and "Report this problem" unless its code says what to do (NO_REPORT)
+const routeFail = (t, code = "") => {
+  routeMsg.textContent = t;
+  if (!NO_REPORT.has(code) && reportable(t)) routeMsg.append(" ", reportLink(t));
+};
 // a search under way: its message after a turning ring (the next text of the message takes the ring away)
 const busyMsg = (text) => routeMsg.replaceChildren(el("span", "lm-spinner", { "aria-hidden": "true" }), text);
 const routeSum = el("p", "lm-route-sum");
@@ -4859,11 +5079,13 @@ async function findRoute({ quiet = false } = {}) {
     d = await r.json().catch(() => ({}));
     if (ctl.signal.aborted) return;
     if (!r.ok) {
-      if (!quiet) routeMsg.textContent = T.routeErrors[d.error?.code] || T.routeFailed;
+      noteError(`route ${r.status} ${d.error?.code || ""} ${route.mode}`);
+      if (!quiet) routeFail(T.routeErrors[d.error?.code] || T.routeFailed, d.error?.code);
       return;
     }
   } catch (err) {
-    if (err.name !== "AbortError" && !quiet) routeMsg.textContent = failText(T.routeFailed);
+    if (err.name !== "AbortError") noteError(`route: ${err.message}`);
+    if (err.name !== "AbortError" && !quiet) routeFail(failText(T.routeFailed));
     return;
   }
   if (quiet) {
@@ -5112,13 +5334,15 @@ async function findJourney({ quiet = false, page = "" } = {}) {
     if (ctl.signal.aborted) return;
     if (!r.ok) { // (asked again in a new language with nothing found before: the message in that language)
       unwait();
-      if (!quiet || !route.journey) routeMsg.textContent = journeyError(d.error?.code);
+      noteError(`journey ${r.status} ${d.error?.code || ""}`);
+      if (!quiet || !route.journey) routeFail(journeyError(d.error?.code), d.error?.code);
       return;
     }
   } catch (err) {
     if (err.name !== "AbortError") {
       unwait();
-      if (!quiet) routeMsg.textContent = failText(T.routeFailed);
+      noteError(`journey: ${err.message}`);
+      if (!quiet) routeFail(failText(T.routeFailed));
     }
     return;
   }
@@ -6894,6 +7118,7 @@ function setLang(chosen) {
   for (const e of document.querySelectorAll("[data-t]")) e.textContent = T[e.dataset.t];
   for (const c of document.querySelectorAll(".lm-along-cats [data-cat]")) c.textContent = T.alongCats[c.dataset.cat];
   fillAbout();
+  fillFeedback();
   privacyLink.href = privacyHref();
   footLink.href = licencesLink.href = licencesHref();
   poweredLink.href = overpassHref();

@@ -3,7 +3,7 @@
 // page in labels.go), pictures from Wikimedia Commons (picture.go), directions from Valhalla (route.go) with
 // the signs beside the route (marks.go) and the places along it (along.go), spoken sentences (say.go),
 // traffic (traffic.go), transit lines (transit.go), journeys by public transport from MOTIS (journey.go),
-// donations (donate.go), and the place of the visitor from the IP address (geoip.go).
+// donations (donate.go), feedback (feedback.go), and the place of the visitor from the IP address (geoip.go).
 package server
 
 import (
@@ -83,7 +83,16 @@ type Config struct {
 	// without PublicURL: no donations
 	StripeKey string
 	StripeAPI string // https://api.stripe.com
-	Log       *slog.Logger
+	// FeedbackDir: a directory that lasts (a volume) for the messages of visitors (feedback.go), a file each, kept a
+	// year; empty: no feedback. FeedbackTo: an address that gets each message by e-mail through the SMTP server
+	// (SMTPUser is the sender); empty: none
+	FeedbackDir  string
+	FeedbackTo   string
+	SMTPHost     string
+	SMTPPort     string // 587 (STARTTLS) or 465 (TLS)
+	SMTPUser     string
+	SMTPPassword string
+	Log          *slog.Logger
 }
 
 // DefaultConfig is the configuration without the environment.
@@ -146,6 +155,11 @@ type Server struct {
 
 	donatesPerIP *window // checkouts of donations
 
+	feedbackPerIP *window       // messages of visitors
+	mails         chan Feedback // messages to mail (mailer)
+	sendMail      func(to string, msg []byte) error
+	mailRetry     time.Duration // the wait before the second try, twice that before the third
+
 	siteClient  *http.Client // the websites of places and pictures of the web (site.go): public addresses only
 	places      *placeState  // more about places: answers and pictures kept (place.go)
 	placesPerIP *window
@@ -162,7 +176,13 @@ func New(cfg Config) *Server {
 		transitPerIP: newWindow(300, 10*time.Minute), transitCalls: make(chan struct{}, 2),
 		searchesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), queriesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), herePerIP: newWindow(3*cfg.SearchesPerIP, cfg.RouteWindow),
 		donatesPerIP: newWindow(10, 10*time.Minute), siteClient: newSiteClient(publicDial),
-		places: newPlaceState(), placesPerIP: placeWindow(cfg), placeCalls: make(chan struct{}, 4)}
+		places: newPlaceState(), placesPerIP: placeWindow(cfg), placeCalls: make(chan struct{}, 4),
+		feedbackPerIP: newWindow(feedbackPerHour, time.Hour), mailRetry: time.Minute}
+	s.sendMail = s.smtpSend
+	if s.mailOn() {
+		s.mails = make(chan Feedback, 100)
+		go s.mailer()
+	}
 	s.cfg.TTSURL = strings.TrimRight(cfg.TTSURL, "/")
 	s.cfg.TrafficURL = strings.TrimRight(cfg.TrafficURL, "/")
 	s.cfg.SearchUpstream = strings.TrimRight(cfg.SearchUpstream, "/")
@@ -243,6 +263,9 @@ func New(cfg Config) *Server {
 	if s.donations() {
 		s.mux.HandleFunc("POST "+base+"/api/donate", s.donate)
 	}
+	if s.feedbackOn() {
+		s.mux.HandleFunc("POST "+base+"/api/feedback", s.feedback)
+	}
 	if s.cfg.PublicURL != "" {
 		s.mux.HandleFunc("GET /robots.txt", s.robots)
 		s.mux.HandleFunc("GET /sitemap.xml", s.sitemap)
@@ -312,7 +335,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	s.stats.record(r, own)
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Place": s.placeExtras(), "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Place": s.placeExtras(), "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Feedback": s.feedbackOn(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}

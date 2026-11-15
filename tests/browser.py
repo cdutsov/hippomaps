@@ -38,7 +38,9 @@ from a tap on its line; none with a stop); a business tapped in directions (its 
 destination, a stop or the start); Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
 coordinates in the search box; the POIs with a name in the Outdoor style; public transport (a shared journey from Zurich to
 Bern: its connections, the legs of the first, the rides and walks on the map, Later, an arrival by a time on the clocks of the
-journey, back to the car; a start without a timetable); and no errors
+journey, back to the car; a start without a timetable); feedback (the form of the menu, a note of OpenStreetMap for a
+mistake of the map, a message sent with and without the details of the page, in German, Report this problem under a search
+that failed, none under a message that says what to do); and no errors
 of the page on the way. Needs chromium and websocket-client.
 """
 import base64
@@ -1658,6 +1660,7 @@ try:
     check(wait("/blocked/i.test(document.querySelector('.lm-status').textContent) && document.querySelector('.lm-status').classList.contains('lm-bad')", 10)
           and js(f"JSON.stringify(hmMap.getCenter()) === {json.dumps(c0)} && !hmMap.getStyle().sources['lm-me'].data.features.length"),
           f"the location blocked: the button of the location says so, no dot, the map stays ({js('document.querySelector(\'.lm-status\').textContent')})")
+    check(js("!document.querySelector('.lm-status .lm-report')"), "the location blocked: no Report this problem (the message says what to do)")
     js("document.querySelector('.lm-dir-btn').click()")
     check(wait("!document.querySelector('.lm-route').hidden && /set the start/.test(document.querySelector('.lm-route-msg').textContent)"
                " && document.querySelector('.lm-end-from input').value === ''", 10),
@@ -2083,6 +2086,86 @@ try:
               f"a start without a timetable: the message names where there is one, in German after a change of language ({en} / {de})")
         page_lang("en")
         js("localStorage.removeItem('hm-lang')")
+    # feedback (data-feedback): the row of the menu opens the form in place of the menu; "Wrong on the map" links a note
+    # of OpenStreetMap at the map view; an empty message is not sent; a message (answered in the page: nothing reaches
+    # the server, the test runs every night) carries its kind, text, address, language and, with the details on, a link
+    # to the page with the map view, the browser and the errors, as "What is sent" lists them; without them none; the
+    # form in German after a change of language; "Report this problem" under a search that failed opens the form with
+    # Problem chosen and the failure in the errors
+    if js("!!document.getElementById('app').dataset.feedback"):
+        fresh(URL)
+        js("""(() => { window.hmFb = []; const f = window.fetch; window.hmFetchFb = f;
+          window.fetch = function (u, o) {
+            if (String(u).includes('/api/feedback')) { hmFb.push(JSON.parse(o.body)); return Promise.resolve(new Response(null, { status: 204 })); }
+            if (window.hmFailSearch && String(u).includes('/search?')) return Promise.resolve(window.hmFailSearch === 'zoom'
+              ? new Response('{"error":{"code":"zoom_in","message":"zoom in"}}', { status: 400 }) : new Response('{}', { status: 502 }));
+            return f.apply(this, arguments); }; })()""")
+        def fb_tap(sel):  # a finger on it, once scrolled into the menu (the list of What is sent pushes Send down)
+            js(f"document.querySelector({json.dumps(sel)})?.scrollIntoView({{ block: 'center' }})")
+            time.sleep(0.2)
+            return tap(sel)
+        def fb_open():
+            js("document.querySelector('.lm-map-burger').click()")
+            wait("!document.querySelector('.lm-menu').hidden", 3)
+            time.sleep(0.4)  # the menu slides in
+            fb_tap(".lm-fb-row")
+            return wait("!document.querySelector('.lm-fb').hidden && document.querySelector('.lm-menu-main').hidden && !document.querySelector('.lm-menu').hidden", 5)
+        check(fb_open() and js("document.querySelectorAll('.lm-fb-kinds [role=radio]').length") == 4,
+              "Feedback in the menu: the form in place of the menu, four kinds")
+        fb_tap(".lm-fb-kinds [data-kind=map]")
+        osm = js("document.querySelector('.lm-fb-osm:not([hidden]) a')?.href || ''")
+        check(bool(re.match(r"^https://www\.openstreetmap\.org/note/new#map=\d+/-?\d+\.\d{5}/-?\d+\.\d{5}$", osm))
+              and js("document.querySelector('.lm-fb-text').placeholder") == "What is wrong, and where?",
+              f"wrong on the map: its question, and a note of OpenStreetMap at the map view ({osm})")
+        fb_tap(".lm-fb-send")
+        time.sleep(0.5)
+        check(js("hmFb.length") == 0 and js("document.querySelector('.lm-fb-done').hidden"), "an empty message is not sent")
+        js("document.querySelector('.lm-fb-text').value = 'a test of tests/browser.py'; document.querySelector('.lm-fb-email').value = 'test@example.invalid';"
+           " document.querySelector('.lm-fb-what').open = true")
+        listed = js("document.querySelector('.lm-fb-what-list').textContent") or ""
+        fb_tap(".lm-fb-send")
+        sent = wait("hmFb.length === 1 && !document.querySelector('.lm-fb-done').hidden", 5) and js("hmFb[0]") or {}
+        ctx = sent.get("ctx") or {}
+        check(sent.get("kind") == "map" and sent.get("text") == "a test of tests/browser.py" and sent.get("email") == "test@example.invalid"
+              and sent.get("lang") == "en" and ctx.get("link", "").startswith(URL + "/") and "#map=" in ctx.get("link", "") and "Chrome" in ctx.get("agent", "")
+              and bool(re.match(r"^\d+x\d+@", ctx.get("screen", ""))) and isinstance(ctx.get("errors"), list) and bool(ctx.get("style")),
+              f"a message sent: its kind, text, address, language, the page with the map view, the browser ({json.dumps(sent)[:300]})")
+        check("#map=" in listed and "Chrome" in listed, "What is sent lists the page and the browser")
+        fb_tap(".lm-fb-done .lm-chip")
+        check(wait("document.querySelector('.lm-menu').hidden", 3), "Close after the thanks: the menu goes")
+        # again, the details off: none sent; the form empty and back from the thanks
+        check(fb_open() and js("document.querySelector('.lm-fb-text').value === '' && !document.querySelector('.lm-fb-form').hidden && document.querySelector('.lm-fb-done').hidden"),
+              "the form again: empty, not the thanks")
+        js("document.querySelector('.lm-fb-details input').click(); document.querySelector('.lm-fb-text').value = 'no details'")
+        fb_tap(".lm-fb-send")
+        sent = wait("hmFb.length === 2", 5) and js("hmFb[1]") or {}
+        check(sent.get("kind") == "other" and sent.get("text") == "no details" and "ctx" not in sent and js("document.querySelector('.lm-fb-what').hidden"),
+              f"the details off: none sent, no list; no kind chosen: other ({sent})")
+        js("document.querySelector('.lm-fb-done .lm-chip').click()")
+        js("document.querySelector('.lm-fb-details input').click()")  # the details on again (the switch keeps the choice of the visitor)
+        # in German
+        page_lang("de")
+        fb_open()
+        check(js("document.querySelector('.lm-fb-label').textContent") == "Worum geht es?" and js("document.querySelector('.lm-fb-send').textContent") == "Senden",
+              "the form in German")
+        js("document.querySelector('.lm-backdrop').click()")
+        page_lang("en")
+        js("localStorage.removeItem('hm-lang')")
+        # a search that failed: Report this problem, the form with Problem and the failure in the errors
+        js("window.hmFailSearch = true; document.querySelector('.lm-input').value = 'bakeries in Bern'; document.querySelector('.lm-form').requestSubmit()")
+        rep = wait("!!document.querySelector('.lm-status:not([hidden]) .lm-report')", 20)
+        js("window.hmFailSearch = false; document.querySelector('.lm-status .lm-report')?.click()")
+        check(rep and wait("!document.querySelector('.lm-fb').hidden && document.querySelector('.lm-fb-kinds [data-kind=bug]').getAttribute('aria-checked') === 'true'", 5)
+              and js("/search 502/.test(document.querySelector('.lm-fb-what-list').textContent) && /shown: The search failed/.test(document.querySelector('.lm-fb-what-list').textContent)"),
+              "a search that failed: Report this problem opens the form with Problem chosen and the failure in the errors")
+        js("document.querySelector('.lm-backdrop').click()")
+        # a search the server answers with what to do (zoom in): no Report this problem
+        js("window.hmFailSearch = 'zoom'; document.querySelector('.lm-input').value = 'benches'; document.querySelector('.lm-form').requestSubmit()")
+        zoom = wait("/Zoom in/.test(document.querySelector('.lm-status:not([hidden])')?.textContent || '')", 20)
+        check(zoom and js("!document.querySelector('.lm-status .lm-report')"), "a search answered with what to do (zoom in): no Report this problem")
+        js("window.hmFailSearch = false; window.fetch = window.hmFetchFb")
+    else:
+        print("  (no feedback on this server)", flush=True)
     real = [e for e in errors if "Map cannot fit" not in e]
     check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
 finally:

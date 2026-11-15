@@ -286,6 +286,19 @@ else
 	echo "  SKIP  no donations (STRIPE_KEY not set)"
 fi
 
+echo "Feedback"
+# nothing kept or mailed here: only messages the server refuses
+if grep -q 'data-feedback=' "$TMP/page"; then
+	code=$(get -X POST -H 'Content-Type: application/json' --data '{"kind":"spam","text":"site-test"}' "$PAGE/api/feedback")
+	[[ $code == 400 ]] && grep -q '"error":"kind"' "$TMP/b" && ok "a message of an unknown kind: 400 kind" || ko "a message of an unknown kind: HTTP $code"
+	code=$(get -X POST -H 'Content-Type: application/json' --data '{"kind":"bug","text":"site-test","email":"no address"}' "$PAGE/api/feedback")
+	[[ $code == 400 ]] && grep -q '"error":"email"' "$TMP/b" && ok "a message with a bad address: 400 email" || ko "a message with a bad address: HTTP $code"
+	code=$(get "$PAGE/api/feedback")
+	[[ $code == 405 ]] && ok "feedback by GET: 405" || ko "feedback by GET: HTTP $code"
+else
+	echo "  SKIP  no feedback (FEEDBACK_DIR not set)"
+fi
+
 echo "Traffic"
 if grep -q "data-traffic=" "$TMP/page"; then
 	code=$(get "$PAGE/api/traffic")

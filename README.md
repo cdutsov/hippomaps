@@ -74,6 +74,9 @@ navigation, on OpenStreetMap data.**
 - Transit lines (metro, light rail, tram) in their colours
 - The page in English, German, French and Italian
 - Settings, starred places and recent searches stay in the browser
+- Feedback from the menu: a problem, a mistake of the map (with a link to a note on OpenStreetMap at the map view), an
+  idea; "Report this problem" under a search or route that failed. With the message, unless turned off, the page as it
+  was (search, place or route and the map view), the browser and the last errors of the page, listed in the form
 
 ### Android
 
@@ -103,6 +106,7 @@ to other services:
 | `STATS_DIR` | | a directory on a volume for the counts of visits: `stats.json` with, for each day (UTC), the page loads, the visitors and the sites they came from (`Referer` host, or `?ref=name` in the link). No address and no cookie are written; a visitor is counted once a day by a hash with a salt of the day, in memory only. Bots, headless browsers and prefetches are not counted. `hippomaps stats [DAYS [DIR]]` prints the table (`docker exec hippomaps hippomaps stats`) |
 | `STATS_IGNORE` | | addresses and networks (comma separated) that are not counted: our own |
 | [Stripe](https://stripe.com) Checkout | donations in Swiss francs from the menu (not in the app for Android: Google Play) | `STRIPE_KEY`, `PUBLIC_URL` |
+| A directory on a volume, and an SMTP server | feedback from the menu, kept in files and sent by e-mail | `FEEDBACK_DIR`; `FEEDBACK_TO`, `SMTP_*` |
 
 Except for the tiles, each service is optional: without its setting the feature is left out of the page.
 
@@ -137,6 +141,8 @@ The Docker build runs `go vet` and the tests.
 | `GEOIP_DB` | | a MaxMind DB file with a location per network (DB-IP City Lite; GeoLite2 City has the same fields): the map opens at the place of the IP address of the visitor, else in Zurich. A new file renamed over it is opened within a minute. `hippomaps geoip FILE ADDRESS…` looks addresses up in a file |
 | `SERVICE_WORKER` | `on` | `off`: `sw.js` becomes a service worker that removes itself and its caches from the browsers that have it (at their next visit), and the page registers none. A rollback of the image does not remove a service worker; this does |
 | `STRIPE_KEY` | | a restricted key of Stripe with Checkout Sessions: Write, for donations (`server/donate.go`; needs `PUBLIC_URL` for the way back), server side only. The payment methods of the account but Klarna and Amazon Pay. 10 checkouts per visitor in 10 minutes |
+| `FEEDBACK_DIR` | | a directory on a volume for the messages of Feedback (`server/feedback.go`): a JSON file each (mode 600, no IP address), deleted after a year. `hippomaps feedback [N [DIR]]` prints the last ones (`docker exec hippomaps hippomaps feedback`). 5 messages per visitor an hour |
+| `FEEDBACK_TO` | | an address that also gets each message by e-mail (Reply-To: the address the visitor gave), through `SMTP_HOST`, `SMTP_PORT` (`587`, STARTTLS; `465`, TLS), `SMTP_USER` (also the sender) and `SMTP_PASSWORD`. Three tries; the file stays either way |
 | `PICTURES` | `true` | photos and logos from Wikimedia |
 | `PICTURE_CACHE_MB` | `64` | memory for Wikimedia answers and thumbnails |
 | `PANORAMAX_API` | `https://api.panoramax.xyz` | pictures of streets for places without a picture; empty: none |
@@ -161,6 +167,7 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |
 | `GET say?lang=&text=` | spoken sentence (audio/mpeg) |
 | `GET traffic` | traffic incidents |
+| `POST feedback` `{"kind","text","email","lang","ctx"}` | a message of Feedback: `kind` `bug`, `map`, `idea` or `other`, `text` up to 4000 characters, `email` optional; `ctx` (optional): `link` (on this site only), `style`, `screen`, `agent`, `errors` (the last 10). 204; 400 `{"error":"kind"\|"text"\|"email"\|"json"}` |
 | `GET search/{search,query,complete,here}` | relayed overpass-search; with `lang=de`, `fr` or `it` its English words (the reading, other readings, notes, kinds of places) in that language (`server/labels.go`) |
 
 `GET {base}/sw.js` serves the service worker (`web/sw.js`, scope the page): the page and its files as last loaded, and the

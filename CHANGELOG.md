@@ -20,6 +20,10 @@ version numbers are the releases of the Android app (`android/`), which shows th
   takes in a pill ("+12 min"), and in a row under Start. A tap on one, in the row or on the map, shows it with its steps, and
   Start navigates it. Their times count live traffic and closures, as that of the route does. None with stops on the
   way.
+- Feedback in the menu: a problem, a mistake of the map (with a link to leave a note on OpenStreetMap there), an idea or
+  anything else, with an e-mail address for an answer if you like. "Report this problem" under a search or a route that
+  failed opens it. Unless turned off, the message carries the page as it was (the search, place or route and the map
+  view), the browser and the last errors of the page; "What is sent" lists them.
 
 ### Fixed
 
