@@ -36,10 +36,11 @@ wählen oder die Navigation unterwegs eine neue Route berechnet, ist Ihre Positi
 <li>Orte: die Kennungen eines Orts, um sein Bild und die Angaben seiner Website zu laden (ein Bild, die Speisekarte, Öffnungszeiten).</li>
 </ul>
 <p>Beim Laden der Seite sucht unser Server den ungefähren Ort Ihrer IP-Adresse (meist die Ortschaft) in einer Datenbank auf
-dem Server (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>), und die Karte öffnet sich dort, bis Ihr Gerät Ihren
-Standort mitteilt. Die Adresse wird dafür an niemanden gesendet.</p>
+dem Server (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>). Hat die Seite Ihren letzten Standort nicht gespeichert
+(siehe Daten auf Ihrem Gerät), öffnet sich die Karte dort, bis Ihr Gerät Ihren Standort mitteilt. Die Adresse wird dafür
+an niemanden gesendet.</p>
 <p>Wir verwenden diese Daten nur, um die Anfrage zu beantworten, und speichern sie nicht. Ihr Standort verlässt das Gerät
-für nichts anderes, und die App zeichnet nicht auf, wo Sie waren. Die Richtung des Telefons für den Kompass bleibt auf dem
+für nichts anderes. Auf dem Gerät speichert die Seite nur Ihren letzten Standort, nicht, wo Sie waren. Die Richtung des Telefons für den Kompass bleibt auf dem
 Gerät. Um die Nutzung des Dienstes zu begrenzen, zählt unser
 Server die Anfragen jeder IP-Adresse zehn Minuten lang im Arbeitsspeicher.</p>
 <p>Besuchszähler: Beim Laden der Seite erhöht unser Server den Zähler des Tages und den Zähler der Website, die auf uns
@@ -53,11 +54,12 @@ werden durch Log-Rotation automatisch gelöscht, in der Regel innerhalb von 30 T
 Dienstes (berechtigtes Interesse).</p>
 
 <h2>4. Daten auf Ihrem Gerät</h2>
-<p>App und Website speichern Ihre Einstellungen (Sprache, Kartenstil, Ebenen), Ihre letzten Suchen, Ihre gemerkten Orte und
-den letzten Kartenausschnitt im Speicher Ihres Browsers oder der App, dazu eine Kopie der Seite, damit sie sich ohne
+<p>App und Website speichern Ihre Einstellungen (Sprache, Kartenstil, Ebenen), Ihre letzten Suchen, Ihre gemerkten Orte,
+den letzten Kartenausschnitt und Ihren letzten Standort (auf etwa 100 m, dort öffnet sich die Karte beim nächsten Mal) im
+Speicher Ihres Browsers oder der App, dazu eine Kopie der Seite, damit sie sich ohne
 Verbindung öffnet. Wenn Sie eine Navigation starten, speichern sie auch die Karte entlang der Route, bis drei Tage nach
 Ihrer letzten Navigation; «Route für die Offline-Navigation automatisch speichern» im Menü schaltet das aus. Sie verlassen das Gerät nicht. «Letzte Suchen
-vergessen» im Menü löscht die Suchen; das Löschen der Websitedaten im Browser oder des App-Speichers löscht alles. Unter
+vergessen» im Menü löscht die Suchen; das Sperren des Standorts für hippomaps löscht den letzten Standort; das Löschen der Websitedaten im Browser oder des App-Speichers löscht alles. Unter
 Android sind diese Daten Teil Ihrer Gerätesicherung, wenn Sie diese eingeschaltet haben.</p>
 
 <h2>5. Standortberechtigung</h2>

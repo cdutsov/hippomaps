@@ -36,10 +36,11 @@ start, or navigation computes a new route on the way, your position is one of th
 <li>Places: the identifiers of a place, to fetch its picture and what its website says (a picture, the menu, opening hours).</li>
 </ul>
 <p>When the page loads, our server looks up the approximate place of your IP address (usually the town) in a database on
-the server (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>), and the map opens there until your device tells
-where you are. The address is not sent to anyone for this.</p>
+the server (<a href="https://db-ip.com">IP Geolocation by DB-IP</a>). Unless the page has kept your last location (see
+Data on your device), the map opens there until your device tells where you are. The address is not sent to anyone for
+this.</p>
 <p>We use these data only to answer the request and do not store them. Your location never leaves the device for
-anything else, and the app does not record where you have been. The direction of the phone, for the compass, stays on
+anything else. On the device the page keeps only your last location, not where you have been. The direction of the phone, for the compass, stays on
 the device. To limit the use of the service, our server counts the
 requests of each IP address in memory for ten minutes.</p>
 <p>Visit counts: when the page loads, our server adds one to the count of the day and one to the count of the site that
@@ -52,11 +53,12 @@ deleted automatically by log rotation, generally within 30 days. Purpose: operat
 (legitimate interest).</p>
 
 <h2>4. Data on your device</h2>
-<p>The app and the website keep your settings (language, map style, layers), your recent searches, your saved places and
-the last map view in the storage of your browser or of the app, with a copy of the page so that it opens without a
+<p>The app and the website keep your settings (language, map style, layers), your recent searches, your saved places,
+the last map view and your last location (to about 100 m, where the map opens the next time) in the storage of your
+browser or of the app, with a copy of the page so that it opens without a
 connection. When you start navigation they also keep the map along the route, until three days after your last
 navigation; "Autosave route for offline navigation" in the menu turns this off. They do not leave the device. "Forget recent
-searches" in the menu deletes the searches; clearing the site data of your browser, or the storage of the app, deletes
+searches" in the menu deletes the searches; blocking the location for hippomaps deletes the last location; clearing the site data of your browser, or the storage of the app, deletes
 everything. On Android these data are part of your device backup if you have turned it on.</p>
 
 <h2>5. Location permission</h2>

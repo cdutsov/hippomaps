@@ -5,7 +5,8 @@
 
 Prints "ok <what>" per check and "FAIL <what>" per failure; exits 1 on a failure. The browser is
 in Zurich (a granted location) on a phone screen. Checks: without the location the map opens at the place of the IP
-address (of the machine of the test), without a credit of DB-IP on the map; the map starts at the location; the
+address (of the machine of the test), without a credit of DB-IP on the map; the map starts at the location; a new visit
+at the last location of the device (kept on it to about 100 m), a location far from it jumped to; the
 Directions button opens start and destination, a typed destination gives a route by car with its
 time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
 sentences of the server; the language changed while navigating (no new page); the language of directions and voice apart from
@@ -27,7 +28,7 @@ focus at the start on a phone, with it on a computer (no list until a click); a 
 destination by Directions; the dot of the location and the map on it following the visitor; a route on a small phone with
 car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; the popup of a POI (under the
 mouse, clicked, tapped on a phone); the picture and menu of a restaurant from its website (its page, its card when found by name); fewer places at the middle zooms; the start: what the search reads with two searches, and searches of the map view (a river of
-Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start); the map
+Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start, the last location forgotten); the map
 on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; the compass of
 the app for Android (a stand-in): the cone at the dot, the map turning with the phone from the button of the location and on the dot as it moves,
 north up again, a finger ending it, the page hidden a while and back, none in navigation; the compass of a phone browser (Chrome with a
@@ -199,6 +200,28 @@ try:
     # our sources (route, pins, results …): tiles up to zoom 14 only
     check(js("(() => { const s = Object.entries(hmMap.getStyle().sources).filter(([k, v]) => k.startsWith('lm-') && v.type === 'geojson'); return s.length > 5 && s.every(([, v]) => v.maxzoom === 14); })()"),
           "our sources with tiles to zoom 14")
+
+    # the last location of the device kept on it to about 100 m; a new visit opens there at zoom 15, not at the place of
+    # the IP address (a phone network or a SIM from another country gives a town far away), and a location out of view
+    # is jumped to, no flight out and in
+    check(wait("localStorage.getItem('hm-last-me') === '47.378,8.540'", 10),
+          f"the last location kept on the device to about 100 m ({js('localStorage.getItem(`hm-last-me`)')})")
+    js("localStorage.setItem('hm-last-me', '46.948,7.447')")  # Bern; the location of the browser is Zurich
+    start_hook = call("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(window, 'hmMap', { configurable: true, set(m) {"
+                      " Object.defineProperty(window, 'hmMap', { value: m, writable: true, configurable: true });"
+                      " const s = window.hmStart = { c: m.getCenter().toArray(), z: m.getZoom(), zmin: m.getZoom(), moves: 0 };"
+                      " m.on('movestart', () => { s.moves++; }); m.on('move', () => { s.zmin = Math.min(s.zmin, m.getZoom()); }); } })")
+    js("window.hmOld = 1")
+    call("Page.navigate", url=URL)
+    wait("!window.hmOld && window.hmStart && window.hmMap?.loaded() && !hmMap.isMoving() && location.hash.includes('/47.37')", 30)
+    st = js("JSON.stringify(window.hmStart || null)")
+    s0 = json.loads(st) if st else None
+    check(s0 and abs(s0["c"][1] - 46.948) < 0.001 and abs(s0["c"][0] - 7.447) < 0.001 and abs(s0["z"] - 15) < 0.01,
+          f"a new visit opens at the last location of the device, zoom 15, not at the place of the IP address ({st})")
+    at_me = js(f"(() => {{ const c = hmMap.getCenter(); return Math.hypot((c.lat - {ZURICH[0]}) * 111320, (c.lng - {ZURICH[1]}) * 75000) < 300; }})()")
+    check(s0 and s0["zmin"] > 14.9 and at_me, f"the location 95 km from it: the map jumps there, no flight out and in ({st})")
+    call("Page.removeScriptToEvaluateOnNewDocument", identifier=start_hook["identifier"])
+    check(wait("localStorage.getItem('hm-last-me') === '47.378,8.540'", 10), "the last location kept again where the visitor is")
 
     # the dot moves with the visitor (the page watches the location), and the map with it while it is on them; once
     # a finger moved the map the dot alone moves; the button puts the map on the visitor again
@@ -1661,6 +1684,7 @@ try:
           and js(f"JSON.stringify(hmMap.getCenter()) === {json.dumps(c0)} && !hmMap.getStyle().sources['lm-me'].data.features.length"),
           f"the location blocked: the button of the location says so, no dot, the map stays ({js('document.querySelector(\'.lm-status\').textContent')})")
     check(js("!document.querySelector('.lm-status .lm-report')"), "the location blocked: no Report this problem (the message says what to do)")
+    check(js("localStorage.getItem('hm-last-me') === null"), "the location blocked: the last location kept on the device is forgotten")
     js("document.querySelector('.lm-dir-btn').click()")
     check(wait("!document.querySelector('.lm-route').hidden && /set the start/.test(document.querySelector('.lm-route-msg').textContent)"
                " && document.querySelector('.lm-end-from input').value === ''", 10),

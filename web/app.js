@@ -26,6 +26,10 @@ const JOURNEY_REGIONS = (root.dataset.journeyRegions || "").split(",").filter(Bo
 // the place of the IP address of the visitor (looked up by the server in a database of its own, DB-IP):
 // latitude, longitude and zoom. The map opens there until the device tells where the visitor is
 const NEAR = ((v) => (v.length === 3 && v.every(Number.isFinite) ? v : null))((root.dataset.near || "").split(",").map(Number));
+// the last location the device gave, kept on it to about 100 m (hm-last-me, "lat,lon"): the map opens there rather
+// than at the place of the IP address, which is often a town far away (a phone network, a SIM from another country, a VPN)
+const LAST_ME = ((v) => (v.length === 2 && v.every(Number.isFinite) && Math.abs(v[0]) <= 90 && Math.abs(v[1]) <= 180 ? v : null))(
+  ((() => { try { return localStorage.getItem("hm-last-me"); } catch { return null; } })() || "").split(",").map(Number));
 // the language: chosen in the menu (hm-lang), else that of the browser. It sets the texts of the page
 // (en, de, fr, it) and the names on the map; the steps of directions and the voice too, unless a language
 // of navigation is chosen (hm-nav-lang, STEP_LANG).
@@ -701,10 +705,10 @@ const followsSun = () => look.style === "auto" || look.style === "driving";
 const shownStyle = () => navLook || (look.style === "auto" ? (autoDark ? "dark" : "light")
   : look.style === "driving" && autoDark ? "driving-night" : look.style);
 const isNight = (lon, lat) => sunHeight(lon, lat) < -0.833; // the sun below the horizon
-// day or night where the visitor is, by their clock: the sun at their location once known (first the
-// place of their IP address), else the hours of the device (day 07–19); not where the map is (looking at
+// day or night where the visitor is, by their clock: the sun at their location once known (first their last
+// location, or the place of their IP address), else the hours of the device (day 07–19); not where the map is (looking at
 // America from Europe at night stays night)
-let meForSun = NEAR ? [NEAR[1], NEAR[0]] : null;
+let meForSun = LAST_ME ? [LAST_ME[1], LAST_ME[0]] : NEAR ? [NEAR[1], NEAR[0]] : null;
 const nightNow = () => (meForSun ? isNight(meForSun[0], meForSun[1]) : ((h) => h < 7 || h >= 19)(new Date().getHours()));
 autoDark = nightNow();
 const theme = () => (["dark", "driving-night"].includes(shownStyle()) ? "dark" : "light");
@@ -854,8 +858,9 @@ side.append(sheetBtn, top, form, status, body, foot);
 
 // ------------------------------------------------------------------ the map
 // a link with a place on the map (#map=) opens there; otherwise, and when the place is just the
-// last view of this browser (a reload, a return), the map starts where the visitor is: at the place of
-// their IP address (NEAR, else Zurich), then at the location of the device once it answers
+// last view of this browser (a reload, a return), the map starts where the visitor is: at the last location
+// of the device (LAST_ME), else at the place of their IP address (NEAR, else Zurich), then at the location of the
+// device once it answers
 const lastView = (() => { try { return localStorage.getItem("hm-last-view"); } catch { return null; } })();
 const linkedView = /(^|&)map=/.test(location.hash.slice(1)) && location.hash !== lastView;
 // the tilt of the map in navigation: 50 degrees shows the way ahead; more draws many far tiles
@@ -863,8 +868,8 @@ const NAV_PITCH = 50;
 const map = new maplibregl.Map({
   container: mapEl,
   style: styleURL(),
-  center: NEAR ? [NEAR[1], NEAR[0]] : [8.54, 47.37],
-  zoom: NEAR ? NEAR[2] : 13,
+  center: LAST_ME ? [LAST_ME[1], LAST_ME[0]] : NEAR ? [NEAR[1], NEAR[0]] : [8.54, 47.37],
+  zoom: LAST_ME ? 15 : NEAR ? NEAR[2] : 13, // 15: the zoom the location gives (showMe)
   hash: "map",
   maxPitch: 85,
   // DB-IP (the place of the IP address) is credited in the privacy policy, not on the map
@@ -2676,16 +2681,22 @@ const locate = () => {
   return new Promise((done) =>
     navigator.geolocation.getCurrentPosition(
       (pos) => { state.locBlocked = false; done(meAt(pos)); watchMe(); },
-      (err) => { state.locBlocked = err.code === 1; done(""); }, // blocked, or none in time (under ground)
+      (err) => { state.locBlocked = err.code === 1; if (err.code === 1) forgetMe(); done(""); }, // blocked, or none in time (under ground)
       { timeout: 8000, maximumAge: 300e3 },
     ));
 };
+// the last location for the start of the next visit (LAST_ME), written when it moved about 100 m; forgotten when the
+// visitor blocks the location
+let keptMe = null;
+const forgetMe = () => { keptMe = null; try { localStorage.removeItem("hm-last-me"); } catch {} };
 // meAt keeps a position of the visitor and draws it: a dot, and the circle of its accuracy
 function meAt(pos) {
   meForSun = [pos.coords.longitude, pos.coords.latitude];
   setTimeout(checkDayNight, 0); // the sun where the visitor is
   const c = [pos.coords.longitude, pos.coords.latitude];
   state.me = { v: `${c[1].toFixed(5)},${c[0].toFixed(5)}`, at: Date.now(), at2: c };
+  const kept = `${c[1].toFixed(3)},${c[0].toFixed(3)}`;
+  if (kept !== keptMe) store.set("hm-last-me", (keptMe = kept));
   const r = Math.min(pos.coords.accuracy || 0, 5000), ring = [];
   for (let i = 0; i <= 48; i++) {
     const a = (i / 48) * 2 * Math.PI;
@@ -2700,7 +2711,8 @@ function meAt(pos) {
   return state.me.v;
 }
 // the button asks the browser, which asks the visitor the first time; quiet: at the start of the
-// page, without a message when the visitor says no, and not after they moved the map or searched
+// page, without a message when the visitor says no, and not after they moved the map or searched. At the start the
+// map jumps to a location out of view (a flight from the last place or the town of the IP address shows nothing of use)
 function showMe(quiet) {
   if (!navigator.geolocation) return quiet || say(T.locMissing, true);
   locBtn.classList.add("lm-busy");
@@ -2712,11 +2724,12 @@ function showMe(quiet) {
       watchMe();
       if (quiet && (state.touched || state.text || !routeView.hidden || nav.on)) return;
       if (status.classList.contains("lm-bad")) say("");
-      fit(() => glide({ center: state.me.at2, zoom: Math.max(map.getZoom(), 15), padding: pad() }));
+      fit(() => glide({ center: state.me.at2, zoom: Math.max(map.getZoom(), 15), padding: pad() }, { jumpFar: quiet }));
       me.onAt = Date.now() + 1; // from here the map goes along with the visitor
     },
     (err) => {
       locBtn.classList.remove("lm-busy");
+      if (err.code === 1) forgetMe();
       if (!quiet) say(err.code === 1 ? T.locBlocked : T.locFailed, true);
     },
     { enableHighAccuracy: true, timeout: quiet ? 60000 : 15000, maximumAge: 60000 }, // at the start, time to answer the question
@@ -2765,7 +2778,7 @@ function watchMe() {
     const c = state.me.at2, [ax, ay] = flat(was, c[1]), [bx, by] = flat(c, c[1]);
     if (Math.hypot(ax - bx, ay - by) < 2) return;
     fit(() => map.easeTo({ center: c, padding: pad(), duration: 500 }), 600);
-  }, (err) => { if (err.code === 1) unwatchMe(); }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 60000 });
+  }, (err) => { if (err.code === 1) { unwatchMe(); forgetMe(); } }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 60000 });
   compassSync();
 }
 function unwatchMe() {
@@ -3495,8 +3508,9 @@ function afterKeyboard(go) {
 }
 // glide moves the map to a place ({ center, zoom }) or a box ({ bounds, maxZoom }): a short glide when
 // the target is near (within a screen or so at the lower of the two zooms), a flight out and in when
-// it is far, in 0.9 to 1.5 s by the distance (with its own speed MapLibre would jump past maxDuration).
-function glide(o) {
+// it is far, in 0.9 to 1.5 s by the distance (with its own speed MapLibre would jump past maxDuration);
+// with jumpFar a jump there in place of the flight
+function glide(o, { jumpFar = false } = {}) {
   const { bounds, maxZoom = 22, ...rest } = o;
   const to = bounds ? map.cameraForBounds(bounds, { padding: o.padding, maxZoom }) : o;
   if (!to?.center) return;
@@ -3505,6 +3519,7 @@ function glide(o) {
   const px = Math.hypot(b.x - a.x, b.y - a.y) * 2 ** (Math.min(z0, z1) - z0);
   const near = px < 1.2 * Math.max(mapEl.clientWidth, mapEl.clientHeight) && Math.abs(z1 - z0) < 5;
   const screens = px / Math.max(mapEl.clientWidth, mapEl.clientHeight, 1);
+  if (!near && jumpFar) return bounds ? map.fitBounds(bounds, { ...rest, maxZoom, animate: false }) : map.jumpTo(rest);
   const how = near ? { duration: Math.abs(z1 - z0) > 2 ? 450 : 350 } : { duration: Math.round(Math.min(1500, 900 + 150 * Math.log2(Math.max(1, screens)))) };
   if (bounds) map.fitBounds(bounds, { ...rest, maxZoom, ...how, linear: near });
   else if (near) map.easeTo({ ...rest, ...how });
@@ -7169,13 +7184,18 @@ if (new URLSearchParams(location.search).has("donated")) {
   u.searchParams.delete("donated");
   history.replaceState(null, "", u);
 }
+// a shared place (?at=) or route (?to=)
+const startU = new URLSearchParams(location.search);
+const startPt = (v) => { const m = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(v || ""); return m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180 ? [+m[2], +m[1]] : null; };
+const startAt = startPt(startU.get("at")), startTo = startPt(startU.get("to"));
+// with nothing else to show, the map on the visitor: the location asked at once, not after the map has loaded; a location
+// the device has (allowed before) often comes before the map is drawn, which then opens there
+if (!startQ && !startTo && !startAt && !linkedView) showMe(true);
 map.once("load", () => {
   loadTraffic();
   drawStars();
   loadTransit();
-  const u = new URLSearchParams(location.search);
-  const pt = (v) => { const m = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(v || ""); return m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180 ? [+m[2], +m[1]] : null; };
-  const at = pt(u.get("at")), to = pt(u.get("to"));
+  const u = startU, pt = startPt, at = startAt, to = startTo;
   if (startQ) {
     const extra = Object.fromEntries(extraKeys.map((k) => [k, u.get(k) || ""]));
     run(startQ, extra, { push: false, sel: u.get("sel") });
@@ -7193,6 +7213,6 @@ map.once("load", () => {
   } else if (at) { // a shared place
     here({ lng: at[0], lat: at[1] }, u.get("n") || "");
     fit(() => map.jumpTo({ center: at, zoom: Math.max(map.getZoom(), 16), padding: pad() })); // above the panel on a phone
-  } else if (!linkedView) showMe(true);
+  }
 });
 if (!root.dataset.key) say("The map is not configured on this server: MAPS_KEY is missing.", true);

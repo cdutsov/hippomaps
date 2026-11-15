@@ -315,9 +315,11 @@ func TestGeoIPPage(t *testing.T) {
 	if w := get(testServer(t, nil), "/labs/maps", "X-Forwarded-For", "192.0.2.10"); strings.Contains(w.Body.String(), "data-near") {
 		t.Error("a place without a database")
 	}
-	// the page opens the map there and takes the sun from there; the map does not credit DB-IP
+	// the page opens the map there and takes the sun from there, unless it has kept the last location of the device;
+	// the map does not credit DB-IP
 	app, _ := fs.ReadFile(web.Files, "app.js")
-	for _, want := range []string{"root.dataset.near", "let meForSun = NEAR"} {
+	for _, want := range []string{"root.dataset.near", "let meForSun = LAST_ME ? [LAST_ME[1], LAST_ME[0]] : NEAR ?",
+		"center: LAST_ME ? [LAST_ME[1], LAST_ME[0]] : NEAR ? [NEAR[1], NEAR[0]]"} {
 		if !strings.Contains(string(app), want) {
 			t.Errorf("app.js: no %s", want)
 		}
