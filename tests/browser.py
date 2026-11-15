@@ -33,7 +33,8 @@ the app for Android (a stand-in): the cone at the dot, the map turning with the 
 north up again, a finger ending it, the page hidden a while and back, none in navigation; the compass of a phone browser (Chrome with a
 virtual orientation sensor: flat, held up, tilted, landscape, from true north; Safari with a stand-in: asked from a tap, turning with its
 first heading, refused), none on a computer; a shared route with
-9 stops (the first 8), a stop removed; Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
+9 stops (the first 8), a stop removed; other routes by car (a row above Start, their times on the map, one picked from the row and
+from a tap on its line; none with a stop); Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
 coordinates in the search box; the POIs with a name in the Outdoor style; public transport (a shared journey from Zurich to
 Bern: its connections, the legs of the first, the rides and walks on the map, Later, an arrival by a time on the clocks of the
 journey, back to the car; a start without a timetable); and no errors
@@ -259,20 +260,34 @@ try:
     tap(".lm-end-list:not([hidden]) .lm-opt")
     check(wait("/Paradeplatz/.test(document.querySelector('.lm-end-from input').value) && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30),
           "a start typed over your location and tapped: the route starts there")
-    # with start and destination set, a tap on the map shows the place; its card goes back to the route as it was
-    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 120, "y": 160}])
+    # with start and destination set, a tap on the map shows the place; its card goes back to the route as it was. The
+    # taps are clear of the lines of the routes (a tap on another route picks it) and of the start and destination (a
+    # tap there names the same place), on no name or symbol of the map
+    def off_routes(x0, y0):
+        wait("!hmMap.isMoving()", 10)
+        return js(f"""(() => {{ const ls = ['lm-route-line', 'lm-route-alt-line', 'lm-route-alt-label'].filter(l => hmMap.getLayer(l));
+          const ends = hmMap.getStyle().sources['lm-route'].data.features.filter(f => f.properties.end).map(f => hmMap.project(f.geometry.coordinates));
+          for (let d = 0; d < 300; d += 15) for (const [x, y] of [[{x0} + d, {y0}], [{x0}, {y0} + d], [{x0} + d, {y0} + d]])
+            if (!hmMap.queryRenderedFeatures([[x - 30, y - 30], [x + 30, y + 30]], {{ layers: ls }}).length && ends.every(e => Math.hypot(e.x - x, e.y - y) > 80)
+              && !hmMap.queryRenderedFeatures([[x - 40, y - 40], [x + 40, y + 40]]).some(f => f.layer.type === 'symbol'))
+              return [x, y];
+          return [{x0}, {y0}]; }})()""")
+    x, y = off_routes(120, 160)
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y}])
     call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
     check(wait("!document.querySelector('.lm-here').hidden", 10) and js("!!document.querySelector('.lm-here .lm-swap-acts')"),
           "a tap on the map with a route: the point shown, the route kept")
     js("document.querySelector('.lm-here:not([hidden]) .lm-back')?.click()")
     check(wait("!document.querySelector('.lm-route').hidden && /Paradeplatz/.test(document.querySelector('.lm-end-from input').value)", 10),
           "back to the route: the start kept")
-    to0 = js("document.querySelector('.lm-end-to input').value")
-    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 140, "y": 180}])
+    to_at = "JSON.stringify(hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to')?.geometry.coordinates)"
+    to0 = js(to_at)  # where the destination is (a tap may name the same place: a station beside its label)
+    x, y = off_routes(140, 180)
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y}])
     call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
     wait("!!document.querySelector('.lm-here:not([hidden]) .lm-swap-acts')", 10)
     js("document.querySelector('.lm-here:not([hidden]) .lm-swap-acts .lm-chip')?.click()")
-    check(wait(f"!document.querySelector('.lm-route').hidden && document.querySelector('.lm-end-to input').value !== {json.dumps(to0)} && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30),
+    check(wait(f"!document.querySelector('.lm-route').hidden && {to_at} !== {json.dumps(to0)} && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 30),
           "a point of the map as the new destination")
     # (the route may be asked once more when the location comes: wait for the summary)
     check(wait(r"/\d{1,2}:\d{2}/.test(document.querySelector('.lm-sum-eta')?.textContent || '')", 20), "the arrival time of the route")
@@ -783,6 +798,7 @@ try:
     marks = json.loads(js("hmMap.getSource('lm-route').getData().then((d) => JSON.stringify(d.features.filter((f) => f.properties.mark).map((f) => f.properties.mark)))") or "[]")
     check("camera" not in marks, f"no speed cameras on a route in Switzerland ({marks})")
     check(js("!document.querySelector('.lm-ferries')"), "no warning of a ferry on a route without one")
+    check(js("!document.querySelector('.lm-alts') && !hmMap.getStyle().sources['lm-routealt']?.data.features?.length"), "no other routes with a stop on the way")
     if js("!!document.querySelector('.lm-along-cats')"):
         js("document.querySelector('.lm-along-cats [data-cat=rest]').click()")
         check(wait("document.querySelectorAll('.lm-along-item').length > 3", 30), "rest areas along the route")
@@ -798,6 +814,52 @@ try:
                  " return f.height > 0 && f.bottom <= s.top && /^Ferry: \\S/.test(document.querySelector('.lm-ferry-ferry').textContent); })()"),
           "a ferry on a route by car: a warning with its name above Start")
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+    # other routes from start to destination (Zurich - Bern by car): a row above Start, the route shown first with its
+    # time, the others with how much longer they take; paler on the map with that time; one picked from the row, one
+    # from a tap on its line
+    call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=46.94900,7.43910&tn=Bern&mode=car")
+    if wait("document.querySelectorAll('.lm-alts .lm-alt').length >= 2", 40):
+        alts_now = """JSON.stringify((() => { const bs = [...document.querySelectorAll('.lm-alt')], s = document.querySelector('.lm-nav-start').getBoundingClientRect();
+          return { on: bs.map(b => b.getAttribute('aria-checked')), times: bs.map(b => b.querySelector('.lm-alt-time').textContent),
+            via: bs.map(b => b.querySelector('.lm-alt-via').textContent), sum: document.querySelector('.lm-sum-time').textContent,
+            above: document.querySelector('.lm-alts').getBoundingClientRect().bottom <= s.top,
+            map: (hmMap.getStyle().sources['lm-routealt']?.data.features || []).map(f => [f.geometry.type, f.properties.i, f.properties.text || '']) }; })())"""
+        r = json.loads(js(alts_now))
+        diff = re.compile(r"^([+\u2212]\d|Same time$)")
+        nr = len(r["on"])
+        check(r["on"][0] == "true" and r["on"].count("true") == 1 and r["times"][0] == r["sum"] and all(diff.match(t) for t in r["times"][1:])
+              and all(r["via"]) and r["above"], f"other routes: a row above Start, the route first with its time, the others with + or − ({r})")
+        lines = sorted(f[1] for f in r["map"] if f[0] == "LineString")
+        labels = {f[1]: f[2] for f in r["map"] if f[0] == "Point"}
+        check(lines == list(range(1, nr)) and all(labels.get(i) == r["times"][i] for i in range(1, nr)),
+              f"the other routes on the map, each with how much longer it takes ({r['map']})")
+        js("document.querySelectorAll('.lm-alt')[1].click()")
+        time.sleep(0.5)
+        q = json.loads(js(alts_now))
+        check(q["on"][1] == "true" and q["on"].count("true") == 1 and q["times"][1] == q["sum"] and q["sum"] != r["sum"]
+              and diff.match(q["times"][0]) and sorted(f[1] for f in q["map"] if f[0] == "LineString") == [i for i in range(nr) if i != 1]
+              and js("document.querySelector('.lm-step') && !!document.querySelector('.lm-nav-start')"),
+              f"another route picked in the row: its time, its steps and Start; the first one on the map as another ({q})")
+        # a tap on the line of the first route on the map: it is shown again
+        wait("!hmMap.isMoving()", 10)
+        time.sleep(1)
+        pt = js("""(() => { const f = hmMap.queryRenderedFeatures({ layers: ['lm-route-alt-line'] }).find(f => f.properties.i === 0); if (!f) return null;
+          const top = document.querySelector('.lm-side').getBoundingClientRect().top, c = hmMap.getCanvas().getBoundingClientRect();
+          let best = null, bd = Infinity;
+          for (const ll of f.geometry.coordinates) { const p = hmMap.project(ll); if (!(p.y + c.top < top - 30 && p.y > 120 && p.x > 70 && p.x < c.width - 70)) continue;
+            const at = hmMap.queryRenderedFeatures([[p.x - 12, p.y - 12], [p.x + 12, p.y + 12]], { layers: ['lm-route-line', 'lm-route-alt-line'] });
+            if (at.length && at.every(g => g.layer.id === 'lm-route-alt-line' && g.properties.i === 0)) {
+              const d = Math.abs(p.x - c.width / 2); if (d < bd) [best, bd] = [[p.x + c.left, p.y + c.top], d]; } }
+          return best; })()""")
+        if pt:
+            call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": pt[0], "y": pt[1]}])
+            call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+            check(wait("document.querySelectorAll('.lm-alt')[0]?.getAttribute('aria-checked') === 'true'", 5), f"a tap on another route on the map shows it ({pt})")
+        else:
+            check(False, "the line of another route in view above the panel, away from the route")
+        js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
+    else:
+        check(False, "other routes from Zurich to Bern by car")
 
     # a ride by bike with the location of the device: fixes every 5 m at 5 m/s (five a second, to be quick), a
     # little noise. The sentences spoken (the texts of /api/say, answered here with silence) with the
@@ -1010,10 +1072,12 @@ try:
         return ok, t[::max(1, len(t) // 12)]
 
     sheet = lambda: js("document.getElementById('app').dataset.sheet")
-    # the panel at the height of its state in the page as it is (half 48 %, full all but 56 px, peek at most 40 %), its
-    # bottom at the bottom of the page, the page not scrolled
+    # the panel at the height of its state in the page as it is (half 48 %, or down to Start of a route up to 85 %; full
+    # all but 56 px; peek at most 40 %), its bottom at the bottom of the page, the page not scrolled
     at_height = lambda: js("(() => { const s = document.querySelector('.lm-side').getBoundingClientRect(), H = document.getElementById('app').clientHeight,"
-                           " st = document.getElementById('app').dataset.sheet, want = { half: Math.round(H * 0.48), full: H - 56 }[st];"
+                           " r = document.querySelector('.lm-route'), go = r && !r.hidden && r.querySelector('.lm-nav-go'),"
+                           " need = go ? Math.ceil(go.getBoundingClientRect().bottom + document.querySelector('.lm-body').scrollTop - s.top + 12) : 0,"
+                           " st = document.getElementById('app').dataset.sheet, want = { half: Math.max(Math.round(H * 0.48), Math.min(Math.round(H * 0.85), need)), full: H - 56 }[st];"
                            " return Math.abs(s.bottom - innerHeight) <= 1 && H === innerHeight && scrollY === 0"
                            " && (want == null ? s.height <= H * 0.4 + 1 : Math.abs(s.height - want) <= 2); })()")
     panel = lambda: js("(() => { const s = document.querySelector('.lm-side').getBoundingClientRect(); return [document.getElementById('app').dataset.sheet, Math.round(s.top), Math.round(s.height), innerHeight]; })()")

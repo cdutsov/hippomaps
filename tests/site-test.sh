@@ -169,6 +169,17 @@ if grep -q "data-route=" "$TMP/page"; then
 	else
 		ko "a route with a stop: HTTP $code $(head -c 200 "$TMP/b")"
 	fi
+	# other routes (alts): Zurich - Bern by car has two more, each with its own line, steps and limits, none faster by
+	# much; none with a stop on the way
+	code=$(get "$PAGE/api/route?from=47.3779,8.5403&to=46.9490,7.4391&mode=car&alts=2")
+	if [[ $code == 200 ]] && jq -e '(.alts | length) >= 1 and (.alts | length) <= 2 and all(.alts[]; (.line | length) > 10 and (.steps | length) > 2
+		and (.limits | length) > 0 and .s < $r.s * 1.5 and .s > $r.s * 0.9 and .alts == null)' --argjson r "$(jq '{s}' "$TMP/b")" "$TMP/b" >/dev/null; then
+		ok "Zurich - Bern by car: other routes of $(jq -r '[.alts[].s / 60 | round | tostring + " min"] | join(", ")' "$TMP/b") (the route $(jq -r '.s / 60 | round' "$TMP/b") min)"
+	else
+		ko "other routes Zurich - Bern: HTTP $code $(jq -c '{s, alts: [.alts[]? | {s, km}]}' "$TMP/b" 2>/dev/null)"
+	fi
+	code=$(get "$PAGE/api/route?from=47.3779,8.5403&via=47.0502,8.3093&to=46.9490,7.4391&mode=car&alts=2")
+	[[ $code == 200 ]] && jq -e '.alts == null' "$TMP/b" >/dev/null && ok "no other routes with a stop" || ko "other routes with a stop: HTTP $code"
 	# boats and car trains on the way, above Start in the page: the ferry Horgen - Meilen, the car train of the Lötschberg
 	code=$(get "$PAGE/api/route?from=47.2597,8.5977&to=47.2700,8.6430&mode=car")
 	[[ $code == 200 ]] && jq -e '[.ferries[]? | select(.k == "ferry" and .name != "" and .i < .end)] | length == 1' "$TMP/b" >/dev/null &&

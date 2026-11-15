@@ -16,6 +16,10 @@ version numbers are the releases of the Android app (`android/`), which shows th
   privacy and licences pages say so.
 - The results of a search as a file, under the Overpass query: CSV (a row per result with its point and tags) or
   GeoJSON (with the query and the credit to OpenStreetMap). Not in the Android app yet.
+- Other routes in directions: up to two more from start to destination, paler on the map with how much longer each
+  takes ("+12 min"), and in a row above Start. A tap on one, in the row or on the map, shows it with its steps, and
+  Start navigates it. Their times count live traffic and closures, as that of the route does. None with stops on the
+  way.
 
 ## 1.4.1 (2026-11-14)
 

@@ -21,7 +21,8 @@ import (
 //	GET {base}/api/route?from=47.37,8.54&via=47.05,8.31&to=46.95,7.44&mode=car|bike|walk&lang=en
 //
 // via: stops on the way, in order, up to maxStops (each a leg of Valhalla; the legs are joined into
-// one line, and stops holds the index of the line where each stop is).
+// one line, and stops holds the index of the line where each stop is). alts=1 or 2: as many other routes, in
+// alts (alternates.go); none with stops or a heading.
 //
 // answers {"km","s","line":[[lon,lat],…],"steps":[…],"stops":[i,…],"limits":[[from,to,kmh],…]}, or
 // {"error":{"code","message"}}: 400 bad_request and too_far, 404 no_route, no_road (none near a point) and
@@ -89,19 +90,20 @@ type lane struct {
 }
 
 type routeAnswer struct {
-	Km      float64      `json:"km"`
-	S       float64      `json:"s"`
-	Line    [][2]float64 `json:"line"`
-	Steps   []routeStep  `json:"steps"`
-	Stops   []int        `json:"stops,omitempty"` // the index of line at each stop on the way
-	Limits  [][3]int     `json:"limits,omitempty"`
-	Traffic [][3]int     `json:"traffic,omitempty"` // by car: slow (1) and queued (2) stretches, in indexes of line
-	Delay   float64      `json:"delay,omitempty"`   // by car: seconds that traffic adds
-	Tunnels [][3]int     `json:"tunnels,omitempty"` // by car: [from, to, metres] in indexes of line
-	Marks   []routeMark  `json:"marks,omitempty"`   // by car: speed cameras (where allowed), stop signs, speed bumps (marks.go)
-	Ferries []routeFerry `json:"ferries,omitempty"` // boats and car trains on the way, in their order
-	Elev    *routeElev   `json:"elev,omitempty"`
-	lang    string       // the language of the steps (bg-BG): fixes of its phrases in addSteps
+	Km      float64        `json:"km"`
+	S       float64        `json:"s"`
+	Line    [][2]float64   `json:"line"`
+	Steps   []routeStep    `json:"steps"`
+	Stops   []int          `json:"stops,omitempty"` // the index of line at each stop on the way
+	Limits  [][3]int       `json:"limits,omitempty"`
+	Traffic [][3]int       `json:"traffic,omitempty"` // by car: slow (1) and queued (2) stretches, in indexes of line
+	Delay   float64        `json:"delay,omitempty"`   // by car: seconds that traffic adds
+	Tunnels [][3]int       `json:"tunnels,omitempty"` // by car: [from, to, metres] in indexes of line
+	Marks   []routeMark    `json:"marks,omitempty"`   // by car: speed cameras (where allowed), stop signs, speed bumps (marks.go)
+	Ferries []routeFerry   `json:"ferries,omitempty"` // boats and car trains on the way, in their order
+	Elev    *routeElev     `json:"elev,omitempty"`
+	Alts    []*routeAnswer `json:"alts,omitempty"` // other routes (alternates.go), each a whole answer of its own
+	lang    string         // the language of the steps (bg-BG): fixes of its phrases in addSteps
 }
 
 // routeFerry is a boat or a car train on the way (both a ferry for Valhalla): k ferry or train, its name, where
@@ -130,18 +132,24 @@ type signElement struct {
 	Text string `json:"text"`
 }
 
+// valhallaTrip is the part of a trip of Valhalla (/route, /trace_route) the page needs.
+type valhallaTrip struct {
+	Summary struct {
+		Length float64 `json:"length"`
+		Time   float64 `json:"time"`
+	} `json:"summary"`
+	Legs []struct {
+		Shape     string     `json:"shape"`
+		Maneuvers []maneuver `json:"maneuvers"`
+	} `json:"legs"`
+}
+
 // valhallaRoute is the part of an answer of Valhalla /route the page needs.
 type valhallaRoute struct {
-	Trip struct {
-		Summary struct {
-			Length float64 `json:"length"`
-			Time   float64 `json:"time"`
-		} `json:"summary"`
-		Legs []struct {
-			Shape     string     `json:"shape"`
-			Maneuvers []maneuver `json:"maneuvers"`
-		} `json:"legs"`
-	} `json:"trip"`
+	Trip       valhallaTrip `json:"trip"`
+	Alternates []struct {
+		Trip valhallaTrip `json:"trip"`
+	} `json:"alternates"`
 	ErrorCode int    `json:"error_code"`
 	Error     string `json:"error"`
 }
@@ -303,8 +311,31 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		routeError(w, status, code, msg)
 		return
 	}
-	a := routeAnswer{Km: round(v.Trip.Summary.Length, 3), S: math.Round(v.Trip.Summary.Time), Steps: []routeStep{}, Line: [][2]float64{}, lang: lang}
-	for n, leg := range v.Trip.Legs {
+	a := answerOf(v.Trip, lang)
+	if a == nil {
+		routeError(w, http.StatusNotFound, "no_route", "No route between these points.")
+		return
+	}
+	// other routes, while the extras of this one are asked: only from start to destination (Valhalla has none
+	// through stops), and not for a new route in navigation (heading)
+	var alts chan []*routeAnswer
+	if n, _ := strconv.Atoi(q.Get("alts")); n > 0 && len(stops) == 0 && start["heading"] == nil {
+		alts = make(chan []*routeAnswer, 1)
+		go func() { alts <- s.alternatives(ctx, ask, a, min(n, maxAlts), mode.costing) }()
+	}
+	s.extras(ctx, a, mode.costing)
+	if alts != nil {
+		a.Alts = <-alts
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(a)
+}
+
+// answerOf is the answer for a trip of Valhalla, its legs joined; nil without a line.
+func answerOf(t valhallaTrip, lang string) *routeAnswer {
+	a := &routeAnswer{Km: round(t.Summary.Length, 3), S: math.Round(t.Summary.Time), Steps: []routeStep{}, Line: [][2]float64{}, lang: lang}
+	for n, leg := range t.Legs {
 		// the legs joined: each starts at the point where the one before ends
 		off := 0
 		pts := decodePolyline(leg.Shape, 1e6)
@@ -313,16 +344,21 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			pts = pts[1:]
 		}
 		a.Line = append(a.Line, pts...)
-		a.addSteps(leg.Maneuvers, off, n < len(v.Trip.Legs)-1, n+1)
-		if n < len(v.Trip.Legs)-1 {
+		a.addSteps(leg.Maneuvers, off, n < len(t.Legs)-1, n+1)
+		if n < len(t.Legs)-1 {
 			a.Stops = append(a.Stops, len(a.Line)-1)
 		}
 	}
 	if len(a.Line) < 2 {
-		routeError(w, http.StatusNotFound, "no_route", "No route between these points.")
-		return
+		return nil
 	}
-	if mode.costing == "auto" {
+	return a
+}
+
+// extras adds what other calls tell of a route: by car the limits, traffic, tunnels and marks; by bike and on
+// foot the heights.
+func (s *Server) extras(ctx context.Context, a *routeAnswer, costing string) {
+	if costing == "auto" {
 		var edges []tracedEdge
 		a.Limits, a.Traffic, a.Tunnels, a.Delay, edges = s.alongRoute(ctx, a.Line)
 		if s.overpass() {
@@ -331,9 +367,6 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	} else if s.cfg.ElevationKey != "" {
 		a.Elev = s.heights(ctx, a.Line, a.Km)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(a)
 }
 
 type maneuver = struct {

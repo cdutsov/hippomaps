@@ -49,6 +49,8 @@ navigation, on OpenStreetMap data.**
 
 - **Directions** by car, bike and on foot with up to 8 stops, places along the route (fuel, charging, rest areas, food,
   drinking water…), lanes, junction signs, speed limits, and a height profile by bike and on foot
+- **Other routes**: up to two more from start to destination, with how much longer each takes leaving now (live
+  traffic and closures counted), on the map and in a row above Start; a tap picks one
 - **Public transport**: connections by train, tram, metro, bus, boat and cable car where the server has timetables
   (on hippomaps.ch: Europe), leaving now or with a departure or an arrival at a chosen time, with
   tracks, the walks to and from the stops, and delays where an operator publishes them
@@ -153,7 +155,7 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | `GET place?osm=node/123&pic=1` | more about a place from its website and free pictures near it: `web`, `site`, `menu` (places to eat and drink), `hours` (when it has no `opening_hours`), with `pic=1` a `picture` (`url`, `kind`, `credit`, `source`, `page`). The server looks up the tags in Overpass and reads only the website they name, on public addresses, as robots.txt allows; kept a week (an hour when Commons or Panoramax did not answer, each waited for 5 s at most) |
 | `GET place/picture?osm=node/123` | that picture, written again by the server (500 px, no metadata) |
 | `GET kinds?lang=` | the names of the kinds of POIs of the map tiles (`supermarket`, `place_of_worship/christian`) in the language, for the popups |
-| `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=` | line, steps, stops, speed limits, lanes, traffic, tunnels, signs on the way (`marks`), height profile |
+| `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=&alts=2` | line, steps, stops, speed limits, lanes, traffic, tunnels, signs on the way (`marks`), height profile; with `alts` (no stops) up to that many other routes in `alts`, each the same |
 | `GET journey?from=lat,lon&to=…&time=2026-11-13T08:00:00Z&arrive=1&page=&lang=` | connections by public transport around a time (now without `time`; `arrive=1`: there by then): legs with line, direction, tracks, stops, delays and their way; `earlier` and `later` are the `page` of the connections before and after; the way on foot when the ends are near |
 | `POST along` `{"line","cat","mode","lang"}` | places of a kind near a route, in route order |
 | `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |

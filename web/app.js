@@ -238,6 +238,9 @@ const EN = {
   atNight: "at night",
   byDay: "by day",
   delay: (m) => `+${m} min traffic`,
+  routes: "Routes",
+  sameTime: "Same time",
+  via: (name) => `via ${name}`,
   transit: "Transit",
   transitNote: "Metro, light rail and tram lines in their colours",
   bubbles: [["restaurants", "Restaurants"], ["hotels", "Hotels"], ["transit", "Transit"], ["ATMs", "ATMs"],
@@ -875,7 +878,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty };
+const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, routealt: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty };
 const ACCENT = "#e8590c"; // the warm complement of the hippo blue (--warm)
 const STOP_COLOUR = "#e8590c"; // stops on a route, and the places along it
 // POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
@@ -1268,7 +1271,7 @@ const pinLayer = (id, source, filter) => ({ id, type: "symbol", source, ...(filt
   layout: { "icon-image": "lm-pin-icon", "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true } });
 
 // the colours of our names, by theme: places along the route, and the results
-const TEXT_COLOUR = { "lm-along-name": ["#ffd8a8", "#7c2d12"], "lm-label": ["#ffb4a9", "#7f1d1d"], "lm-journey-name": ["#e5e7eb", "#111827"] };
+const TEXT_COLOUR = { "lm-route-alt-label": ["#e5e7eb", "#1f2937"], "lm-along-name": ["#ffd8a8", "#7c2d12"], "lm-label": ["#ffb4a9", "#7f1d1d"], "lm-journey-name": ["#e5e7eb", "#111827"] };
 const textPaint = (id) => ({ "text-color": TEXT_COLOUR[id][theme() === "dark" ? 0 : 1], "text-halo-color": theme() === "dark" ? "#111" : "#fff" });
 map.on("style.load", () => {
   if (shownStyle() === "light") pastel();
@@ -1348,6 +1351,12 @@ map.on("style.load", () => {
     "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-color": "#f08c00" } });
   add({ id: "lm-stars", type: "symbol", source: "lm-stars", layout: { "icon-image": "lm-star-icon",
     "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 15, 1], "icon-allow-overlap": true, "icon-ignore-placement": true } });
+  // the other routes of directions (route.alts): paler under the route, how much longer they take at a point of their
+  // own; a tap picks one
+  add({ id: "lm-route-alt-case", type: "line", source: "lm-routealt", filter: line, layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#5b6b80", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.8 } }, below);
+  add({ id: "lm-route-alt-line", type: "line", source: "lm-routealt", filter: line, layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#b8c7dc", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 3, 16, 8] } }, below);
   // directions: the line with a casing
   add({ id: "lm-route-case", type: "line", source: "lm-route", filter: line, layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#0b3d91", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 5, 16, 11], "line-opacity": 0.9 } }, below);
@@ -1395,6 +1404,9 @@ map.on("style.load", () => {
   if (font) add({ id: "lm-route-stop-n", type: "symbol", source: "lm-route", filter: ["==", ["get", "end"], "stop"],
     layout: { "text-field": ["get", "n"], "text-font": font, "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } });
+  if (font) add({ id: "lm-route-alt-label", type: "symbol", source: "lm-routealt", filter: ["has", "text"],
+    layout: { "text-field": ["get", "text"], "text-font": font, "text-size": 13, "text-padding": 4 },
+    paint: { ...textPaint("lm-route-alt-label"), "text-halo-width": 2.5 } });
   add(pinLayer("lm-pin", "lm-pin"));
   add({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
@@ -2365,6 +2377,7 @@ clearBtn.addEventListener("click", () => {
   clear();
   intro();
   setSource("route", empty);
+  setSource("routealt", empty);
   setSource("routetraffic", empty);
   showOnRoute(null);
   writeURL(null);
@@ -3844,6 +3857,7 @@ function onTap(e) {
   }
   if ((nav.on || !routeView.hidden) && alongAt(e.point)) return;
   if (nav.on) return;
+  if (!routeView.hidden && altAt(e.point)) return;
   if (document.activeElement === input || !list.hidden) {
     closeList();
     input.blur();
@@ -4199,7 +4213,7 @@ const MODES = ["car", "bike", "walk", ...(JOURNEY ? ["transit"] : [])];
 // when: the time of a journey by public transport (now, or a departure or arrival chosen, a date and time on the
 // clocks of the time zone tz of the stops); journey: the answer shown
 const route = { keep: false, from: null, to: null, toText: "", stops: [], mode: MODES.includes(store.get("hm-mode")) ? store.get("hm-mode") : "car", back: null, ctl: null,
-  when: { kind: "now", value: "", tz: "" }, journey: null };
+  when: { kind: "now", value: "", tz: "" }, journey: null, alts: [] };
 function routeButton(go) {
   const b = el("button", "lm-action", { type: "button" });
   b.innerHTML = svg(ICON.directions, 18);
@@ -4213,6 +4227,7 @@ function routeDone() {
   route.ctl?.abort();
   alongDone();
   setSource("route", empty);
+  setSource("routealt", empty);
   setSource("journey", empty);
 }
 // the stretches of a route slowed by traffic (d.traffic: [from, to, level] in indexes of the line),
@@ -4243,6 +4258,90 @@ function drawEnds(line) {
   if (route.mode !== "transit") route.stops.forEach((x, i) => { if (x) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { end: "stop", n: String(i + 1) } }); });
   if (route.to) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: route.to.ll }, properties: { end: "to" } });
   setSource("route", { type: "FeatureCollection", features: fs });
+  drawAlts(line);
+}
+// a tap on another route of directions (its line or its time) picks it
+function altAt(pt) {
+  if (!map.getLayer("lm-route-alt-line")) return false;
+  const r = 10, layers = ["lm-route-alt-line", "lm-route-alt-label"].filter((l) => map.getLayer(l));
+  const f = map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers })[0];
+  const a = f && route.alts[f.properties.i];
+  if (!a) return false;
+  pickRoute(a);
+  return true;
+}
+for (const l of ["lm-route-alt-line", "lm-route-alt-label"]) {
+  map.on("mouseenter", l, () => { if (!nav.on) map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", l, () => { map.getCanvas().style.cursor = ""; });
+}
+// how much longer route a takes than route d: "+12 min", "−3 min", "Same time"
+function altDiff(a, d) {
+  const s = a.s - d.s, m = Math.round(Math.abs(s) / 60);
+  return m === 0 ? T.sameTime : `${s > 0 ? "+" : "−"}${T.duration(Math.abs(s))}`;
+}
+// the other routes of directions on the map, under the route shown (line: its line, null for none), each with
+// altDiff at the middle of its longest stretch away from the route
+function drawAlts(line) {
+  const d = route.answer, fs = [];
+  if (line && d && !nav.on) {
+    const on = new Set(d.line.map(String)); // the points of the route
+    route.alts.forEach((a, i) => {
+      if (a === d) return;
+      fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: a.line }, properties: { i } },
+        { type: "Feature", geometry: { type: "Point", coordinates: altLabelAt(a.line, on) }, properties: { i, text: altDiff(a, d) } });
+    });
+  }
+  if (!fs.length && !sources.routealt.features.length) return;
+  setSource("routealt", { type: "FeatureCollection", features: fs });
+}
+// the middle point of the longest stretch of line with none of the points in on (the middle of line without one)
+function altLabelAt(line, on) {
+  let best = [0, 0];
+  for (let j = 0, from = -1; j <= line.length; j++) {
+    const off = j < line.length && !on.has(String(line[j]));
+    if (off && from < 0) from = j;
+    if (!off && from >= 0) {
+      if (j - from > best[1] - best[0]) best = [from, j];
+      from = -1;
+    }
+  }
+  return line[best[1] > best[0] ? (best[0] + best[1] - 1) >> 1 : line.length >> 1];
+}
+// the name that tells each route from the others (route.alts): the street or road it follows for the most
+// kilometres more than any other route does, when that is a sixth of it at least; "" for none
+function altVia(a) {
+  const km = (r) => {
+    const m = new Map();
+    for (const st of r.steps) for (const n of (st.street || "").split(" / ")) if (n) m.set(n, (m.get(n) || 0) + st.km);
+    return m;
+  };
+  const mine = km(a), others = route.alts.filter((r) => r !== a).map(km);
+  let best = "", most = a.km / 6;
+  for (const [n, k] of mine) {
+    const more = k - Math.max(0, ...others.map((o) => o.get(n) || 0));
+    if (more > most) [best, most] = [n, more];
+  }
+  return best;
+}
+// the routes to choose from, above Start: the one shown with its time, the others with altDiff; each with altVia or
+// its length
+function altsRow(d) {
+  const row = el("div", "lm-alts", { role: "radiogroup", "aria-label": T.routes });
+  for (const a of route.alts) {
+    const b = el("button", "lm-alt", { type: "button", role: "radio", "aria-checked": String(a === d), title: `${T.duration(a.s)} · ${fmtKm(a.km)}` });
+    const via = altVia(a);
+    b.append(el("span", "lm-alt-time", {}, a === d ? T.duration(a.s) : altDiff(a, d)), el("span", "lm-alt-via", {}, via ? T.via(via) : fmtKm(a.km)));
+    b.addEventListener("click", () => pickRoute(a));
+    row.append(b);
+  }
+  return row;
+}
+// another route of directions shown in place of the one shown (from altsRow or a tap on its line)
+function pickRoute(a) {
+  if (!a || a === route.answer || nav.on) return;
+  clearRoute();
+  showRoute(a);
+  if (sheet.state === "half") setSheet("half");
 }
 // In directions the start, the stops and the destination are dragged on the map, with the mouse or one finger
 // (within 12 or 24 px of the point): the point moves with it, and where it is let go is the new one (named as a
@@ -4498,6 +4597,7 @@ function renderRoute() {
   routeMsg.textContent = !route.from ? T.tapStart : !route.to ? T.tapEnd : "";
   routeSum.textContent = "";
   route.answer = null;
+  route.alts = [];
   route.journey = null;
   journeyBox.innerHTML = "";
   routeSteps.innerHTML = "";
@@ -4705,28 +4805,17 @@ async function findRoute({ quiet = false } = {}) {
   route.ctl?.abort();
   const ctl = route.ctl = new AbortController();
   const ll = (v) => `${v.ll[1].toFixed(5)},${v.ll[0].toFixed(5)}`;
-  const clearRoute = () => {
-    routeSum.textContent = "";
-    routeSteps.innerHTML = "";
-    stepsBox.hidden = true;
-    routeView.querySelector(".lm-nav-go")?.remove();
-    routeView.querySelector(".lm-ferries")?.remove();
-    routeView.querySelector(".lm-elev")?.remove();
-    routeView.querySelector(".lm-along")?.remove();
-    alongDone();
-    showOnRoute(null);
-    route.answer = null;
-    drawEnds(null);
-  };
   if (!quiet) {
     busyMsg(T.routing);
     clearRoute();
+    route.alts = [];
   }
   let d;
   try {
     const stops = route.stops.filter(Boolean);
     const q = new URLSearchParams({ from: ll(route.from), to: ll(route.to), mode: route.mode, lang: STEP_LANG });
     for (const x of stops) q.append("via", ll(x));
+    if (!stops.length) q.set("alts", "2"); // other routes: from start to destination only
     const r = await fetch(`${ROUTE}?${q}`, { signal: ctl.signal });
     d = await r.json().catch(() => ({}));
     if (ctl.signal.aborted) return;
@@ -4743,7 +4832,38 @@ async function findRoute({ quiet = false } = {}) {
     clearRoute();
   }
   routeMsg.textContent = "";
-  d.via = route.stops.filter(Boolean); // the stops of this answer, in the order of d.stops
+  const via = route.stops.filter(Boolean); // the stops of this answer, in the order of d.stops
+  route.alts = [d, ...(d.alts || [])];
+  for (const a of route.alts) a.via = via;
+  delete d.alts;
+  showRoute(d, { quiet });
+  if (route.go && route.from?.me) {
+    nav.waiting = route.go = false;
+    return navStart(false);
+  }
+  waitGo(false);
+  // the map on all the routes
+  const bs = route.alts.map((a) => extent({ type: "LineString", coordinates: a.line })).filter(Boolean);
+  const b = bs.length && [Math.min(...bs.map((x) => x[0])), Math.min(...bs.map((x) => x[1])), Math.max(...bs.map((x) => x[2])), Math.max(...bs.map((x) => x[3]))];
+  if (b && !quiet) fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 16 }));
+}
+// the route of directions out of the panel and off the map
+function clearRoute() {
+  routeSum.textContent = "";
+  routeSteps.innerHTML = "";
+  stepsBox.hidden = true;
+  routeView.querySelector(".lm-nav-go")?.remove();
+  routeView.querySelector(".lm-alts")?.remove();
+  routeView.querySelector(".lm-ferries")?.remove();
+  routeView.querySelector(".lm-elev")?.remove();
+  routeView.querySelector(".lm-along")?.remove();
+  alongDone();
+  showOnRoute(null);
+  route.answer = null;
+  drawEnds(null);
+}
+// the route d of directions (one of route.alts) in the panel and on the map
+function showRoute(d, { quiet = false } = {}) {
   route.answer = d;
   // the time (coloured by the traffic on the way), the distance, the arrival if leaving now
   routeSum.replaceChildren(el("span", `lm-sum-time ${trafficClass(d)}`, {}, T.duration(d.s)), el("span", "lm-sum-km", {}, fmtKm(d.km)));
@@ -4758,6 +4878,7 @@ async function findRoute({ quiet = false } = {}) {
   simBtn.addEventListener("click", () => navStart(true));
   go.append(startBtn, simBtn, shareButton(() => ({ title: `${route.from?.label || ""} → ${route.to?.label || ""}`, url: routeLink() }), true));
   routeSum.after(go);
+  if (route.alts.length > 1) go.before(altsRow(d));
   if (route.mode === "car" && d.ferries?.length) go.before(ferriesBox(d));
   // the time and Start in view on a phone: the sheet at half as high as they need (routeNeed), the modes and the
   // places above them stay in view; the panel scrolls only under a finger
@@ -4779,13 +4900,6 @@ async function findRoute({ quiet = false } = {}) {
   stepsBox.hidden = !d.steps.length;
   drawEnds(d.line);
   drawRouteTraffic(d);
-  if (route.go && route.from?.me) {
-    nav.waiting = route.go = false;
-    return navStart(false);
-  }
-  waitGo(false);
-  const b = extent({ type: "LineString", coordinates: d.line });
-  if (b && !quiet) fit(() => glide({ bounds: [[b[0], b[1]], [b[2], b[3]]], padding: pad(), maxZoom: 16 }));
 }
 
 // the boats and car trains of a route by car, above Start: they run to a timetable, and the time of the route has
@@ -6333,6 +6447,7 @@ function navStart(sim) {
   const styles = route.mode === "car" ? [shownStyle(), "driving", "driving-night"] : [shownStyle()];
   for (const k of styles) styleJSON(styleURL(k), k.endsWith("-night")).catch(() => {});
   nav.on = true;
+  setSource("routealt", empty); // the other routes: back when navigation ends (drawEnds)
   compassSync();
   fpsCap(true);
   nav.trip = (nav.trip || 0) + 1;
