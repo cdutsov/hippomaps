@@ -20,6 +20,7 @@ import (
 	"net/netip"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -128,6 +129,8 @@ type Server struct {
 	page         *template.Template
 	privacyPages *template.Template // privacy.html, privacy-de.html
 	hashes       map[string]string  // file -> short hash, for addresses that change with the file
+	files        map[string][]byte  // the scripts served with the hashes of their imports in the addresses (served)
+	worker       string             // the address of the worker of MapLibre (mapWorker)
 	client       *http.Client
 	cache        *memo
 	perIP        *window
@@ -168,7 +171,7 @@ type Server struct {
 
 // New makes the server.
 func New(cfg Config) *Server {
-	s := &Server{cfg: cfg, log: cfg.Log, mux: http.NewServeMux(), hashes: map[string]string{},
+	s := &Server{cfg: cfg, log: cfg.Log, mux: http.NewServeMux(), hashes: map[string]string{}, files: map[string][]byte{},
 		client: &http.Client{Timeout: 10 * time.Second}, cache: newMemo(cfg.CacheMB<<20, 24*time.Hour),
 		perIP: newWindow(cfg.PicturesPerIP, cfg.PictureWindow), calls: make(chan struct{}, 4),
 		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
@@ -203,13 +206,12 @@ func New(cfg Config) *Server {
 	}
 	fs.WalkDir(web.Files, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
-			b, _ := fs.ReadFile(web.Files, p)
-			sum := sha256.Sum256(b)
-			s.hashes[p] = hex.EncodeToString(sum[:])[:10]
+			s.served(p, nil)
 		}
 		return nil
 	})
-	s.page = template.Must(template.New("index.html").Funcs(template.FuncMap{"asset": s.asset}).ParseFS(web.Files, "index.html"))
+	s.worker = s.mapWorker()
+	s.page = template.Must(template.New("index.html").Funcs(template.FuncMap{"asset": s.asset, "vendor": s.vendor}).ParseFS(web.Files, "index.html"))
 	s.privacyPages = template.Must(template.New("privacy").Funcs(template.FuncMap{"asset": s.asset}).ParseFS(web.Files, "privacy.html", "privacy-de.html", "licences.html", "licences-de.html"))
 	base := strings.TrimRight(cfg.Base, "/")
 	if base == "" { // the page at the root of its own site (hippomaps.ch)
@@ -327,6 +329,65 @@ func (s *Server) asset(p string) string {
 	return strings.TrimRight(s.cfg.Base, "/") + "/static/" + p + "?v=" + s.hashes[p]
 }
 
+// vendor is the address of a file of a library (web/vendor): its version is in the path, and it has no hash, as
+// the scripts import it (./vendor/…): a preload under another address would load the file a second time.
+func (s *Server) vendor(p string) string {
+	return strings.TrimRight(s.cfg.Base, "/") + "/static/vendor/" + p
+}
+
+// mapWorker is the address MapLibre asks its worker at: next to its module, with its version as v. The page asks
+// for it ahead (web/early.js). The version is that of the MapLibre app.js imports.
+func (s *Server) mapWorker() string {
+	m := mapLibreRe.FindSubmatch(s.served("app.js", nil))
+	if m == nil {
+		return ""
+	}
+	return s.vendor("maplibre-gl-" + string(m[1]) + "/maplibre-gl-worker.mjs?v=" + string(m[1]))
+}
+
+var (
+	// a script of the app imported by another (import … from "./i18n.js", import("./wmm.js")): not the libraries
+	importRe   = regexp.MustCompile(`(\bfrom\s*|\bimport\s*\(\s*)"\./([A-Za-z0-9_-]+\.js)"`)
+	mapLibreRe = regexp.MustCompile(`from\s*"\./vendor/maplibre-gl-([0-9.]+)/maplibre-gl\.mjs"`)
+)
+
+// served is a file of the app as the server sends it, and notes its hash. A script imports the other scripts of
+// the app with their hashes in the addresses (./i18n.js?v=…): they are kept for a year too, and none is asked for
+// again at each visit. The hash of a script is that of what is sent, so it changes with a script it imports.
+func (s *Server) served(p string, above []string) []byte {
+	b, ok := s.files[p]
+	if !ok {
+		b, _ = fs.ReadFile(web.Files, p)
+	}
+	if _, done := s.hashes[p]; done {
+		return b
+	}
+	if path.Ext(p) == ".js" && !strings.Contains(p, "/") {
+		above = append(above, p)
+		out := importRe.ReplaceAllFunc(b, func(m []byte) []byte {
+			sub := importRe.FindSubmatch(m)
+			name := string(sub[2])
+			if _, err := fs.Stat(web.Files, name); err != nil {
+				return m
+			}
+			for _, a := range above { // scripts that import each other: no hash can hold both
+				if a == name {
+					return m
+				}
+			}
+			s.served(name, above)
+			return []byte(string(sub[1]) + `"./` + name + "?v=" + s.hashes[name] + `"`)
+		})
+		if !bytes.Equal(out, b) {
+			b = out
+			s.files[p] = b
+		}
+	}
+	sum := sha256.Sum256(b)
+	s.hashes[p] = hex.EncodeToString(sum[:])[:10]
+	return b
+}
+
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	own := ""
 	if u, err := url.Parse(s.cfg.PublicURL); err == nil {
@@ -335,7 +396,12 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	s.stats.record(r, own)
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Place": s.placeExtras(), "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Feedback": s.feedbackOn(), "Scope": s.home(), "SW": s.cfg.ServiceWorker}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Place": s.placeExtras(), "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Feedback": s.feedbackOn(), "Scope": s.home(), "SW": s.cfg.ServiceWorker, "Worker": s.worker}
+	// a connection ahead to the tiles API on another site; on the site of the page there is one already, and one
+	// without cookies (crossorigin) would be a second that nothing uses
+	if u, err := url.Parse(s.cfg.TilesURL); err == nil && u.Host != "" && !strings.EqualFold(u.Host, r.Host) {
+		data["Preconnect"] = u.Scheme + "://" + u.Host
+	}
 	if n, ok := s.geo.near(clientIP(r)); ok { // where the map opens: latitude, longitude, zoom
 		data["Near"] = fmt.Sprintf("%.3f,%.3f,%d", n.Lat, n.Lon, n.Zoom())
 	}
@@ -425,7 +491,11 @@ var types = map[string]string{".js": "text/javascript; charset=utf-8", ".mjs": "
 // year; the libraries in vendor/ have their version in the path.
 func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	p := path.Clean(strings.TrimPrefix(r.URL.Path, "/"))
-	b, err := fs.ReadFile(web.Files, p)
+	b, ok := s.files[p] // a script with the hashes of its imports
+	var err error
+	if !ok {
+		b, err = fs.ReadFile(web.Files, p)
+	}
 	if err != nil || strings.HasSuffix(p, ".html") || strings.HasPrefix(p, ".") { // the pages are templates
 		http.NotFound(w, r)
 		return

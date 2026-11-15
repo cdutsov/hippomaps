@@ -10,6 +10,8 @@ const pageKey = new URL(`${base}/`, scope.origin).href; // the page, whatever it
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (![SHELL, ASSETS, ROUTE].includes(k)) await caches.delete(k);
+  // the browser asks for the page while this worker starts (a phone takes a moment to start it), not after
+  await self.registration.navigationPreload?.enable().catch(() => {});
   await self.clients.claim();
 })()));
 
@@ -30,7 +32,8 @@ self.addEventListener("fetch", (e) => {
 // the page: from the network, its copy when there is none (or none within 8 s)
 async function page(e, r) {
   const c = await caches.open(SHELL);
-  const net = fetch(r).then((res) => {
+  // (the answer the browser asked for ahead, when it did: navigationPreload)
+  const net = Promise.resolve(e.preloadResponse).then((ahead) => ahead || fetch(r)).then((res) => {
     if (res.ok) e.waitUntil(c.put(pageKey, res.clone()));
     return res;
   });

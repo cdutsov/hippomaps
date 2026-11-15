@@ -91,8 +91,22 @@ echo "Files"
 app=$(grep -o '/static/app.js?v=[0-9a-f]*' "$TMP/page" | head -n1)
 code=$(get "$PAGE${app#$(sed -E 's#https?://[^/]*##' <<<"$PAGE")}")
 [[ $code == 200 && $(hdr Cache-Control) == *immutable* ]] && ok "the script, kept for a year" || ko "$app: HTTP $code, $(hdr Cache-Control)"
+# the start of the page: the script imports i18n.js with its hash, and the page preloads it and MapLibre under the
+# addresses of the imports (a preload under another address loads the file twice)
+i18n=$(grep -o '"\./i18n\.js?v=[0-9a-f]*"' "$TMP/b" | head -n1 | tr -d '"')
+pre=$(grep 'rel="modulepreload"' "$TMP/page")
+[[ -n $i18n ]] && grep -qF "/static/${i18n#./}\"" <<<"$pre" && grep -qF "/static/vendor/maplibre-gl-6.13.0/maplibre-gl.mjs\"" <<<"$pre" &&
+	ok "the scripts of the page preloaded under the addresses of their imports" || ko "the preloads of the page are not the imports of the script ($i18n)"
 code=$(get "$PAGE/static/vendor/maplibre-gl-6.13.0/maplibre-gl.mjs")
 [[ $code == 200 ]] && ok "MapLibre" || ko "MapLibre: HTTP $code"
+# what the map needs before its first tile, asked for by a small script as the page starts: the script and the worker
+# of MapLibre it asks for are there, each kept for a year
+early=$(grep -o '/static/early.js?v=[0-9a-f]*' "$TMP/page" | head -n1)
+worker=$(grep -o 'data-worker="[^"]*"' "$TMP/page" | cut -d'"' -f2)
+origin=$(grep -oE '^https?://[^/]*' <<<"$PAGE")
+code=$(get "$PAGE$early")
+c2=$(get "$origin$worker")
+[[ -n $early && -n $worker && $code == 200 && $c2 == 200 && $(hdr Cache-Control) == *immutable* ]] && ok "early.js and the worker of MapLibre it asks for" || ko "early.js: HTTP $code, the worker $worker: HTTP $c2"
 
 echo "Map tiles"
 # the key of the page, as the browser sends it: with the site as Referer (it is not printed)

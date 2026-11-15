@@ -1,12 +1,16 @@
 package server
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -140,6 +144,79 @@ func TestStatic(t *testing.T) {
 		if w := get(s, p); w.Code == 200 { // the router sends ".." to the clean path first
 			t.Errorf("%s: %d", p, w.Code)
 		}
+	}
+}
+
+// The scripts of the app import each other with their hashes in the addresses, so each is kept for a year and none
+// is asked for again at a visit; the hash of a script is that of what is sent, with the hashes of its imports in it.
+func TestImports(t *testing.T) {
+	s := testServer(t, nil)
+	w := get(s, "/labs/maps/static/app.js?v="+s.hashes["app.js"])
+	app := w.Body.String()
+	sum := sha256.Sum256(w.Body.Bytes())
+	if hex.EncodeToString(sum[:])[:10] != s.hashes["app.js"] {
+		t.Errorf("app.js: its hash %s is not that of what is sent", s.hashes["app.js"])
+	}
+	raw, _ := fs.ReadFile(web.Files, "app.js")
+	for _, name := range []string{"i18n.js", "wmm.js", "avatar.js"} {
+		if !bytes.Contains(raw, []byte(`"./`+name+`"`)) {
+			t.Fatalf("app.js does not import ./%s any more: this test is out of date", name)
+		}
+		if !strings.Contains(app, `"./`+name+`?v=`+s.hashes[name]+`"`) || strings.Contains(app, `"./`+name+`"`) {
+			t.Errorf("app.js as sent: %s imported without its hash", name)
+		}
+		if w := get(s, "/labs/maps/static/"+name+"?v="+s.hashes[name]); w.Code != 200 || !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
+			t.Errorf("%s with its hash: %d %s", name, w.Code, w.Header().Get("Cache-Control"))
+		}
+	}
+	// the libraries keep their addresses: the version is in the path (MapLibre finds its worker next to its module)
+	if !strings.Contains(app, `from "./vendor/maplibre-gl-6.13.0/maplibre-gl.mjs"`) {
+		t.Error("app.js as sent: the import of MapLibre changed")
+	}
+	// a file that imports nothing is sent as it is
+	if b, _ := fs.ReadFile(web.Files, "i18n.js"); !bytes.Equal(get(s, "/labs/maps/static/i18n.js").Body.Bytes(), b) {
+		t.Error("i18n.js is not sent as it is")
+	}
+}
+
+// The page asks for what the start needs at once and under the addresses the scripts use: a script it preloads
+// under another address is loaded twice (MapLibre was: 300 kB), one it does not preload starts a round later.
+func TestPagePreloads(t *testing.T) {
+	s := testServer(t, nil)
+	body := get(s, "/labs/maps").Body.String()
+	app := string(s.served("app.js", nil))
+	n := 0
+	for _, m := range regexp.MustCompile(`(?m)^import [^;]* from "\./([^"]+)";`).FindAllStringSubmatch(app, -1) {
+		n++
+		if link := `<link rel="modulepreload" href="/labs/maps/static/` + m[1] + `">`; !strings.Contains(body, link) {
+			t.Errorf("the page does not preload %s as app.js imports it: %s", m[1], link)
+		}
+	}
+	if n != 2 {
+		t.Errorf("%d imports at the top of app.js, want MapLibre and i18n.js: this test is out of date", n)
+	}
+	// the worker of MapLibre, at the address MapLibre asks it at: next to its module, its version as v
+	worker := "/labs/maps/static/vendor/maplibre-gl-6.13.0/maplibre-gl-worker.mjs?v=6.13.0"
+	if !strings.Contains(body, `<script async src="/labs/maps/static/early.js?v=`+s.hashes["early.js"]+`" data-tiles="https://api.overpass.ch" data-key="pk_test" data-worker="`+worker+`"></script>`) {
+		t.Errorf("the page does not start early.js with the tiles, the key and the worker: %s", body)
+	}
+	lib, _ := fs.ReadFile(web.Files, "vendor/maplibre-gl-6.13.0/maplibre-gl.mjs")
+	if !bytes.Contains(lib, []byte("/blob/v6.13.0/")) || !bytes.Contains(lib, []byte("`maplibre-gl-worker.mjs`")) || !bytes.Contains(lib, []byte("searchParams.set(`v`,")) {
+		t.Error("MapLibre: its version or the address of its worker is not as the page takes it (mapWorker)")
+	}
+	if w := get(s, worker); w.Code != 200 || !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
+		t.Errorf("the worker: %d %s", w.Code, w.Header().Get("Cache-Control"))
+	}
+	if w := get(s, "/labs/maps/static/early.js?v="+s.hashes["early.js"]); w.Code != 200 || !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
+		t.Errorf("early.js: %d %s", w.Code, w.Header().Get("Cache-Control"))
+	}
+	// a connection ahead to the tiles on another site only: on the site of the page it would be a second one
+	if !strings.Contains(body, `<link rel="preconnect" href="https://api.overpass.ch" crossorigin>`) {
+		t.Error("no preconnect to the tiles on another site")
+	}
+	own := testServer(t, nil, func(c *Config) { c.Base, c.TilesURL = "/", "https://example.com" }) // (the host of the test requests)
+	if body := get(own, "/").Body.String(); strings.Contains(body, "preconnect") || !strings.Contains(body, `data-tiles="https://example.com"`) {
+		t.Errorf("a preconnect to the site of the page itself: %s", body)
 	}
 }
 

@@ -173,6 +173,16 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 `GET {base}/sw.js` serves the service worker (`web/sw.js`, scope the page): the page and its files as last loaded, and the
 map tiles of the route being navigated (cache `hm-route`, filled by the page at Start), served first.
 
+The start of the page: every file under `static/` has its hash in its address (`?v=`) or the version of its library in
+its path, and browsers keep it for a year. The scripts import each other with the hashes (the server writes them into
+`import … from "./i18n.js"` as it starts), and the page preloads what `app.js` imports under those addresses.
+`web/early.js` runs first and asks for what the map needs before its first tile, while the scripts load: the worker of
+MapLibre, and the style, the TileJSON and the icons of the last visit (`hm-early` in the storage of the browser; at a
+first visit the light and the dark style). As `app.js` starts it asks for the tiles of the first view and the letters
+of the fonts (`hm-first`: where they are, from the last visit), which MapLibre asks for only once its style is loaded.
+The page has MapLibre check neither the styles nor its own layers (`validateStyle`, `UNCHECKED` in `app.js`);
+`tests/browser.py` checks the style of the map with them.
+
 `GET /privacy` and `/de/privacy` serve the privacy policy (`web/privacy*.html`), linked from the menu.
 
 `GET /healthz` answers `ok`; `hippomaps healthcheck` asks it (the Docker health check).
@@ -196,7 +206,7 @@ screenshots are in `fastlane/`. Details: [android/README.md](android/README.md).
 ```
 cmd/hippomaps/   settings, server, healthcheck
 server/          page, pictures, directions, journeys by public transport, search relay, transit lines, traffic, voice
-web/             index.html, app.js, i18n.js, avatar.js (3D traveller), sw.js (service worker), app.css, icons, vendor/
+web/             index.html, app.js, i18n.js, early.js (the first requests), avatar.js (3D traveller), sw.js (service worker), app.css, icons, vendor/
 android/         the Android app
 fastlane/        F-Droid texts and screenshots
 tests/           tests of a running site

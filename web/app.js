@@ -865,7 +865,6 @@ const linkedView = /(^|&)map=/.test(location.hash.slice(1)) && location.hash !==
 const NAV_PITCH = 50;
 const map = new maplibregl.Map({
   container: mapEl,
-  style: styleURL(),
   center: LAST_ME ? [LAST_ME[1], LAST_ME[0]] : NEAR ? [NEAR[1], NEAR[0]] : [8.54, 47.37],
   zoom: LAST_ME ? 15 : NEAR ? NEAR[2] : 13, // 15: the zoom the location gives (showMe)
   hash: "map",
@@ -874,8 +873,38 @@ const map = new maplibregl.Map({
   attributionControl: { compact: true },
   // at most two pixels of the screen to one of the map: three or more draw a phone screen with more than twice the work
   pixelRatio: Math.min(devicePixelRatio, 2),
+  // the styles are ours and the same for every visitor: MapLibre does not check them at each start (a phone takes a
+  // few hundred milliseconds for it); tests/browser.py has it check the style as the map shows it
+  validateStyle: false,
 });
+// the first style through ourStyle, as every later one: the map starts in our colours, with the globe and the wider
+// borders, not as the server gives it and then changed
+map.setStyle(styleURL(), { transformStyle: ourStyle });
 window.hmMap = map; // for tests/browser.py: the sources and layers of the map
+// Our sources and layers go onto the map, and layers of the style change, without the check of MapLibre: for each
+// call it writes out the whole style to check against, a millisecond and more, and the start makes over a hundred
+// such calls before the first tile is asked for. Sources and layers go in on map.style, which takes the option; it
+// asks for no new frame, so a setter of the map comes in the same turn. A mistake the check would have reported
+// throws without it: it goes to the console, and what follows still gets onto the map.
+const UNCHECKED = { validate: false };
+const unchecked = (f) => { try { f(); } catch (e) { console.error(e); } };
+const addLayer = (l, before) => unchecked(() => map.style.addLayer(l, before, UNCHECKED));
+const addSource = (id, src) => unchecked(() => map.style.addSource(id, src, UNCHECKED));
+const setFilter = (id, f) => unchecked(() => map.setFilter(id, f, UNCHECKED));
+const setPaint = (id, k, v) => unchecked(() => map.setPaintProperty(id, k, v, UNCHECKED));
+const setLayout = (id, k, v) => unchecked(() => map.setLayoutProperty(id, k, v, UNCHECKED));
+// What the map asks for before its first tile, kept for the next visit (hm-early: the style out of navigation, the
+// TileJSON of its sources, its icons): the page then asks for them as it starts, before this script is there
+// (early.js). And where the tiles and the letters of the names of that style are (hm-first), for the first view of
+// the next visit (below, "the first view"). Written once the map has nothing left to do.
+map.on("style.load", () => map.once("idle", () => {
+  if (navLook) return;
+  const st = map.getStyle(), x = map.getPixelRatio() > 1 ? "@2x" : "";
+  const sprites = [st.sprite].flat().map((sp) => sp?.url || sp).filter((u) => typeof u === "string");
+  store.set("hm-early", JSON.stringify([styleURL(), ...Object.values(st.sources).map((src) => src.url).filter((u) => typeof u === "string"),
+    ...sprites.flatMap((u) => [`${u}${x}.json`, `${u}${x}.png`])]));
+  store.set("hm-first", JSON.stringify(firstOf(st, (id) => map.getSource(id))));
+}));
 // a tile without an answer (no HTTP status): the connection is asked about, the tile kept to load again when it is
 // back. Other errors go to the console, as without this handler.
 map.on("error", (e) => {
@@ -1018,18 +1047,19 @@ maplibregl.addProtocol("hmpoi", async (params, ctl) => {
   return { data: await poiTile(z, x, y, ctl.signal) };
 });
 async function poisEarlier() {
-  const st = map.getStyle(), pois = st?.layers.find((l) => l.id === "pois");
-  const src = pois && st.sources[pois.source];
-  if (!src || map.getLayer("lm-pois-near")) return;
+  if (map.getLayer("lm-pois-near")) return;
+  const pois = map.getLayer("pois")?.serialize(); // (the one layer and its source, not the whole style written out)
+  const src = pois && map.getSource(pois.source)?.serialize();
+  if (!src) return;
   try {
     poiTiles ||= src.tiles || (await (await fetch(src.url)).json()).tiles;
   } catch { return; }
   if (!poiTiles?.length || !map.getLayer("pois") || map.getLayer("lm-pois-near")) return;
   const near = nearPois(pois);
   if (!near) return;
-  if (!map.getSource("lm-pois-near")) map.addSource("lm-pois-near", NEAR_SOURCE);
-  map.addLayer(near.layer, "pois");
-  map.setFilter("pois", near.filter);
+  if (!map.getSource("lm-pois-near")) addSource("lm-pois-near", NEAR_SOURCE);
+  addLayer(near.layer, "pois");
+  setFilter("pois", near.filter);
 }
 const NEAR_SOURCE = { type: "vector", tiles: ["hmpoi://{z}/{x}/{y}"], minzoom: 14, maxzoom: 14, attribution: "" };
 // the layer of the POIs between zoom 14 and 15 from the layer pois of a style, and the filter of pois without them
@@ -1136,24 +1166,25 @@ function latePois(pois) {
   return { layer, filter: ["all", out, pois.filter] };
 }
 // on the map, and in a style JSON (ourStyle)
-function morePoisOnMap() {
-  const layers = map.getStyle()?.layers || [];
+// (st: the style of the map as it is, map.getStyle())
+function morePoisOnMap(st) {
   if (map.getLayer("lm-pois-more")) return;
+  const layers = st?.layers || [];
   const pois = layers.find((l) => l.id === "pois"), late = latePois(pois);
-  if (pois) map.setLayoutProperty("pois", "icon-padding", POI_GAP);
+  if (pois) setLayout("pois", "icon-padding", POI_GAP);
   if (late && !map.getLayer("lm-pois-late")) {
-    map.addLayer(late.layer, morePoisUnder(layers));
-    map.setFilter("pois", late.filter);
+    addLayer(late.layer, morePoisUnder(layers));
+    setFilter("pois", late.filter);
     pois.filter = late.filter;
   }
   const theirs = layers.find((l) => l.id === "pois_more");
   const more = morePois(pois, theirs);
-  if (more) map.addLayer(more, morePoisUnder(layers));
+  if (more) addLayer(more, morePoisUnder(layers));
   const early = earlierMore(theirs);
   if (early) {
-    map.setFilter("pois_more", early);
-    map.setLayoutProperty("pois_more", "text-offset", undefined);
-    for (const [k, v] of Object.entries(POI_ROOM)) map.setLayoutProperty("pois_more", k, v);
+    setFilter("pois_more", early);
+    setLayout("pois_more", "text-offset", undefined);
+    for (const [k, v] of Object.entries(POI_ROOM)) setLayout("pois_more", k, v);
   }
 }
 // the day map: the light style of overpass.ch, recoloured here in the manner of Swiss topographic maps. DAY names
@@ -1203,7 +1234,12 @@ const pastelPaint = (l, set) => {
     if (JSON.stringify(w) !== JSON.stringify(v)) set(k, w);
   }
 };
-const pastel = () => { for (const l of map.getStyle().layers) pastelPaint(l, (k, w) => map.setPaintProperty(l.id, k, w)); };
+// (st: the style of the map as it is; tells how many colours it set)
+const pastel = (st) => {
+  let n = 0;
+  for (const l of st.layers) pastelPaint(l, (k, w) => { n++; setPaint(l.id, k, w); });
+  return n;
+};
 const pastelStyle = (st) => { for (const l of st.layers) pastelPaint(l, (k, w) => { l.paint[k] = w; }); };
 // country borders twice as wide as in the styles of overpass.ch (0.7 px there, in every style); a set width, so a style
 // that comes through here twice (a diff, then style.load) keeps it
@@ -1333,22 +1369,30 @@ const altPillPaint = () => ({ "text-color": ALT_PILL[theme() === "dark" ? "dark"
 const TEXT_COLOUR = { "lm-along-name": ["#ffd8a8", "#7c2d12"], "lm-label": ["#ffb4a9", "#7f1d1d"], "lm-journey-name": ["#e5e7eb", "#111827"] };
 const textPaint = (id) => ({ "text-color": TEXT_COLOUR[id][theme() === "dark" ? 0 : 1], "text-halo-color": theme() === "dark" ? "#111" : "#fff" });
 map.on("style.load", () => {
-  if (shownStyle() === "light") pastel();
+  // (the style written out once for what follows, and only when something needs it: it takes a while)
+  let st = null;
+  const style = () => (st ||= map.getStyle());
+  // what ourStyle did to the style is there already: the colours of the day (nothing left to set), and after a
+  // switch of the style the places (their layers are on the map); the first style gets its places here, each layer
+  // on its own, so that one that fails leaves the map with the rest
+  if (shownStyle() === "light" && pastel(style())) st = null;
   addIcons();
   addTurnHead();
   addAltPills();
   // a globe when zoomed out; MapLibre turns it into the flat map from about zoom 12 (a new style resets it)
   map.setProjection({ type: "globe" });
+  // the layers of the map, in their order (without writing the style out)
+  const order = () => map.getLayersOrder().map((id) => map.getLayer(id));
   // 3D buildings see-through, so the map and the route behind them stay in view
-  for (const l of map.getStyle().layers) if (l.type === "fill-extrusion") map.setPaintProperty(l.id, "fill-extrusion-opacity", 0.6);
-  for (const [id, w] of Object.entries(BORDER_WIDTH)) if (map.getLayer(id)) map.setPaintProperty(id, "line-width", w);
-  morePoisOnMap();
+  for (const l of order()) if (l.type === "fill-extrusion") setPaint(l.id, "fill-extrusion-opacity", 0.6);
+  for (const [id, w] of Object.entries(BORDER_WIDTH)) if (map.getLayer(id)) setPaint(id, "line-width", w);
+  if (!map.getLayer("lm-pois-more")) morePoisOnMap(style());
   poisEarlier();
-  const add = (l, before) => { if (!map.getLayer(l.id)) map.addLayer(l, before); };
+  const add = (l, before) => { if (!map.getLayer(l.id)) addLayer(l, before); };
   // tiles of our layers up to zoom 14 only, drawn larger beyond (0.3 m steps there, a pixel or two at zoom 19): tiles
   // to zoom 18 cost the phone much work while the camera moves, and empty sources too
-  for (const [name, d] of Object.entries(sources)) if (!map.getSource(`lm-${name}`)) map.addSource(`lm-${name}`, { type: "geojson", data: d, maxzoom: 14, tolerance: 0.1 });
-  const below = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+  for (const [name, d] of Object.entries(sources)) if (!map.getSource(`lm-${name}`)) addSource(`lm-${name}`, { type: "geojson", data: d, maxzoom: 14, tolerance: 0.1 });
+  const below = order().find((l) => l.type === "symbol")?.id;
   const dashed = ["in", ["get", "kind"], ["literal", ["border", "circle"]]];
   const pts = ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]];
   const polys = ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]];
@@ -1392,7 +1436,7 @@ map.on("style.load", () => {
   add({ id: "lm-transit-line", type: "line", source: "lm-transit", layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": ["to-color", ["get", "colour"], "#7a7f87"], "line-opacity": 0.9,
       "line-width": ["interpolate", ["linear"], ["zoom"], 10, ["match", ["get", "kind"], "subway", 2.5, 1.5], 15, ["match", ["get", "kind"], "subway", 6, 3.5]] } }, below);
-  const font = map.getStyle().layers.find((l) => l.layout?.["text-font"])?.layout["text-font"];
+  const font = order().filter((l) => l.type === "symbol").map((l) => map.getLayoutProperty(l.id, "text-font")).find(Boolean);
   if (font) add({ id: "lm-transit-ref", type: "symbol", source: "lm-transit", minzoom: 13, filter: ["has", "ref"],
     layout: { "symbol-placement": "line", "text-field": ["get", "ref"], "text-font": font, "text-size": 12, "symbol-spacing": 300 },
     paint: { "text-color": "#fff", "text-halo-color": ["to-color", ["get", "colour"], "#7a7f87"], "text-halo-width": 2.5 } });
@@ -7191,6 +7235,81 @@ const startAt = startPt(startU.get("at")), startTo = startPt(startU.get("to"));
 // with nothing else to show, the map on the visitor: the location asked at once, not after the map has loaded; a location
 // the device has (allowed before) often comes before the map is drawn, which then opens there
 if (!startQ && !startTo && !startAt && !linkedView) showMe(true);
+// ------------------------------------------------------------------ the first view, asked for ahead
+// The map asks for the tiles of its first view only once its style is loaded and a first frame is drawn (on a phone
+// about a second after this script started), and for the letters of the names once it has read a tile. The page asks
+// for both here, as the script ends: the map then finds them in the cache of the browser, or on their way. The tiles
+// only of a flat view from zoom 7 (on the globe below, and tilted or turned, the map takes other tiles), none for a
+// screen that takes more than FIRST_TILES, and nothing with Data Saver.
+const FIRST_TILES = 30;
+// the tiles of a source (its TileJSON) that cover the box [west, south, east, north] at a zoom of the map
+function firstTiles(box, zoom, src, max = FIRST_TILES) {
+  const z = Math.min(Math.floor(zoom), src.maxzoom ?? 22), n = 2 ** z;
+  if (zoom < 7 || z < (src.minzoom ?? 0) || !src.tiles?.[0]) return [];
+  const col = (lon) => Math.floor((lon + 180) / 360 * n);
+  const row = (lat) => {
+    const sin = Math.sin(Math.max(-85.0511, Math.min(85.0511, lat)) * Math.PI / 180);
+    return Math.max(0, Math.min(n - 1, Math.floor((0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * n)));
+  };
+  const x0 = col(box[0]), x1 = col(box[2]), y0 = row(box[3]), y1 = row(box[1]);
+  if (x1 < x0 || (x1 - x0 + 1) * (y1 - y0 + 1) > max) return [];
+  const urls = [];
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) urls.push(src.tiles[0].replace("{z}", z).replace("{x}", ((x % n) + n) % n).replace("{y}", y));
+  return urls;
+}
+// the fonts of the names of a style: text-font as a list of fonts, or in an expression (["literal", [fonts]])
+function styleFonts(st) {
+  const fonts = new Set(), list = (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string");
+  const walk = (v) => {
+    if (!Array.isArray(v)) return;
+    if (v[0] === "literal" && list(v[1])) fonts.add(v[1].join(","));
+    else v.forEach(walk);
+  };
+  for (const l of st.layers || []) {
+    const f = l.layout?.["text-font"];
+    if (list(f) && !["get", "var", "literal"].includes(f[0])) fonts.add(f.join(","));
+    else walk(f);
+  }
+  return [...fonts];
+}
+// what the first view of a style takes: the files of the letters 0-255 of its fonts, and where the tiles of its
+// vector sources are. tilejson: the TileJSON of a source (by its id and its address) when the style names only that
+const firstOf = (st, tilejson) => ({
+  style: styleURL(),
+  fonts: st.glyphs ? styleFonts(st).map((f) => st.glyphs.replace("{fontstack}", f).replace("{range}", "0-255")) : [],
+  sources: Object.entries(st.sources || {}).filter(([, src]) => src.type === "vector")
+    .map(([id, src]) => (src.tiles ? src : tilejson(id, src.url))).filter((src) => /^https?:/.test(src?.tiles?.[0] || ""))
+    .map((src) => ({ tiles: [src.tiles[0]], minzoom: src.minzoom, maxzoom: src.maxzoom })),
+});
+const firstAsked = window.hmFirst = { tiles: [], fonts: [] }; // for tests/browser.py
+{
+  // (the view now: the map may move before its style is there)
+  const b = map.getBounds(), zoom = map.getZoom(), flat = !map.getPitch() && !map.getBearing();
+  const ours = (u) => typeof u === "string" && u.startsWith(`${root.dataset.tiles}/`);
+  const whole = (u) => window.fetch(u).then((r) => r.arrayBuffer()).catch(() => {}); // read to the end: only then is it kept
+  const ask = (first) => {
+    firstAsked.fonts = (first.fonts || []).filter(ours);
+    if (flat) for (const src of first.sources || []) if (ours(src?.tiles?.[0])) firstAsked.tiles.push(...firstTiles([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], zoom, src));
+    [...firstAsked.fonts, ...firstAsked.tiles].forEach(whole);
+  };
+  // at once, without waiting for an answer (this script and the map keep the page busy for the next second): from
+  // the last visit when the style is the same, else from the styles early.js read at a first visit; else the style is
+  // asked for, and the map may come first
+  const early = window.hmEarly;
+  delete window.hmEarly;
+  let first = null;
+  try { first = JSON.parse(store.get("hm-first")); } catch {}
+  if (first?.style !== styleURL()) first = early?.styles?.[styleURL()] ? firstOf(early.styles[styleURL()], (id, u) => early.sources?.[u]) : null;
+  if (navigator.connection?.saveData || !root.dataset.key) { /* nothing ahead */ }
+  else if (first) ask(first);
+  else {
+    styleJSON(styleURL()).then(async (st) => {
+      const tj = {};
+      for (const src of Object.values(st.sources || {})) if (src.type === "vector" && !src.tiles && src.url) tj[src.url] = await (await window.fetch(src.url)).json();
+      ask(firstOf(st, (id, u) => tj[u]));
+    }).catch(() => {}); // (the map asks for them itself)
+  }
+}
 map.once("load", () => {
   loadTraffic();
   drawStars();

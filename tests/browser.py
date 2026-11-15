@@ -5,7 +5,12 @@
 
 Prints "ok <what>" per check and "FAIL <what>" per failure; exits 1 on a failure. The browser is
 in Zurich (a granted location) on a phone screen. Checks: without the location the map opens at the place of the IP
-address (of the machine of the test), without a credit of DB-IP on the map; the map starts at the location; a new visit
+address (of the machine of the test), without a credit of DB-IP on the map; the map starts at the location; the start
+of the page (each file under one address with its hash or version, what the map asks for before its first tile kept and
+asked for early at the next visit, the tiles of the first view and the letters of its names asked for as the script
+starts, the service worker letting the browser ask for the page while it starts, the first
+style in our colours before the page adds its layers, the style of the map with all our layers checked by MapLibre,
+dark and light); a new visit
 at the last location of the device (kept on it to about 100 m), a location far from it jumped to; the
 Directions button opens start and destination, a typed destination gives a route by car with its
 time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
@@ -86,6 +91,27 @@ SAID_HOOK = r"""(() => {
 # a WAV of 0.3 s of silence: the answer of /api/say in the ride by bike
 SILENCE = base64.b64encode(b"RIFF" + struct.pack("<I", 36 + 4800) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, 8000, 16000, 2, 16)
                            + b"data" + struct.pack("<I", 4800) + bytes(4800)).decode()
+
+
+# The style of the map as it is, with our sources and layers, given to a second map that checks it: the page has
+# MapLibre check neither the style nor our layers at each start (validateStyle, UNCHECKED in web/app.js).
+VALID = """(async () => {
+  const lib = await import(document.querySelector('link[rel=modulepreload][href*=maplibre]').href);
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;left:-400px;top:0;width:160px;height:160px';
+  document.body.append(div);
+  const errors = [], st = hmMap.getStyle();
+  const m = new lib.Map({ container: div, style: st, validateStyle: true, interactive: false, attributionControl: false });
+  m.on('error', (e) => errors.push(String(e.error?.message || e.error)));
+  const loaded = await new Promise((done) => { m.once('style.load', () => done(true)); setTimeout(() => done(false), 10000); });
+  m.remove();
+  div.remove();
+  return JSON.stringify({ loaded, errors: errors.slice(0, 3), layers: st.layers.length, ours: st.layers.filter((l) => l.id.startsWith('lm-')).length });
+})()"""
+
+
+def nokey(text):  # an address of the tiles without the key of the page
+    return re.sub(r"/v1/[^/]+/", "/v1/KEY/", text or "")
 
 
 def check(cond, what):
@@ -180,6 +206,25 @@ try:
                  " && !/Piper|FEDRO|CC BY|OpenStreetMap|Wikimedia/.test(document.querySelector('.lm-side').textContent + document.querySelector('.lm-menu').textContent); })()"),
               "no credits spelled out in the side panel and the menu: a small link to the licences in each")
         return near
+    # (the tiles the map asks for until it first has nothing left to do: window.hmAsked)
+    ask_hook = call("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(window, 'hmMap', { configurable: true, set(m) {"
+                    " Object.defineProperty(window, 'hmMap', { value: m, writable: true, configurable: true });"
+                    " const a = window.hmAsked = { tiles: [], done: false };"
+                    " m.on('dataloading', (e) => { if (!a.done && e.tile && e.sourceId === 'protomaps') { const c = e.tile.tileID.canonical; a.at ||= performance.now(); a.tiles.push(c.z + '/' + c.x + '/' + c.y); } });"
+                    " m.once('idle', () => { a.done = true; }); } })")
+    def first_view(what, before=False):
+        wait("window.hmAsked?.done && window.hmMap?.loaded()", 40)
+        v = json.loads(js("JSON.stringify({ asked: [...new Set(window.hmAsked?.tiles || [])].sort(), zoom: hmMap.getZoom(), at: window.hmAsked?.at,"
+                          " first: Math.min(...(window.hmFirst?.tiles || []).map((u) => performance.getEntriesByName(u)[0]?.startTime ?? 1e9)),"
+                          " ahead: (window.hmFirst?.tiles || []).map((u) => (u.match(/(\\d+\\/\\d+\\/\\d+)\\.[a-z]+$/) || [])[1]).sort(),"
+                          " fonts: (window.hmFirst?.fonts || []).map((u) => { const e = performance.getEntriesByName(new URL(u).href); return [e.length, e[0]?.responseStatus]; }) })"))
+        check(v["zoom"] < 7 or (len(v["ahead"]) > 0 and v["ahead"] == v["asked"]),
+              f"{what}: the tiles asked for as the script starts are those the map then asks for (zoom {v['zoom']:.1f}: {' '.join(v['ahead'])}; the map: {' '.join(v['asked'])})")
+        check(len(v["fonts"]) >= 2 and all(f[1] == 200 for f in v["fonts"]) and any(f[0] >= 2 for f in v["fonts"]),
+              f"{what}: the letters of the fonts of the style asked for as the script starts, before the map asks for them ({v['fonts']})")
+        if before:  # the addresses kept at the visit before: asked for at once, long before the map gets to its tiles
+            check(v.get("at") and v.get("first") is not None and v["first"] < v["at"] - 50,
+                  f"{what}: the tiles asked for {v.get('at', 0) - (v.get('first') or 0):.0f} ms before the map asks for them")
     if not first_visit(""):
         # no place for this machine (a server without the database, or reached from a private address through
         # docker-proxy): the page once more, as the server gives it to a visitor in Sydney
@@ -189,6 +234,17 @@ try:
         first_visit("a visitor in Sydney: ")
         call("Fetch.disable")
         doc[0] = None
+    # the first view asked for ahead (firstTiles in web/app.js): at the place of the IP address, and at a place of a
+    # link between two zooms
+    first_view("the first view of a first visit")
+    call("Page.navigate", url="about:blank")
+    call("Page.navigate", url=URL + "#map=15.6/47.3769/8.5417")
+    first_view("a link to a place at zoom 15.6", before=True)
+    call("Page.removeScriptToEvaluateOnNewDocument", identifier=ask_hook["identifier"])
+    # what the map asked for before its first tile, kept once it has nothing left to do (hm-early): the next visit asks
+    # for it as the page starts (web/early.js)
+    wait("localStorage.getItem('hm-early')", 20)
+    early = json.loads(js("localStorage.getItem('hm-early')") or "[]")
     call("Browser.grantPermissions", origin=URL.split("/labs")[0], permissions=["geolocation"])
     call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
     call("Page.navigate", url=URL)
@@ -201,6 +257,36 @@ try:
     # our sources (route, pins, results …): tiles up to zoom 14 only
     check(js("(() => { const s = Object.entries(hmMap.getStyle().sources).filter(([k, v]) => k.startsWith('lm-') && v.type === 'geojson'); return s.length > 5 && s.every(([, v]) => v.maxzoom === 14); })()"),
           "our sources with tiles to zoom 14")
+    # the start of the page. Each of its files under one address, with its hash or the version of its library: MapLibre
+    # was preloaded with a hash and imported without (300 kB twice), i18n.js asked for again at each visit
+    files = js("(() => { const by = {}; for (const e of performance.getEntriesByType('resource')) { const u = new URL(e.name);"
+               " if (u.origin === location.origin && u.pathname.includes('/static/')) (by[u.pathname] ||= new Set()).add(u.search); }"
+               " return JSON.stringify(Object.entries(by).filter(([p, v]) => v.size > 1 || !(p.includes('/vendor/') || [...v][0].startsWith('?v='))).map(([p, v]) => p + [...v].join(' ')));"
+               " })()")
+    check(files == "[]" and js("performance.getEntriesByType('resource').some((e) => /maplibre-gl\\.mjs$/.test(e.name)) && performance.getEntriesByType('resource').some((e) => /i18n\\.js\\?v=/.test(e.name))"),
+          f"each file of the page asked for under one address, with its hash or the version of its library ({files})")
+    # what the visit before kept was asked for as this page started: the style and its icons once more than the map asks
+    # for them itself (the TileJSON too; the map asks for that twice in any case)
+    twice = js(f"JSON.stringify({json.dumps(early)}.filter((u) => performance.getEntriesByName(u).length < 2))")
+    check(len(early) >= 4 and "/maps/styles/" in early[0] and twice == "[]",
+          f"the style, the TileJSON and the icons of the visit before asked for as the page starts ({len(early)} kept, not asked for early: {nokey(twice)})")
+    check(wait("(() => { try { const l = JSON.parse(localStorage.getItem('hm-early')), st = hmMap.getStyle();"
+               " return l[0].includes('/maps/styles/' + (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light') + '.json')"
+               " && Object.values(st.sources).filter((x) => x.url).length > 0 && Object.values(st.sources).filter((x) => x.url).every((x) => l.includes(x.url))"
+               " && l.filter((u) => /@2x\\.(json|png)$/.test(u)).length >= 2 && l.every((u) => performance.getEntriesByName(u).length > 0); } catch { return false; } })()", 20),
+          f"kept for the next visit: the style of the map, the TileJSON of its sources and its icons ({nokey(js('localStorage.getItem(`hm-early`)'))})")
+    # the worker of MapLibre at the address the page asks for it early: the version of the library, the file there
+    check(js("(async () => { const w = document.querySelector('script[data-worker]')?.dataset.worker, lib = await import(document.querySelector('link[rel=modulepreload][href*=maplibre]').href);"
+             " return !!w && new URL(w, location.href).searchParams.get('v') === lib.getVersion() && (await fetch(w, { method: 'HEAD' })).ok; })()"),
+          "the worker of MapLibre asked for early at the address of its version")
+    if js("!!document.getElementById('app').dataset.sw"):
+        check(js("navigator.serviceWorker.ready.then((r) => r.navigationPreload.getState()).then((x) => x.enabled === true)"),
+              "the service worker lets the browser ask for the page while it starts (navigation preload)")
+    # MapLibre checks the style of the map with our sources and layers (the page has it check none of them)
+    def valid(what):
+        v = json.loads(js(VALID) or "{}")
+        check(v.get("loaded") and not v.get("errors") and v.get("layers", 0) > 100 and v.get("ours", 0) >= 40, f"the style of the map with our layers is valid ({what}: {v})")
+    valid("at the start, " + js("document.documentElement.dataset.theme"))
 
     # the last location of the device kept on it to about 100 m; a new visit opens there at zoom 15, not at the place of
     # the IP address (a phone network or a SIM from another country gives a town far away), and a location out of view
@@ -211,7 +297,11 @@ try:
     start_hook = call("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(window, 'hmMap', { configurable: true, set(m) {"
                       " Object.defineProperty(window, 'hmMap', { value: m, writable: true, configurable: true });"
                       " const s = window.hmStart = { c: m.getCenter().toArray(), z: m.getZoom(), zmin: m.getZoom(), moves: 0 };"
-                      " m.on('movestart', () => { s.moves++; }); m.on('move', () => { s.zmin = Math.min(s.zmin, m.getZoom()); }); } })")
+                      " m.on('movestart', () => { s.moves++; }); m.on('move', () => { s.zmin = Math.min(s.zmin, m.getZoom()); });"
+                      # (the first style as it loads: this listener comes before those of the page)
+                      " m.on('style.load', () => { s.first ||= { globe: m.getProjection()?.type,"
+                      " border: m.getPaintProperty('boundaries_country', 'line-width'), water: m.getPaintProperty('water', 'fill-color'),"
+                      " ours: m.getLayersOrder().filter((id) => id.startsWith('lm-')).length }; }); } })")
     js("window.hmOld = 1")
     call("Page.navigate", url=URL)
     wait("!window.hmOld && window.hmStart && window.hmMap?.loaded() && !hmMap.isMoving() && location.hash.includes('/47.37')", 30)
@@ -221,6 +311,21 @@ try:
           f"a new visit opens at the last location of the device, zoom 15, not at the place of the IP address ({st})")
     at_me = js(f"(() => {{ const c = hmMap.getCenter(); return Math.hypot((c.lat - {ZURICH[0]}) * 111320, (c.lng - {ZURICH[1]}) * 75000) < 300; }})()")
     check(s0 and s0["zmin"] > 14.9 and at_me, f"the location 95 km from it: the map jumps there, no flight out and in ({st})")
+    # the first style comes onto the map through ourStyle, as every later one: the globe and the wider borders are in
+    # it before the page adds its layers; the light style starts in the colours of the day, not in those of the
+    # server and then ours
+    f0 = (s0 or {}).get("first") or {}
+    check(f0.get("globe") == "globe" and f0.get("border") == 1.4 and f0.get("ours") == 0,
+          f"the first style with the globe and the wider borders before the page adds its layers ({f0})")
+    js("localStorage.setItem('hm-style', 'light'); window.hmOld = 1")
+    call("Page.navigate", url=URL)
+    wait("!window.hmOld && window.hmStart?.first && window.hmMap?.loaded()", 30)
+    f1 = json.loads(js("JSON.stringify(window.hmStart?.first || {})"))
+    check(f1.get("water") == "#9ed3f2" and f1.get("ours") == 0, f"the light style starts in the colours of the day ({f1})")
+    valid("a start in the light style")
+    js("localStorage.removeItem('hm-style'); window.hmOld = 1")
+    call("Page.navigate", url=URL)
+    wait("!window.hmOld && window.hmMap?.loaded() && !hmMap.isMoving() && location.hash.includes('/47.37')", 30)
     call("Page.removeScriptToEvaluateOnNewDocument", identifier=start_hook["identifier"])
     check(wait("localStorage.getItem('hm-last-me') === '47.378,8.540'", 10), "the last location kept again where the visitor is")
 
@@ -469,12 +574,16 @@ try:
     # the country borders 1.4 px wide (0.7 in the styles of the server), on the style loaded first and on each switch
     check(js("hmMap.getPaintProperty('boundaries_country', 'line-width') === 1.4"), "the country borders twice as wide")
     js("window.hmStyle = hmMap.style")
+    seen_valid = set()
     for style, colour in (("light", "#7f1d1d"), ("dark", "#ffb4a9"), ("light", "#7f1d1d")):
         js(f"document.querySelector('.lm-style[data-style={style}]').click()")
         check(wait(f"document.documentElement.dataset.theme === '{'dark' if style == 'dark' else 'light'}' && hmMap.getPaintProperty('lm-label', 'text-color') === '{colour}'", 15)
               and js("hmMap.style === hmStyle && !!hmMap.getLayer('lm-route-line') && !!hmMap.getLayer('lm-night') && hmMap.getStyle().sources['lm-route'].data.features.length > 0"),
               f"the {style} style switched in place: our layers and the route kept")
         check(js("hmMap.getPaintProperty('boundaries_country', 'line-width') === 1.4"), f"the country borders twice as wide in the {style} style")
+        if style not in seen_valid:  # (once per style: a second map each time)
+            seen_valid.add(style)
+            valid(f"switched to the {style} style, a route on the map")
         pill = "lm-alt-pill-dark" if style == "dark" else "lm-alt-pill"
         check(js(f"hmMap.getLayoutProperty('lm-route-alt-label', 'icon-image') === '{pill}' && hmMap.hasImage('{pill}')"),
               f"the pill of the time of another route in the {style} style")

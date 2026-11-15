@@ -29,6 +29,11 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 - The menu: no line under 3D buildings, Relief shading and Directions and voice; the switch of the traffic reads
   "Traffic (Switzerland only)"; shorter lines under Transit and Language.
+- The page starts faster. A first visit downloads MapLibre once, not twice (300 kB less), and what the map needs
+  before its first tile at the same time as the scripts: the worker that reads the tiles, the style and its TileJSON.
+  The tiles of the first view and the letters of its names are asked for as the script starts, not after the style has
+  loaded. A later visit asks the server for the page alone before the map is there. The map comes up in its own
+  colours at once, and the page no longer has MapLibre check the style and each of its layers at every start.
 
 ### Fixed
 
