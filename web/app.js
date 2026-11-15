@@ -1169,15 +1169,30 @@ const pastelStyle = (st) => { for (const l of st.layers) pastelPaint(l, (k, w) =
 // that comes through here twice (a diff, then style.load) keeps it
 const BORDER_WIDTH = { boundaries_country: 1.4 };
 
-// icons drawn here (a new style drops them): a star for the starred places, a pin for the place shown
-const drawIcon = (name, w, h, draw) => {
+// icons drawn here (a new style drops them): a star for the starred places, a pin for the place shown; opts: those of
+// addImage (stretchX, stretchY, content: in pixels of the image, twice the size given)
+const drawIcon = (name, w, h, draw, opts = {}) => {
   if (map.hasImage(name)) return;
   const k = 2, c = document.createElement("canvas");
   c.width = w * k; c.height = h * k;
   const g = c.getContext("2d");
   g.scale(k, k);
   draw(g);
-  map.addImage(name, g.getImageData(0, 0, c.width, c.height), { pixelRatio: k });
+  map.addImage(name, g.getImageData(0, 0, c.width, c.height), { pixelRatio: k, ...opts });
+};
+// the pill under the time of another route on the map (lm-route-alt-label): a rounded box that grows with its text
+// (icon-text-fit), with the casing of the other routes as its border; one for the light map, one for the dark
+const ALT_PILL = { light: ["#ffffff", "#5b6b80", "#1f2937"], dark: ["#1f2937", "#8a9bb3", "#e5e7eb"] }; // fill, border, text
+const altPill = () => theme() === "dark" ? "lm-alt-pill-dark" : "lm-alt-pill";
+const addAltPills = () => {
+  for (const [name, [fill, border]] of [["lm-alt-pill", ALT_PILL.light], ["lm-alt-pill-dark", ALT_PILL.dark]]) {
+    drawIcon(name, 24, 24, (g) => {
+      g.beginPath();
+      g.roundRect(1, 1, 22, 22, 11);
+      g.fillStyle = fill; g.fill();
+      g.lineWidth = 1.5; g.strokeStyle = border; g.stroke();
+    }, { stretchX: [[22, 26]], stretchY: [[22, 26]], content: [14, 4, 34, 44] });
+  }
 };
 const addIcons = () => {
   drawIcon(POI_DOT, 10, 10, (g) => { // a POI of a kind without an icon in the sprite
@@ -1270,13 +1285,18 @@ const addTurnHead = () => drawIcon("lm-turn-head", 22, 18, (g) => {
 const pinLayer = (id, source, filter) => ({ id, type: "symbol", source, ...(filter ? { filter } : {}),
   layout: { "icon-image": "lm-pin-icon", "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true } });
 
+// the time of another route in its pill (addAltPills), by theme
+const altPillLayout = () => ({ "text-field": ["get", "text"], "text-font": ["Noto Sans Medium"], "text-size": 13, "icon-image": altPill(),
+  "icon-text-fit": "both", "icon-text-fit-padding": [1, 4, 1, 4], "text-padding": 6 });
+const altPillPaint = () => ({ "text-color": ALT_PILL[theme() === "dark" ? "dark" : "light"][2] });
 // the colours of our names, by theme: places along the route, and the results
-const TEXT_COLOUR = { "lm-route-alt-label": ["#e5e7eb", "#1f2937"], "lm-along-name": ["#ffd8a8", "#7c2d12"], "lm-label": ["#ffb4a9", "#7f1d1d"], "lm-journey-name": ["#e5e7eb", "#111827"] };
+const TEXT_COLOUR = { "lm-along-name": ["#ffd8a8", "#7c2d12"], "lm-label": ["#ffb4a9", "#7f1d1d"], "lm-journey-name": ["#e5e7eb", "#111827"] };
 const textPaint = (id) => ({ "text-color": TEXT_COLOUR[id][theme() === "dark" ? 0 : 1], "text-halo-color": theme() === "dark" ? "#111" : "#fff" });
 map.on("style.load", () => {
   if (shownStyle() === "light") pastel();
   addIcons();
   addTurnHead();
+  addAltPills();
   // a globe when zoomed out; MapLibre turns it into the flat map from about zoom 12 (a new style resets it)
   map.setProjection({ type: "globe" });
   // 3D buildings see-through, so the map and the route behind them stay in view
@@ -1404,9 +1424,7 @@ map.on("style.load", () => {
   if (font) add({ id: "lm-route-stop-n", type: "symbol", source: "lm-route", filter: ["==", ["get", "end"], "stop"],
     layout: { "text-field": ["get", "n"], "text-font": font, "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } });
-  if (font) add({ id: "lm-route-alt-label", type: "symbol", source: "lm-routealt", filter: ["has", "text"],
-    layout: { "text-field": ["get", "text"], "text-font": font, "text-size": 13, "text-padding": 4 },
-    paint: { ...textPaint("lm-route-alt-label"), "text-halo-width": 2.5 } });
+  add({ id: "lm-route-alt-label", type: "symbol", source: "lm-routealt", filter: ["has", "text"], layout: altPillLayout(), paint: altPillPaint() });
   add(pinLayer("lm-pin", "lm-pin"));
   add({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
@@ -1882,7 +1900,8 @@ function ourStyle(prev, st) {
   for (const l of prev.layers || []) {
     if (l.id === "lm-pois-near" || l.id === "lm-pois-more" || l.id === "lm-pois-late") continue; // made again from the pois of the new style
     if (l.id.startsWith("lm-")) {
-      ours.push(TEXT_COLOUR[l.id] ? { ...l, paint: { ...l.paint, ...textPaint(l.id) } } : l);
+      ours.push(TEXT_COLOUR[l.id] ? { ...l, paint: { ...l.paint, ...textPaint(l.id) } }
+        : l.id === "lm-route-alt-label" ? { ...l, layout: altPillLayout(), paint: altPillPaint() } : l);
       continue;
     }
     if (!ours.length) continue;
@@ -4323,7 +4342,8 @@ function altVia(a) {
   }
   return best;
 }
-// the routes to choose from, above Start: the one shown with its time, the others with altDiff; each with altVia or
+// the routes to choose from, under Start (above it they would make the panel of a phone higher than half: it would go
+// down and up again when a route comes): the one shown with its time, the others with altDiff; each with altVia or
 // its length
 function altsRow(d) {
   const row = el("div", "lm-alts", { role: "radiogroup", "aria-label": T.routes });
@@ -4878,12 +4898,12 @@ function showRoute(d, { quiet = false } = {}) {
   simBtn.addEventListener("click", () => navStart(true));
   go.append(startBtn, simBtn, shareButton(() => ({ title: `${route.from?.label || ""} → ${route.to?.label || ""}`, url: routeLink() }), true));
   routeSum.after(go);
-  if (route.alts.length > 1) go.before(altsRow(d));
   if (route.mode === "car" && d.ferries?.length) go.before(ferriesBox(d));
   // the time and Start in view on a phone: the sheet at half as high as they need (routeNeed), the modes and the
   // places above them stay in view; the panel scrolls only under a finger
   if (!quiet && sheet.state === "half") setSheet("half");
   if (d.elev?.pts?.length > 1) go.after(heightChart(d.elev, { onPoint: showOnRoute }).node);
+  if (route.alts.length > 1) go.after(altsRow(d));
   if (ALONG) stepsBox.before(alongBox(d));
   loadAvatar();
   if (SAY) fetchSay(d.steps[0]?.pre || d.steps[0]?.text); // the first sentence, ready for Start

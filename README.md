@@ -50,7 +50,7 @@ navigation, on OpenStreetMap data.**
 - **Directions** by car, bike and on foot with up to 8 stops, places along the route (fuel, charging, rest areas, food,
   drinking water…), lanes, junction signs, speed limits, and a height profile by bike and on foot
 - **Other routes**: up to two more from start to destination, with how much longer each takes leaving now (live
-  traffic and closures counted), on the map and in a row above Start; a tap picks one
+  traffic and closures counted), on the map and in a row under Start; a tap picks one
 - **Public transport**: connections by train, tram, metro, bus, boat and cable car where the server has timetables
   (on hippomaps.ch: Europe), leaving now or with a departure or an arrival at a chosen time, with
   tracks, the walks to and from the stops, and delays where an operator publishes them

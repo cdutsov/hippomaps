@@ -33,7 +33,7 @@ the app for Android (a stand-in): the cone at the dot, the map turning with the 
 north up again, a finger ending it, the page hidden a while and back, none in navigation; the compass of a phone browser (Chrome with a
 virtual orientation sensor: flat, held up, tilted, landscape, from true north; Safari with a stand-in: asked from a tap, turning with its
 first heading, refused), none on a computer; a shared route with
-9 stops (the first 8), a stop removed; other routes by car (a row above Start, their times on the map, one picked from the row and
+9 stops (the first 8), a stop removed; other routes by car (a row under Start, their times in pills on the map, one picked from the row and
 from a tap on its line; none with a stop); Preview of a short route to its end (arrived, navigation ends, the route and Start again); a route with a ferry on a small phone (Start in view); a shared place above the panel;
 coordinates in the search box; the POIs with a name in the Outdoor style; public transport (a shared journey from Zurich to
 Bern: its connections, the legs of the first, the rides and walks on the map, Later, an arrival by a time on the clocks of the
@@ -282,6 +282,7 @@ try:
           "back to the route: the start kept")
     to_at = "JSON.stringify(hmMap.getStyle().sources['lm-route'].data.features.find(f => f.properties.end === 'to')?.geometry.coordinates)"
     to0 = js(to_at)  # where the destination is (a tap may name the same place: a station beside its label)
+    time.sleep(0.6)  # two taps within 0.5 s and 30 px are a double tap for MapLibre: it zooms, the second shows nothing
     x, y = off_routes(140, 180)
     call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y}])
     call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
@@ -323,12 +324,12 @@ try:
     # the next turn ("then") hangs right under the banner, whatever its height: one and two lines of instruction, in
     # one go (the next update sets them again)
     gaps = js("""(() => { const i = document.querySelector('.lm-nav-instr'), t = document.querySelector('.lm-nav-then'),
-      b = document.querySelector('.lm-nav-banner'), was = [i.textContent, t.hidden, t.textContent], out = [];
-      t.hidden = false; t.textContent = 'Then';
+      b = document.querySelector('.lm-nav-banner'), L = document.querySelector('.lm-nav-lanes'), was = [i.textContent, t.hidden, t.textContent, L.hidden], out = [];
+      t.hidden = false; t.textContent = 'Then'; L.hidden = true; // (lanes before a turn come between them)
       for (const s of ['Turn right', 'Turn right onto Papiermühlestrasse toward Zürich, Basel and Biel/Bienne, then keep left']) {
         i.textContent = s; out.push(Math.round(t.getBoundingClientRect().top - b.getBoundingClientRect().bottom), Math.round(b.getBoundingClientRect().height));
       }
-      [i.textContent, t.hidden, t.textContent] = was; return out; })()""")
+      [i.textContent, t.hidden, t.textContent, L.hidden] = was; return out; })()""")
     check(gaps and abs(gaps[0]) <= 1 and abs(gaps[2]) <= 1 and gaps[3] > gaps[1],
           f"the next turn right under the banner, one and two lines (gap, height: {gaps})")
     # many lanes (12, three arrows each) with the sign: all in the width of the top (smaller), the sign under them;
@@ -430,6 +431,9 @@ try:
               and js("hmMap.style === hmStyle && !!hmMap.getLayer('lm-route-line') && !!hmMap.getLayer('lm-night') && hmMap.getStyle().sources['lm-route'].data.features.length > 0"),
               f"the {style} style switched in place: our layers and the route kept")
         check(js("hmMap.getPaintProperty('boundaries_country', 'line-width') === 1.4"), f"the country borders twice as wide in the {style} style")
+        pill = "lm-alt-pill-dark" if style == "dark" else "lm-alt-pill"
+        check(js(f"hmMap.getLayoutProperty('lm-route-alt-label', 'icon-image') === '{pill}' && hmMap.hasImage('{pill}')"),
+              f"the pill of the time of another route in the {style} style")
     js("document.querySelector('.lm-style[data-style=auto]').click()")
 
     # traffic on and off
@@ -814,7 +818,7 @@ try:
                  " return f.height > 0 && f.bottom <= s.top && /^Ferry: \\S/.test(document.querySelector('.lm-ferry-ferry').textContent); })()"),
           "a ferry on a route by car: a warning with its name above Start")
     js("if (!document.querySelector('.lm-route').hidden) document.querySelector('.lm-route .lm-back').click()")
-    # other routes from start to destination (Zurich - Bern by car): a row above Start, the route shown first with its
+    # other routes from start to destination (Zurich - Bern by car): a row under Start, the route shown first with its
     # time, the others with how much longer they take; paler on the map with that time; one picked from the row, one
     # from a tap on its line
     call("Page.navigate", url=URL + "/?from=47.37790,8.54030&fn=Zurich+HB&to=46.94900,7.43910&tn=Bern&mode=car")
@@ -822,17 +826,20 @@ try:
         alts_now = """JSON.stringify((() => { const bs = [...document.querySelectorAll('.lm-alt')], s = document.querySelector('.lm-nav-start').getBoundingClientRect();
           return { on: bs.map(b => b.getAttribute('aria-checked')), times: bs.map(b => b.querySelector('.lm-alt-time').textContent),
             via: bs.map(b => b.querySelector('.lm-alt-via').textContent), sum: document.querySelector('.lm-sum-time').textContent,
-            above: document.querySelector('.lm-alts').getBoundingClientRect().bottom <= s.top,
+            under: document.querySelector('.lm-alts').getBoundingClientRect().top >= s.bottom,
             map: (hmMap.getStyle().sources['lm-routealt']?.data.features || []).map(f => [f.geometry.type, f.properties.i, f.properties.text || '']) }; })())"""
         r = json.loads(js(alts_now))
         diff = re.compile(r"^([+\u2212]\d|Same time$)")
         nr = len(r["on"])
         check(r["on"][0] == "true" and r["on"].count("true") == 1 and r["times"][0] == r["sum"] and all(diff.match(t) for t in r["times"][1:])
-              and all(r["via"]) and r["above"], f"other routes: a row above Start, the route first with its time, the others with + or − ({r})")
+              and all(r["via"]) and r["under"], f"other routes: a row under Start, the route first with its time, the others with + or − ({r})")
         lines = sorted(f[1] for f in r["map"] if f[0] == "LineString")
         labels = {f[1]: f[2] for f in r["map"] if f[0] == "Point"}
         check(lines == list(range(1, nr)) and all(labels.get(i) == r["times"][i] for i in range(1, nr)),
               f"the other routes on the map, each with how much longer it takes ({r['map']})")
+        check(wait("hmMap.getLayoutProperty('lm-route-alt-label', 'icon-text-fit') === 'both' && hmMap.hasImage(hmMap.getLayoutProperty('lm-route-alt-label', 'icon-image'))"
+                   " && hmMap.queryRenderedFeatures({ layers: ['lm-route-alt-label'] }).length >= 1", 10),
+              "the time of each other route in a pill on the map")
         js("document.querySelectorAll('.lm-alt')[1].click()")
         time.sleep(0.5)
         q = json.loads(js(alts_now))
