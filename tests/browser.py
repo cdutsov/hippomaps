@@ -41,7 +41,8 @@ coordinates in the search box; the POIs with a name in the Outdoor style; public
 Bern: its connections, the legs of the first, the rides and walks on the map, Later, an arrival by a time on the clocks of the
 journey, back to the car; a start without a timetable); feedback (the form of the menu, a note of OpenStreetMap for a
 mistake of the map, a message sent with and without the details of the page, in German, Report this problem under a search
-that failed, none under a message that says what to do); and no errors
+that failed, none under a message that says what to do); the rows of the menu (a line under a label only where it adds
+something, in English and German); and no errors
 of the page on the way. Needs chromium and websocket-client.
 """
 import base64
@@ -396,11 +397,28 @@ try:
     check(js("(() => { const p = document.querySelector('.lm-about-text'); return !!p && p.textContent.startsWith('HippoMaps ist freie Open-Source-Software,') && p.querySelectorAll('a').length === 1; })()"),
           "the free software text in German, with its link")
     check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/de/'"), "Powered by overpass.ch links overpass.ch, in German for German")
+    # the rows of the menu: a line under the label only where the label does not say it all
+    rows_js = """JSON.stringify(Object.fromEntries([...document.querySelectorAll('.lm-menu-main > .lm-toggle')].map(r => {
+      const t = [...r.querySelector('.lm-toggle-text').children].map(e => e.textContent); return [t[0], t.slice(1).join(' | ')]; })))"""
+    rows = json.loads(js(rows_js))
+    check(rows.get("Sprache") == "Seite und Karte" and rows.get("Route und Stimme") == "" and rows.get("3D-Gebäude", "") == ""
+          and (not js("!!document.getElementById('app').dataset.traffic") or rows.get("Verkehr (nur Schweiz)") == "Sperrungen, Stau und Baustellen"
+               and js("document.querySelector('.lm-traffic-btn').title === 'Verkehr'")),
+          f"the rows of the menu in German: Verkehr (nur Schweiz), Sprache with Seite und Karte, Route und Stimme alone ({rows})")
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = ''; s.dispatchEvent(new Event('change')) })(); localStorage.removeItem('hm-lang')")
     check(wait("document.documentElement.lang === 'en' && /search/i.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 10), "Automatic: the language of the browser again")
     check(js("(() => { const a = document.querySelector('.lm-menu-privacy'); return a.textContent === 'Privacy' && /\\/privacy$/.test(new URL(a.href).pathname) && !a.href.includes('/de/'); })()"),
           "the privacy link in English again")
     check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/'"), "Powered by overpass.ch links overpass.ch in English again")
+    rows = json.loads(js(rows_js))
+    app_has = lambda k: js(f"!!document.getElementById('app').dataset.{k}")
+    check(rows.get("3D buildings") == "" and rows.get("Relief shading") == "" and rows.get("Language") == "Page and map"
+          and rows.get("Directions and voice") == ""
+          and (not app_has("traffic") or rows.get("Traffic (Switzerland only)") == "Closures, queues and roadworks" and "Traffic" not in rows
+               and js("document.querySelector('.lm-traffic-btn').title === 'Traffic'"))
+          and (not app_has("transit") or rows.get("Transit") == "Metro, light rail and tram lines")
+          and js("![...document.querySelectorAll('.lm-toggle-note')].some(e => !e.textContent.trim())"),
+          f"the rows of the menu: 3D buildings, Relief shading and Directions and voice alone, Traffic (Switzerland only), no empty line ({rows})")
     # below Forget recent searches: free software with the link to the source code; with donations a field of 10 francs
     # and Donate (the app for Android shows no donation: Google Play)
     about = js("""(() => { const p = document.querySelector('.lm-forget + .lm-about .lm-about-text'), a = p?.querySelector('a'),

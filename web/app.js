@@ -260,7 +260,8 @@ const EN = {
   speedLimit: (v) => `Speed limit ${v}`,
   speedNow: (v) => `Speed ${v} km/h`,
   traffic: "Traffic",
-  trafficNote: "Closures, queues and roadworks in Switzerland",
+  trafficMenu: "Traffic (Switzerland only)",
+  trafficNote: "Closures, queues and roadworks",
   trafficKinds: { closure: "Closed", jam: "Queue", works: "Roadworks", accident: "Accident", obstruction: "Obstruction", weather: "Weather", event: "Event", slow: "Slow traffic" },
   atNight: "at night",
   byDay: "by day",
@@ -269,7 +270,7 @@ const EN = {
   sameTime: "Same time",
   via: (name) => `via ${name}`,
   transit: "Transit",
-  transitNote: "Metro, light rail and tram lines in their colours",
+  transitNote: "Metro, light rail and tram lines",
   bubbles: [["restaurants", "Restaurants"], ["hotels", "Hotels"], ["transit", "Transit"], ["ATMs", "ATMs"],
     ["cafés", "Cafés", 1], ["supermarkets", "Supermarkets", 1], ["pharmacies", "Pharmacies", 1], ["parking", "Parking", 1], ["petrol stations", "Fuel", 1]],
   transitIn: (place) => `Public transport in ${place}`,
@@ -300,14 +301,11 @@ const EN = {
   mapStyle: "Map style",
   show: "Show",
   buildings3D: "3D buildings",
-  buildings3DNote: "Buildings with their height",
   shading: "Relief shading",
-  shadingNote: "Light and shadow of the mountains",
   styles: [["auto", "Day and night"], ["light", "Light"], ["dark", "Dark"], ["outdoor", "Outdoor"], ["relief", "Relief"], ["driving", "Driving"]],
   language: "Language",
-  languageNote: "Page and names on the map",
+  languageNote: "Page and map",
   navLanguage: "Directions and voice",
-  navLanguageNote: "The steps of a route and the spoken navigation",
   automatic: "Automatic",
   poweredBy: "Powered by",
   privacy: "Privacy",
@@ -1731,13 +1729,15 @@ for (const [key, label] of T.styles) {
   });
   styleGrid.append(b);
 }
+// a switch of the menu; note: a line under its label, for a label that does not say it all
 const toggle = (label, note, on, set) => {
   const row = el("label", "lm-toggle");
   const box = el("input", "", { type: "checkbox", role: "switch" });
   box.checked = on;
   box.addEventListener("change", () => set(box.checked));
   const text = el("span", "lm-toggle-text");
-  text.append(el("span", "", {}, label), el("span", "lm-toggle-note", {}, note));
+  text.append(el("span", "", {}, label));
+  if (note) text.append(el("span", "lm-toggle-note", {}, note));
   row.append(text, box);
   return row;
 };
@@ -1760,7 +1760,7 @@ function setBuildings(on) {
   store.set("hm-buildings", on ? "1" : "0");
   restyle();
 }
-const buildingsRow = toggle(T.buildings3D, T.buildings3DNote, look.buildings, setBuildings);
+const buildingsRow = toggle(T.buildings3D, "", look.buildings, setBuildings);
 const forgetBtn = el("button", "lm-chip lm-forget", { type: "button" }, T.forgetRecent);
 forgetBtn.addEventListener("click", () => {
   saved.recent = [];
@@ -1978,7 +1978,7 @@ fbForm.addEventListener("submit", async (e) => {
     fbSend.disabled = false;
   }
 });
-const trafficRow = toggle(T.traffic, T.trafficNote, look.traffic, setTraffic);
+const trafficRow = toggle(T.trafficMenu, T.trafficNote, look.traffic, setTraffic);
 const transitRow = toggle(T.transit, T.transitNote, look.transit, setTransit);
 transitBox = transitRow.querySelector("input");
 trafficBox = trafficRow.querySelector("input");
@@ -2026,11 +2026,11 @@ const saveRouteRow = toggle(T.saveRoute, T.saveRouteNote, saveRouteOn(), (on) =>
 saveRouteRow.classList.add("lm-save-route");
 const navLangRow = el("label", "lm-toggle lm-lang");
 const navLangText = el("span", "lm-toggle-text");
-navLangText.append(el("span", "", {}, T.navLanguage), el("span", "lm-toggle-note", {}, T.navLanguageNote));
+navLangText.append(el("span", "", {}, T.navLanguage));
 navLangRow.append(navLangText, navLangSel);
 menuMain.append(el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "lm-menu-title", {}, T.show),
   buildingsRow,
-  toggle(T.shading, T.shadingNote, look.shading, (on) => {
+  toggle(T.shading, "", look.shading, (on) => {
     look.shading = on;
     store.set("hm-shading", on ? "1" : "0");
     restyle();

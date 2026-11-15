@@ -25,6 +25,11 @@ version numbers are the releases of the Android app (`android/`), which shows th
   failed opens it. Unless turned off, the message carries the page as it was (the search, place or route and the map
   view), the browser and the last errors of the page; "What is sent" lists them.
 
+### Changed
+
+- The menu: no line under 3D buildings, Relief shading and Directions and voice; the switch of the traffic reads
+  "Traffic (Switzerland only)"; shorter lines under Transit and Language.
+
 ### Fixed
 
 - The map opens where you were the last time the page knew your location (kept on the device to about 100 m), not at the

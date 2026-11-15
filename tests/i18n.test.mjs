@@ -37,3 +37,21 @@ test("free software and the donation in each language", () => {
     if (lang !== "en") for (const k of ["aboutApp", "donateAsk", "donateAmount", "donate", "donateFailed", "donated"]) assert.notEqual(t[k], EN[k], `${lang} ${k}`);
   }
 });
+
+// the rows of the menu: 3D buildings, Relief shading and Directions and voice say it all, with no line under them;
+// Traffic says in its label that it is Switzerland only (the button on the map stays Traffic)
+test("the rows of the menu: no line under a label that says it all", () => {
+  for (const [lang, t] of [["en", EN], ...["de", "fr", "it"].map((l) => [l, all[l]])]) {
+    for (const k of ["buildings3DNote", "shadingNote", "navLanguageNote"]) assert.ok(!(k in t), `${lang} ${k}`);
+    assert.match(t.trafficMenu, new RegExp(`^${t.traffic} \\(.*(Switzerland|Schweiz|Suisse|Svizzera).*\\)$`), `${lang} trafficMenu`);
+    assert.ok(!/Switzerland|Schweiz|Suisse|Svizzera/.test(t.trafficNote), `${lang} trafficNote`);
+    assert.ok(!/colou?rs|Farben|couleurs|colori/.test(t.transitNote), `${lang} transitNote`);
+    assert.ok(!/names|noms|nomi|beschriftung/i.test(t.languageNote), `${lang} languageNote: ${t.languageNote}`);
+  }
+  assert.equal(EN.trafficMenu, "Traffic (Switzerland only)");
+  assert.equal(EN.trafficNote, "Closures, queues and roadworks");
+  assert.equal(EN.transitNote, "Metro, light rail and tram lines");
+  assert.equal(EN.languageNote, "Page and map");
+  assert.ok(!/Note\b/.test(src.slice(src.indexOf("const buildingsRow = toggle("), src.indexOf("const buildingsRow = toggle(") + 80)), "3D buildings without a note");
+  assert.match(src, /if \(note\) text\.append\(el\("span", "lm-toggle-note"/, "no empty line under a switch without a note");
+});
