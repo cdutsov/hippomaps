@@ -793,8 +793,19 @@ const hintsOfView = () => {
     return [...new Set([d.short, d.long, ...d.list])].filter((h) => h && h !== I.fallback && h !== I.fallbackShort);
   } catch { return []; } // before the map is made
 };
+let hintLater = false;
 const newHint = (hints = hintsOfView()) => {
-  if (!hints.length) return void (input.placeholder = T.placeholder);
+  if (!hints.length) {
+    // the map still loading (an X right after a jump): the example shown stays, another is picked when it is there
+    let loading = false;
+    try { loading = !map.loaded(); } catch { /* before the map is made */ }
+    if (loading && !hintLater) {
+      hintLater = true;
+      map.once("idle", () => { hintLater = false; if (!input.value) newHint(); });
+    }
+    if (loading && input.placeholder !== T.placeholder) return;
+    return void (input.placeholder = T.placeholder);
+  }
   const others = hints.length > 1 ? hints.filter((h) => h !== input.placeholder) : hints;
   input.placeholder = others[Math.floor(Math.random() * others.length)];
 };

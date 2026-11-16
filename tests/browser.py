@@ -728,7 +728,9 @@ try:
     check(first and "in view" not in first and len(listed()) > 0, f"the list after a search: all results ({first})")
     # the ids drawn in the map above the panel, the edges `m` pixels in (m < 0: out)
     drawn = lambda m: js("(() => { const w = hmMap.getContainer().clientWidth, s = document.querySelector('.lm-side').getBoundingClientRect().top;"
-                         f" const fs = hmMap.queryRenderedFeatures([[{m}, {m}], [w - {m}, s - {m}]], {{ layers: ['lm-point', 'lm-dot', 'lm-line', 'lm-fill'].filter((l) => hmMap.getLayer(l)) }});"
+                         f" const fs = hmMap.queryRenderedFeatures([[{m}, {m}], [w - {m}, s - {m}]], {{ layers: ['lm-point', 'lm-place', 'lm-dot', 'lm-line', 'lm-fill'].filter((l) => hmMap.getLayer(l)) }})"
+                         # a pin is drawn above its point: the point itself in the box
+                         f"   .filter((f) => {{ if (f.geometry.type !== 'Point') return true; const q = hmMap.project(f.geometry.coordinates); return q.x >= {m} && q.x <= w - {m} && q.y >= {m} && q.y <= s - {m}; }});"
                          " return [...new Set(fs.map((f) => f.properties.id))]; })()")
     on_map = lambda: js("hmMap.getSource('lm-results').getData().then((d) => d.features.length)")
     all_drawn = on_map()
@@ -1554,7 +1556,9 @@ try:
           f"the bubbles keep their own words through French, English and German ({fr_bubbles}; {en_bubbles}; {de_bubbles})")
     # the start in German: the heading and the searches of the view, no English in them
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click(); document.querySelector('.lm-input').blur()")
-    de_ok = wait("document.querySelector('.lm-start-head')?.textContent === 'In dieser Gegend' && document.querySelectorAll('.lm-start-label').length >= 2", 15)
+    # (the heading is German at once, the list when it is drawn again)
+    de_ok = wait("document.querySelector('.lm-start-head')?.textContent === 'In dieser Gegend' && document.querySelectorAll('.lm-start-label').length >= 2"
+                 " && ![...document.querySelectorAll('.lm-start-label')].some((e) => /\\b(along|near|over|open|the)\\b/.test(e.textContent))", 15)
     de_ideas = js("[...document.querySelectorAll('.lm-start-label')].map(e => e.textContent)") or []
     check(de_ok and not any(re.search(r"\b(along|near|over|open|the)\b", t) for t in de_ideas), f"the start in German ({de_ideas})")
     # the words of the search in German too: what it understood, the other readings, the kinds and days of the places
