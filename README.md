@@ -44,6 +44,8 @@ navigation, on OpenStreetMap data.**
 - **Popups on the map**: the name, kind and, when known, the opening hours and address of a place tapped, and of a place
   under the mouse on a computer
 - **What is here**: a tap on the map shows the address and the named places around it
+- **A right click on the map** (a long press on a phone): what is here, directions from or to the point, Measure
+  distance from it, its coordinates copied
 
 ### Directions and navigation
 
@@ -72,6 +74,12 @@ navigation, on OpenStreetMap data.**
 - Nine styles, the day map in the colours of Swiss topographic maps, day and night by the sun
 - 3D terrain and buildings, relief shading
 - Transit lines (metro, light rail, tram) in their colours
+- **Measure distance** (the menu, or a right click): points set on the map give the length of the line; the first point
+  clicked again closes the shape and gives its area and perimeter. Points are dragged, removed with a click, added on
+  the middle of a part; Undo. The height profile of the line, and the line as GPX (with its heights), KML or GeoJSON. A
+  GPX, KML or GeoJSON file opened or dropped on the map shows its track as such a line (5000 points at most)
+- **Files for a GPS device**: the results of a search as GPX waypoints (beside CSV and GeoJSON), a route as a GPX track
+  (with its heights by bike and on foot). Not in the Android app, whose WebView cannot save a file made in the page
 - The page in English, German, French and Italian
 - Settings, starred places and recent searches stay in the browser
 - Feedback from the menu: a problem, a mistake of the map (with a link to a note on OpenStreetMap at the map view), an
@@ -164,6 +172,7 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | `GET route?from=lat,lon&via=…&to=…&mode=car\|bike\|walk&lang=&alts=2` | line, steps, stops, speed limits, lanes, traffic, tunnels, signs on the way (`marks`), height profile; with `alts` (no stops) up to that many other routes in `alts`, each the same |
 | `GET journey?from=lat,lon&to=…&time=2026-11-13T08:00:00Z&arrive=1&page=&lang=` | connections by public transport around a time (now without `time`; `arrive=1`: there by then): legs with line, direction, tracks, stops, delays and their way; `earlier` and `later` are the `page` of the connections before and after; the way on foot when the ends are near |
 | `POST along` `{"line","cat","mode","lang"}` | places of a kind near a route, in route order |
+| `POST heights` `{"line":[[lon,lat],…]}` | the height profile of a line (Measure): `up`, `down`, `min`, `max`, `pts` as [km, m], as that of a route; 2 to 5000 points, 2000 km at most (400 `too_long`); counted as directions of the visitor. Only with `ELEVATION_KEY` (the page then has `data-heights`) |
 | `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |
 | `GET say?lang=&text=` | spoken sentence (audio/mpeg) |
 | `GET traffic` | traffic incidents |

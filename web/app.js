@@ -277,6 +277,23 @@ const EN = {
   transitNone: "No metro, light rail or tram lines here. Zoom in closer, or try another city.",
   transitKinds: { subway: "Metro", light_rail: "Light rail", tram: "Tram", monorail: "Monorail" },
   heights: "Height profile",
+  measure: "Measure distance",
+  measureNote: "Lines and areas, GPX files",
+  measureHintMouse: "Click the map to add points. Drag a point to move it, click it to remove it. Click the first point to close the shape and measure its area.",
+  measureHintTouch: "Tap the map to add points. Drag a point to move it, tap it to remove it. Tap the first point to close the shape and measure its area.",
+  measurePerimeter: "Perimeter",
+  measureAdd: "Add a point here",
+  undo: "Undo",
+  clear: "Clear",
+  closeShape: "Close the shape",
+  openShape: "Open the shape",
+  openFile: "Open a file",
+  fileBad: "This file has no line or points that can be read. GPX, KML and GeoJSON files work.",
+  fileThinned: (n) => `Shown with ${num(n)} of its points.`,
+  heightsTooLong: "Height profiles go up to 2000 km.",
+  ctxHere: "What is here",
+  ctxFrom: "Directions from here",
+  ctxTo: "Directions to here",
   up: (m) => `${num(m)} m up`,
   down: (m) => `${num(m)} m down`,
   climbLeft: (m) => `${num(m)} m still to climb`,
@@ -369,6 +386,12 @@ const ICON = {
   walk: "M13 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM10 21l2-6 3 3v3M12 15l-1-6 4 2 2 3M11 9l-3 2-1 3",
   swap: "M7 4v16M7 4 4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3",
   plus: "M12 5v14M5 12h14",
+  ruler: "M3 16.5 16.5 3 21 7.5 7.5 21zM7 12.5l2 2M10 9.5l2.5 2.5M13 6.5l2 2",
+  undo: "M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
+  shape: "M5 6l13-2 3 11-9 6-8-6zM5 6h0",
+  mountain: "M3 20 9.5 8l4 7 2.5-4L21 20z",
+  flag: "M5 21V4M5 4h11l-2 4 2 4H5",
+  copy: "M9 9h11v11H9zM5 15H4V4h11v1",
   ferry: "M3 14h18l-2.5 5h-13zM6 14v-4h12v4M9 10V6h6v4M12 3v3",
   train: "M8 3h8a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a3 3 0 0 1 3-3zM5 10h14M8.5 13h.01M15.5 13h.01M8 16l-2 5M16 16l2 5",
   bus: "M6 4h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM4 11h16M8 18v2M16 18v2M8 14.5h.01M16 14.5h.01",
@@ -827,7 +850,11 @@ const hereView = el("section", "lm-here");
 hereView.hidden = true;
 const routeView = el("section", "lm-route");
 routeView.hidden = true;
-body.append(listView, hereView, detailView, routeView);
+// Measure (the section measure, below)
+const measureView = el("section", "lm-measure");
+measureView.hidden = true;
+const meas = { on: false, pts: [], closed: false, name: "", undo: [], elev: null, profile: false, drag: null, dragEnd: 0, timer: 0, ctl: null, dbl: true };
+body.append(listView, hereView, detailView, routeView, measureView);
 // show one of the views of the side bar: the list, what is here, the page of a place, directions
 // the popups of places on the map (made when first shown, showPop): of the place tapped (tap) and of that under the mouse
 // (hover); key: the name and place of what they show
@@ -840,6 +867,8 @@ const showView = (v) => {
   hereView.hidden = v !== hereView;
   detailView.hidden = v !== detailView;
   routeView.hidden = v !== routeView;
+  measureView.hidden = v !== measureView;
+  if (v !== measureView) measureDone();
   root.classList.toggle("lm-planning", v === routeView); // directions have their own fields: no search bar above them
   showDirBtn();
   body.scrollTop = 0;
@@ -947,7 +976,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, routealt: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty };
+const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, routealt: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty, measure: empty };
 const ACCENT = "#e8590c"; // the warm complement of the hippo blue (--warm)
 const STOP_COLOUR = "#e8590c"; // stops on a route, and the places along it
 // POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
@@ -1509,6 +1538,24 @@ map.on("style.load", () => {
     layout: { "text-field": ["get", "n"], "text-font": font, "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } });
   add({ id: "lm-route-alt-label", type: "symbol", source: "lm-routealt", filter: ["has", "text"], layout: altPillLayout(), paint: altPillPaint() });
+  // the line measured (Measure): violet, a white line under it; the area lightly filled; its points and the handles
+  // in the middle of its parts; the length (or the area) at its end
+  const MEASURE = "#7048e8";
+  add({ id: "lm-measure-fill", type: "fill", source: "lm-measure", filter: ["has", "fill"], paint: { "fill-color": MEASURE, "fill-opacity": 0.15 } });
+  const mline = ["==", ["geometry-type"], "LineString"];
+  add({ id: "lm-measure-case", type: "line", source: "lm-measure", filter: mline, layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": "#fff", "line-width": 6, "line-opacity": 0.85 } });
+  add({ id: "lm-measure-line", type: "line", source: "lm-measure", filter: mline, layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": MEASURE, "line-width": 3 } });
+  add({ id: "lm-measure-mid", type: "circle", source: "lm-measure", filter: ["has", "mid"], paint: {
+    "circle-radius": 4, "circle-color": "#fff", "circle-opacity": 0.9, "circle-stroke-color": MEASURE, "circle-stroke-width": 1.5 } });
+  add({ id: "lm-measure-pt", type: "circle", source: "lm-measure", filter: ["has", "v"], paint: {
+    "circle-radius": 6, "circle-color": ["case", ["==", ["get", "first"], 1], MEASURE, "#fff"], "circle-stroke-color": ["case", ["==", ["get", "first"], 1], "#fff", MEASURE],
+    "circle-stroke-width": 2.5 } });
+  add({ id: "lm-measure-label", type: "symbol", source: "lm-measure", filter: ["has", "label"],
+    layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Medium"], "text-size": 13, "text-offset": [0, -1.3], "text-anchor": "bottom",
+      "text-allow-overlap": true, "text-ignore-placement": true },
+    paint: { "text-color": MEASURE, "text-halo-color": "#fff", "text-halo-width": 2 } });
   add(pinLayer("lm-pin", "lm-pin"));
   add({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
@@ -3194,7 +3241,8 @@ query.hidden = true;
 const dl = el("div", "lm-dl");
 const dlCSV = el("button", "lm-copy", { type: "button" }, "CSV");
 const dlJSON = el("button", "lm-copy", { type: "button" }, "GeoJSON");
-dl.append(el("span", "", { "data-t": "download" }, T.download), dlCSV, dlJSON);
+const dlGPX = el("button", "lm-copy", { type: "button" }, "GPX");
+dl.append(el("span", "", { "data-t": "download" }, T.download), dlCSV, dlJSON, dlGPX);
 dl.hidden = true;
 const IN_APP = /\bhippomaps-android\//.test(navigator.userAgent);
 const showDl = () => { dl.hidden = IN_APP || query.hidden || !state.features?.length; };
@@ -3208,6 +3256,9 @@ const save = (text, type, ext) => {
 };
 dlCSV.addEventListener("click", () => save(dataCSV(state.features, center), "text/csv;charset=utf-8", "csv"));
 dlJSON.addEventListener("click", () => save(dataGeoJSON(state.features, state.answer?.query), "application/geo+json", "geojson"));
+// the results as waypoints (the middle of a line or area) for a GPS device
+dlGPX.addEventListener("click", () => save(dataGPX({ name: state.text || state.answer?.understood || "", osm: true,
+  wpts: state.features.map((f) => ({ ll: center(f), name: f.properties.name || "" })).filter((w) => w.ll) }), "application/gpx+xml", "gpx"));
 const placeActs = el("div", "lm-actions lm-place-acts"); // Directions when the search found one place
 head.append(title, notes, placeActs);
 const placePic = el("figure", "lm-pic lm-place-pic"); // the photo of a town or region found
@@ -4142,6 +4193,7 @@ map.on("dblclick", () => clearTimeout(tapTimer));
 map.on("zoomstart", (e) => { if (e.originalEvent) clearTimeout(tapTimer); });
 map.on("click", (e) => {
   if (e.defaultPrevented || Date.now() < ghostUntil) return;
+  if (meas.on && !nav.on) return measureClick(e); // at once: no double tap to wait for in measuring
   clearTimeout(tapTimer);
   tapTimer = setTimeout(() => onTap(e), 280);
 });
@@ -4337,7 +4389,7 @@ const setPoiCursor = (on) => {
 function hoverAt() {
   hoverFrame = 0;
   const pt = hoverPt;
-  if (!pt || !mouse.matches || nav.on || map.isMoving()) {
+  if (!pt || !mouse.matches || nav.on || meas.on || map.isMoving()) {
     setPoiCursor(false);
     return hidePop("hover");
   }
@@ -5197,6 +5249,14 @@ function showRoute(d, { quiet = false } = {}) {
   const simBtn = el("button", "lm-chip", { type: "button", title: T.previewNote }, T.preview);
   simBtn.addEventListener("click", () => navStart(true));
   go.append(startBtn, simBtn, shareButton(() => ({ title: `${route.from?.label || ""} → ${route.to?.label || ""}`, url: routeLink() }), true));
+  if (!IN_APP) { // the route as a track for a GPS device, with its heights by bike and on foot
+    const gpx = el("button", "lm-chip lm-route-gpx", { type: "button", title: `${T.download} GPX` }, "GPX");
+    gpx.addEventListener("click", () => {
+      const name = `${route.from?.label || ""} → ${route.to?.label || ""}`;
+      saveFile(dataGPX({ name, line: d.line, eles: elesAt(d.line, d.elev), osm: true }), "application/gpx+xml", "gpx", name.replace("→", "to"));
+    });
+    go.append(gpx);
+  }
   routeSum.after(go);
   if (route.mode === "car" && d.ferries?.length) go.before(ferriesBox(d));
   // the time and Start in view on a phone: the sheet at half as high as they need (routeNeed), the modes and the
@@ -7062,16 +7122,16 @@ async function navPointOpen(ll, symbol) {
   const cancel = () => { clearTimeout(t); start = null; };
   let pressedAt = 0;
   const press = (x, y) => {
-    if (!nav.on) return;
     pressedAt = Date.now();
     const b = map.getCanvasContainer().getBoundingClientRect();
     const pt = { x: x - b.left, y: y - b.top };
-    navPointOpen(map.unproject([pt.x, pt.y]), symbolAt(pt));
+    if (nav.on) navPointOpen(map.unproject([pt.x, pt.y]), symbolAt(pt));
+    else ctxOpen(pt, map.unproject([pt.x, pt.y])); // the menu of a right click
   };
   const canvas = map.getCanvasContainer();
   canvas.addEventListener("touchstart", (e) => {
     cancel();
-    if (!nav.on || e.touches.length !== 1) return;
+    if (e.touches.length !== 1 || meas.drag) return;
     const { clientX: x, clientY: y } = e.touches[0];
     start = [x, y];
     t = setTimeout(() => { start = null; ghostUntil = Date.now() + 700; press(x, y); }, 500);
@@ -7083,15 +7143,514 @@ async function navPointOpen(ll, symbol) {
   }, { passive: true });
   canvas.addEventListener("touchend", cancel, { passive: true });
   canvas.addEventListener("touchcancel", cancel, { passive: true });
-  // a right click; the long press of a phone sends one too, after the press above
+  // a right click; the long press of a phone sends one too, after the press above. Not after a drag with the right
+  // button, which turns the map (the click comes as the button is released on Windows)
+  let turned = null;
+  canvas.addEventListener("mousedown", (e) => { if (e.button === 2) turned = [map.getBearing(), map.getPitch()]; });
   map.on("contextmenu", (e) => {
-    if (!nav.on) return;
     e.preventDefault();
     e.originalEvent?.preventDefault?.();
     if (Date.now() - pressedAt < 1500) return;
+    if (turned && (Math.abs(turned[0] - map.getBearing()) > 1 || Math.abs(turned[1] - map.getPitch()) > 1)) return void (turned = null);
+    turned = null;
     press(e.originalEvent.clientX, e.originalEvent.clientY);
   });
 }
+// ------------------------------------------------------------------ measure
+// Measure: a line of points set on the map (a click or a tap each), its length; closed (the first point clicked
+// again) a shape with its area and perimeter. A point is dragged to move it, clicked to remove it; the middle of a
+// part dragged or clicked adds a point there. Its height profile (data-heights, server/heights.go), and the line as
+// GPX, KML or GeoJSON; a GPX, KML or GeoJSON file opened (or dropped on the map) is shown as such a line. Started
+// from the menu or the menu of a right click on the map (a long press on a phone).
+// MEASURE_HANDLES: the most points shown as points to drag (a track of a file has thousands)
+const HEIGHTS = root.dataset.heights || "";
+const MEASURE_HANDLES = 300, MEASURE_MAX = 5000;
+// measureKm: the length of a line of [lon, lat] in km on the sphere; closed: back to the first point too
+function measureKm(pts, closed = false) {
+  const r = Math.PI / 180, line = closed && pts.length > 2 ? [...pts, pts[0]] : pts;
+  let d = 0;
+  for (let i = 1; i < line.length; i++) {
+    const [a, b] = [line[i - 1], line[i]];
+    const h = Math.sin((b[1] - a[1]) * r / 2) ** 2 + Math.cos(a[1] * r) * Math.cos(b[1] * r) * Math.sin((b[0] - a[0]) * r / 2) ** 2;
+    d += 2 * 6371.0088 * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  return d;
+}
+// ringArea: the area in m² of a ring of [lon, lat] on the WGS84 sphere (its last point may repeat the first)
+function ringArea(pts) {
+  const R = 6378137, r = Math.PI / 180, n = pts.length;
+  let s = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    s += (b[0] - a[0]) * r * (2 + Math.sin(a[1] * r) + Math.sin(b[1] * r));
+  }
+  return Math.abs((s * R * R) / 2);
+}
+// fmtDist: metres to the metre under 1 km, then 2, 1 or no decimals; fmtArea: m², hectares, km²
+function fmtDist(k) {
+  if (k < 1) return `${Math.round(k * 1000)} m`;
+  return `${k.toFixed(k < 10 ? 2 : k < 100 ? 1 : 0)} km`;
+}
+function fmtArea(m2) {
+  if (m2 < 1e4) return `${Math.round(m2)} m²`;
+  if (m2 < 1e6) return `${(m2 / 1e4).toFixed(m2 < 1e5 ? 2 : 1)} ha`;
+  return `${(m2 / 1e6).toFixed(m2 < 1e7 ? 2 : m2 < 1e8 ? 1 : 0)} km²`;
+}
+// thinLine: at most max points of a line, its first and last kept
+function thinLine(pts, max) {
+  if (pts.length <= max) return pts;
+  const step = (pts.length - 1) / (max - 1), out = [];
+  for (let i = 0; i < max - 1; i++) out.push(pts[Math.round(i * step)]);
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+// elesAt: the height at each point of a line, from a profile (pts as [km, m] along it); null without one
+function elesAt(line, elev) {
+  const p = elev?.pts;
+  if (!p || p.length < 2 || line.length < 2) return null;
+  const total = measureKm(line) || 1, end = p[p.length - 1][0];
+  let d = 0, j = 0;
+  return line.map((c, i) => {
+    if (i) d += measureKm([line[i - 1], c]);
+    const k = (d / total) * end;
+    while (j < p.length - 2 && p[j + 1][0] < k) j++;
+    const a = p[j], b = p[j + 1], t = b[0] > a[0] ? Math.max(0, Math.min(1, (k - a[0]) / (b[0] - a[0]))) : 0;
+    return a[1] + (b[1] - a[1]) * t;
+  });
+}
+// xmlText: a text for XML; xmlRead: a text of XML (entities, CDATA) as text
+function xmlText(s) {
+  return String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
+}
+function xmlRead(s) {
+  return String(s ?? "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&(lt|gt|quot|apos|amp|#\d+|#x[0-9a-f]+);/gi, (m, e) =>
+    ({ lt: "<", gt: ">", quot: '"', apos: "'", amp: "&" })[e.toLowerCase()] ?? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : +e.slice(1))).trim();
+}
+// dataGPX: a GPX 1.1 file: a track (line of [lon, lat], eles the height at each point or null; closed: back to its
+// first point) and waypoints ({ll, name}); osm: the credit of the ODbL in its metadata
+function dataGPX({ name = "", line = null, eles = null, closed = false, wpts = [], osm = false, time = new Date() } = {}) {
+  const c = (v) => +v.toFixed(7);
+  const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<gpx version="1.1" creator="hippomaps" xmlns="http://www.topografix.com/GPX/1/1">', "<metadata>"];
+  if (name) out.push(`<name>${xmlText(name)}</name>`);
+  if (osm) out.push('<copyright author="OpenStreetMap contributors"><license>https://opendatacommons.org/licenses/odbl/</license></copyright>');
+  out.push(`<time>${time.toISOString().replace(/\.\d+Z$/, "Z")}</time>`, "</metadata>");
+  for (const w of wpts) out.push(`<wpt lat="${c(w.ll[1])}" lon="${c(w.ll[0])}">${w.name ? `<name>${xmlText(w.name)}</name>` : ""}</wpt>`);
+  if (line?.length) {
+    const pts = closed && line.length > 2 ? [...line, line[0]] : line, h = eles && closed && line.length > 2 ? [...eles, eles[0]] : eles;
+    out.push(`<trk>${name ? `<name>${xmlText(name)}</name>` : ""}<trkseg>`);
+    pts.forEach((p, i) => out.push(`<trkpt lat="${c(p[1])}" lon="${c(p[0])}">${h?.[i] != null ? `<ele>${h[i].toFixed(1)}</ele>` : ""}</trkpt>`));
+    out.push("</trkseg></trk>");
+  }
+  out.push("</gpx>");
+  return out.join("\n") + "\n";
+}
+// dataKML: the line (or the shape, closed) as KML
+function dataKML({ name = "", line, eles = null, closed = false }) {
+  const pts = closed && line.length > 2 ? [...line, line[0]] : line, h = eles && closed && line.length > 2 ? [...eles, eles[0]] : eles;
+  const coords = pts.map((p, i) => `${+p[0].toFixed(7)},${+p[1].toFixed(7)}${h?.[i] != null ? `,${h[i].toFixed(1)}` : ""}`).join(" ");
+  const geom = closed && line.length > 2 ? `<Polygon><outerBoundaryIs><LinearRing><coordinates>${coords}</coordinates></LinearRing></outerBoundaryIs></Polygon>`
+    : `<LineString><coordinates>${coords}</coordinates></LineString>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>${name ? `<name>${xmlText(name)}</name>` : ""}` +
+    `<Placemark>${name ? `<name>${xmlText(name)}</name>` : ""}${geom}</Placemark></Document></kml>\n`;
+}
+// readTrack: the line of a GPX, KML or GeoJSON file: {pts: [[lon, lat]…], closed, name}; null when it has none.
+// GPX: the points of its tracks, else of its routes, else its waypoints; KML: the first LineString, LinearRing or
+// gx:Track; GeoJSON: the first line or area (its outer ring), else its points in their order.
+function readTrack(text) {
+  text = String(text || "").replace(/^﻿/, "");
+  const ok = (p) => Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90;
+  const done = (pts, closed, name) => {
+    pts = pts.filter(ok).map((p) => [p[0], p[1]]);
+    if (closed && pts.length > 3 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts = pts.slice(0, -1);
+    return pts.length >= 2 || (pts.length === 1 && !closed) ? { pts, closed: closed && pts.length > 2, name: name || "" } : null;
+  };
+  if (/^\s*[[{]/.test(text)) {
+    let g;
+    try { g = JSON.parse(text); } catch { return null; }
+    const feats = g.type === "FeatureCollection" ? g.features || [] : g.type === "Feature" ? [g] : [{ geometry: g, properties: {} }];
+    const nameOf = (f) => f?.properties?.name || g.name || "";
+    for (const f of feats) {
+      const t = f?.geometry?.type, c = f?.geometry?.coordinates;
+      if (t === "LineString") return done(c.map((p) => [+p[0], +p[1]]), false, nameOf(f));
+      if (t === "MultiLineString") return done(c.flat().map((p) => [+p[0], +p[1]]), false, nameOf(f));
+      if (t === "Polygon") return done(c[0].map((p) => [+p[0], +p[1]]), true, nameOf(f));
+      if (t === "MultiPolygon") return done(c[0][0].map((p) => [+p[0], +p[1]]), true, nameOf(f));
+    }
+    const pts = feats.filter((f) => f?.geometry?.type === "Point").map((f) => [+f.geometry.coordinates[0], +f.geometry.coordinates[1]]);
+    return done(pts, false, feats.length === 1 ? nameOf(feats[0]) : g.name);
+  }
+  const name = xmlRead(/<(?:\w+:)?name\b[^>]*>([\s\S]*?)<\/(?:\w+:)?name>/i.exec(text)?.[1] || "");
+  if (/<(?:\w+:)?gpx\b/i.test(text)) {
+    const attr = (a, k) => +(new RegExp(`\\b${k}\\s*=\\s*["']\\s*([-+\\d.eE]+)`).exec(a)?.[1] ?? NaN);
+    for (const tag of ["trkpt", "rtept", "wpt"]) {
+      const pts = [...text.matchAll(new RegExp(`<(?:\\w+:)?${tag}\\b([^>]*)>`, "gi"))].map((m) => [attr(m[1], "lon"), attr(m[1], "lat")]);
+      if (pts.length) return done(pts, false, name);
+    }
+    return null;
+  }
+  if (/<(?:\w+:)?kml\b/i.test(text)) {
+    const m = /<(?:\w+:)?(LineString|LinearRing)\b[\s\S]*?<(?:\w+:)?coordinates[^>]*>([\s\S]*?)<\/(?:\w+:)?coordinates>/i.exec(text);
+    if (m) return done(m[2].trim().split(/\s+/).map((t) => t.split(",").map(Number)), m[1].toLowerCase() === "linearring", name);
+    const gx = [...text.matchAll(/<gx:coord>([^<]*)<\/gx:coord>/gi)].map((x) => x[1].trim().split(/\s+/).map(Number));
+    if (gx.length) return done(gx, false, name);
+    const pts = [...text.matchAll(/<(?:\w+:)?Point\b[\s\S]*?<(?:\w+:)?coordinates[^>]*>([\s\S]*?)<\/(?:\w+:)?coordinates>/gi)].map((x) => x[1].trim().split(",").map(Number));
+    return done(pts, false, name);
+  }
+  return null;
+}
+const measureTitle = el("h2", "lm-dname", { "data-t": "measure" }, T.measure);
+const measureX = el("button", "lm-icon-btn lm-card-x", { type: "button", title: T.close, "aria-label": T.close });
+measureX.innerHTML = svg(ICON.close, 18);
+measureX.addEventListener("click", closeCard);
+const measureTotal = el("p", "lm-measure-total", { role: "status", "aria-live": "polite" });
+const measureHint = el("p", "lm-notes lm-measure-hint");
+const measureActs = el("div", "lm-chips lm-measure-acts");
+const measureBtn = (icon, t, fn, cls = "") => {
+  const b = el("button", `lm-chip lm-measure-${cls}`, { type: "button" });
+  b.innerHTML = svg(icon, 16);
+  b.append(el("span", "", { "data-t": t }, T[t]));
+  b.addEventListener("click", fn);
+  return b;
+};
+const mUndo = measureBtn(ICON.undo, "undo", () => measureUndo(), "undo");
+const mClear = measureBtn(ICON.close, "clear", () => { measureKeep(); meas.pts = []; meas.closed = false; meas.name = ""; measureDraw(); }, "clear");
+const mShape = measureBtn(ICON.shape, "closeShape", () => { measureKeep(); meas.closed = !meas.closed; measureDraw(); }, "shape");
+const mProfile = measureBtn(ICON.mountain, "heights", () => { meas.profile = !meas.profile; measureDraw(); }, "profile");
+mProfile.hidden = !HEIGHTS;
+measureActs.append(mUndo, mClear, mShape, mProfile);
+const measureProf = el("div", "lm-measure-prof");
+const measureFiles = el("div", "lm-dl lm-measure-files");
+const mFile = el("input", "", { type: "file", accept: ".gpx,.kml,.geojson,.json,application/gpx+xml,application/vnd.google-earth.kml+xml,application/geo+json,application/json", hidden: "" });
+const mOpen = el("button", "lm-copy lm-measure-open", { type: "button", "data-t": "openFile" }, T.openFile);
+mOpen.addEventListener("click", () => mFile.click());
+mFile.addEventListener("change", () => { if (mFile.files[0]) openTrackFile(mFile.files[0]); mFile.value = ""; });
+const mSave = el("span", "lm-measure-save");
+for (const [label, fn] of [["GPX", () => saveFile(dataGPX(measureExport()), "application/gpx+xml", "gpx")],
+  ["KML", () => saveFile(dataKML(measureExport()), "application/vnd.google-earth.kml+xml", "kml")],
+  ["GeoJSON", () => saveFile(measureGeoJSON(), "application/geo+json", "geojson")]]) {
+  const b = el("button", "lm-copy", { type: "button", "data-fmt": label.toLowerCase() }, label);
+  b.addEventListener("click", fn);
+  mSave.append(b);
+}
+measureFiles.append(el("span", "", { "data-t": "download" }, T.download), mSave, mOpen, mFile);
+measureFiles.hidden = IN_APP; // the WebView of the app cannot save a file made in the page
+const measureNote = el("p", "lm-notes lm-measure-note", { role: "status" });
+measureNote.hidden = true;
+measureView.append(measureX, measureTitle, measureTotal, measureHint, measureActs, measureNote, measureProf, measureFiles);
+// a file of the page: name from the line measured, the search or "hippomaps"
+function saveFile(text, type, ext, base = meas.name || (meas.closed ? "area" : "line")) {
+  const name = `hippomaps-${fold(base).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "line"}.${ext}`;
+  const a = el("a", "", { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+const measureLine = () => (meas.closed && meas.pts.length > 2 ? [...meas.pts, meas.pts[0]] : meas.pts);
+function measureExport() {
+  return { name: meas.name, line: meas.pts, closed: meas.closed && meas.pts.length > 2,
+    eles: meas.elev ? elesAt(meas.pts.length > 1 ? measureLine() : meas.pts, meas.elev)?.slice(0, meas.pts.length) : null };
+}
+function measureGeoJSON() {
+  const x = measureExport(), closed = x.closed;
+  const c = (p, i) => (x.eles?.[i] != null ? [p[0], p[1], +x.eles[i].toFixed(1)] : [p[0], p[1]]);
+  const geometry = meas.pts.length === 1 ? { type: "Point", coordinates: c(meas.pts[0], 0) }
+    : closed ? { type: "Polygon", coordinates: [[...meas.pts.map(c), c(meas.pts[0], 0)]] } : { type: "LineString", coordinates: meas.pts.map(c) };
+  const km = measureKm(meas.pts, closed);
+  return JSON.stringify({ type: "FeatureCollection", features: [{ type: "Feature", geometry,
+    properties: { ...(x.name ? { name: x.name } : {}), length_m: Math.round(km * 1000), ...(closed ? { area_m2: Math.round(ringArea(meas.pts)) } : {}) } }] }, null, 1);
+}
+// the line on the map: the line or the shape, a point at each corner (the first filled), a handle in the middle of
+// each part, the length at the last point
+function measureData() {
+  const p = meas.pts, fs = [], closed = meas.closed && p.length > 2, line = measureLine(), handles = p.length <= MEASURE_HANDLES;
+  const pt = (c, props) => ({ type: "Feature", geometry: { type: "Point", coordinates: c }, properties: props });
+  if (closed) fs.push({ type: "Feature", geometry: { type: "Polygon", coordinates: [line] }, properties: { fill: 1 } });
+  if (p.length > 1) fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: line }, properties: {} });
+  if (handles) for (let i = 0; i < line.length - 1; i++) fs.push(pt([(line[i][0] + line[i + 1][0]) / 2, (line[i][1] + line[i + 1][1]) / 2], { mid: i }));
+  p.forEach((c, i) => { if (handles || i === 0 || i === p.length - 1) fs.push(pt(c, { v: i, first: i === 0 ? 1 : 0 })); });
+  if (p.length > 1) fs.push(pt(closed ? center({ geometry: { type: "Polygon", coordinates: [line] } }) : p[p.length - 1],
+    { label: closed ? fmtArea(ringArea(p)) : fmtDist(measureKm(p)) }));
+  return { type: "FeatureCollection", features: fs };
+}
+// the panel and the map after a change; the profile asked for again a moment after the last
+function measureDraw() {
+  const p = meas.pts, closed = meas.closed && p.length > 2;
+  setSource("measure", measureData());
+  const len = measureKm(p, closed);
+  measureTotal.replaceChildren();
+  if (closed) {
+    measureTotal.append(el("span", "lm-measure-big", {}, fmtArea(ringArea(p))),
+      el("span", "lm-measure-sub", {}, `${T.measurePerimeter} ${fmtDist(len)}`));
+  } else measureTotal.append(el("span", "lm-measure-big", {}, p.length > 1 ? fmtDist(len) : "0 m"));
+  measureHint.dataset.t = mouse.matches ? "measureHintMouse" : "measureHintTouch";
+  measureHint.textContent = T[measureHint.dataset.t];
+  mUndo.disabled = !meas.undo.length;
+  mClear.disabled = !p.length;
+  mShape.hidden = p.length < 3;
+  mShape.querySelector("span").dataset.t = closed ? "openShape" : "closeShape";
+  mShape.querySelector("span").textContent = closed ? T.openShape : T.closeShape;
+  mProfile.disabled = p.length < 2;
+  mProfile.setAttribute("aria-pressed", String(meas.profile && p.length > 1));
+  mSave.hidden = !p.length;
+  clearTimeout(meas.timer);
+  if (!meas.profile || p.length < 2) {
+    meas.ctl?.abort();
+    meas.elev = null;
+    measureProf.replaceChildren();
+    measureOn(null);
+    return;
+  }
+  meas.timer = setTimeout(measureHeights, meas.elev ? 600 : 0);
+}
+async function measureHeights() {
+  meas.ctl?.abort();
+  const ctl = meas.ctl = new AbortController(), line = thinLine(measureLine(), MEASURE_MAX);
+  if (!measureProf.firstChild) measureProf.append(el("p", "lm-notes", {}, T.hereLooking));
+  try {
+    const r = await fetch(HEIGHTS, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ line }), signal: ctl.signal });
+    const d = await r.json().catch(() => ({}));
+    if (ctl.signal.aborted) return;
+    if (!r.ok) {
+      meas.elev = null;
+      return measureProf.replaceChildren(el("p", "lm-notes lm-measure-err", {}, d.error?.code === "too_long" ? T.heightsTooLong : problem(d)));
+    }
+    meas.elev = d;
+    measureProf.replaceChildren(heightChart(d, { onPoint: measureOn }).node);
+  } catch (err) {
+    if (err.name !== "AbortError") measureProf.replaceChildren(el("p", "lm-notes lm-measure-err", {}, failText(T.failed)));
+  }
+}
+// the point of the line under the finger or the mouse on its profile
+let measMarker = null;
+function measureOn(frac) {
+  if (frac == null || meas.pts.length < 2) { measMarker?.remove(); measMarker = null; return; }
+  const line = measureLine(), cum = cumOf(line);
+  if (!measMarker) measMarker = new maplibregl.Marker({ element: el("div", "lm-elev-pin") });
+  measMarker.setLngLat(pointOn(line, cum, frac * cum[cum.length - 1])).addTo(map);
+}
+function measureKeep() {
+  meas.undo.push({ pts: meas.pts.map((p) => [...p]), closed: meas.closed });
+  if (meas.undo.length > 100) meas.undo.shift();
+}
+function measureUndo() {
+  const s = meas.undo.pop();
+  if (!s) return;
+  meas.pts = s.pts;
+  meas.closed = s.closed;
+  measureDraw();
+}
+// measureStart: the panel open, the map in measuring; pts the first points, closed a shape
+function measureStart(pts = [], { closed = false, name = "" } = {}) {
+  if (nav.on) return;
+  if (!meas.on) {
+    meas.dbl = map.doubleClickZoom.isEnabled();
+    map.doubleClickZoom.disable(); // two clicks are two points
+  }
+  hereDone();
+  setSource("selected", empty);
+  showView(measureView);
+  meas.on = true;
+  root.classList.add("lm-measuring");
+  meas.undo = [];
+  meas.pts = pts.map((p) => [+(+p[0]).toFixed(7), +(+p[1]).toFixed(7)]);
+  meas.closed = closed;
+  meas.name = name;
+  meas.elev = null;
+  measureNote.hidden = true;
+  map.getCanvas().style.cursor = "crosshair";
+  measureDraw();
+  setSheet("half");
+}
+function measureDone() {
+  if (!meas.on) return;
+  meas.on = false;
+  root.classList.remove("lm-measuring");
+  meas.ctl?.abort();
+  clearTimeout(meas.timer);
+  meas.drag = null;
+  meas.pts = [];
+  meas.undo = [];
+  meas.elev = null;
+  measureProf.replaceChildren();
+  measureOn(null);
+  setSource("measure", empty);
+  if (meas.dbl) map.doubleClickZoom.enable();
+  map.getCanvas().style.cursor = "";
+}
+// the point or the middle of a part under a point of the screen: {v: index} or {mid: index}; points first
+function measureHit(pt) {
+  const r = phone() ? 18 : 9, layers = ["lm-measure-pt", "lm-measure-mid"].filter((l) => map.getLayer(l));
+  if (!layers.length) return null;
+  let best = null, bestD = Infinity;
+  for (const f of map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers })) {
+    const q = map.project(f.geometry.coordinates), d = Math.hypot(q.x - pt.x, q.y - pt.y) + (f.properties.mid != null ? r : 0);
+    if (d < bestD) { bestD = d; best = f.properties.mid != null ? { mid: f.properties.mid } : { v: f.properties.v }; }
+  }
+  return best;
+}
+// a click in measuring: on the first point the shape closes, on another point it goes, on the middle of a part a
+// point there; elsewhere a point at the end
+function measureClick(e) {
+  if (Date.now() - meas.dragEnd < 350) return;
+  const h = measureHit(e.point), p = meas.pts;
+  measureKeep();
+  if (h?.v != null) {
+    if (h.v === 0 && p.length > 2 && !meas.closed) meas.closed = true;
+    else {
+      p.splice(h.v, 1);
+      if (p.length < 3) meas.closed = false;
+    }
+  } else if (h?.mid != null) {
+    const line = measureLine(), a = line[h.mid], b = line[h.mid + 1];
+    p.splice(h.mid + 1, 0, [+((a[0] + b[0]) / 2).toFixed(7), +((a[1] + b[1]) / 2).toFixed(7)]);
+  } else p.push([+e.lngLat.lng.toFixed(7), +e.lngLat.lat.toFixed(7)]);
+  measureDraw();
+}
+// dragging a point, or the middle of a part (a new point there once it moves)
+const measureGrab = (e) => {
+  if (!meas.on || nav.on) return;
+  if (e.type === "mousedown" && e.originalEvent.button !== 0) return;
+  if (e.type === "touchstart" && e.points.length !== 1) return;
+  const h = measureHit(e.point);
+  if (!h) return;
+  e.preventDefault(); // the map does not move
+  meas.drag = { ...h, moved: false, frame: 0 };
+};
+const measureMove = (e) => {
+  const d = meas.drag;
+  if (!d) return;
+  if (!d.moved) {
+    measureKeep();
+    d.moved = true;
+    if (d.mid != null) { meas.pts.splice(d.mid + 1, 0, [0, 0]); d.v = d.mid + 1; d.mid = null; }
+  }
+  meas.pts[d.v] = [+e.lngLat.lng.toFixed(7), +e.lngLat.lat.toFixed(7)];
+  if (!d.frame) d.frame = requestAnimationFrame(() => { d.frame = 0; if (meas.drag === d) setSource("measure", measureData()); });
+};
+const measureDrop = () => {
+  const d = meas.drag;
+  if (!d) return;
+  meas.drag = null;
+  if (d.moved) { meas.dragEnd = Date.now(); measureDraw(); }
+};
+map.on("mousedown", measureGrab);
+map.on("touchstart", measureGrab);
+map.on("mousemove", measureMove);
+map.on("touchmove", measureMove);
+map.on("mouseup", measureDrop);
+map.on("touchend", measureDrop);
+map.on("touchcancel", measureDrop);
+// the cursor: a hand over a point, a cross elsewhere
+map.on("mousemove", (e) => {
+  if (!meas.on || meas.drag) return;
+  map.getCanvas().style.cursor = measureHit(e.point) ? "pointer" : "crosshair";
+});
+addEventListener("keydown", (e) => {
+  if (!meas.on || measureView.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+  if ((e.key === "z" && (e.ctrlKey || e.metaKey)) || e.key === "Backspace") { e.preventDefault(); measureUndo(); }
+});
+// a GPX, KML or GeoJSON file: its line measured, the map on it
+async function openTrackFile(file) {
+  let t = null;
+  try { t = file.size < 50e6 ? readTrack(await file.text()) : null; } catch {}
+  if (!t) {
+    if (!meas.on) measureStart([]);
+    measureNote.textContent = T.fileBad;
+    measureNote.hidden = false;
+    return;
+  }
+  const all = t.pts.length, pts = thinLine(t.pts, MEASURE_MAX);
+  measureStart(pts, { closed: t.closed, name: t.name || file.name.replace(/\.[^.]+$/, "") });
+  if (all > pts.length) { measureNote.textContent = T.fileThinned(pts.length); measureNote.hidden = false; }
+  const b = extent({ coordinates: pts });
+  if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), maxZoom: 16, duration: 600 });
+}
+mapEl.addEventListener("dragover", (e) => {
+  if (nav.on || ![...(e.dataTransfer?.types || [])].includes("Files")) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+});
+mapEl.addEventListener("drop", (e) => {
+  const f = e.dataTransfer?.files?.[0];
+  if (!f || nav.on) return;
+  e.preventDefault();
+  openTrackFile(f);
+});
+// the row of the menu
+const measureRow = el("button", "lm-toggle lm-fb-row lm-measure-row", { type: "button" });
+measureRow.innerHTML = svg(ICON.ruler, 20);
+const measureRowText = el("span", "lm-toggle-text");
+measureRowText.append(el("span", "", { "data-t": "measure" }, T.measure), el("span", "lm-toggle-note", { "data-t": "measureNote" }, T.measureNote));
+measureRow.append(measureRowText);
+measureRow.insertAdjacentHTML("beforeend", svg(ICON.next, 18));
+measureRow.addEventListener("click", () => { openMenu(false); measureStart([]); });
+menuMain.insertBefore(measureRow, FEEDBACK ? fbRow : forgetBtn);
+
+// ------------------------------------------------------------------ the menu of a right click
+// A right click on the map, or a long press on a phone (outside navigation): what is here, directions from or to the
+// point, measuring from it (or a point of the line measured), its coordinates copied.
+const ctx = el("div", "lm-ctx", { role: "menu" });
+ctx.hidden = true;
+mapEl.append(ctx);
+const ctxClose = () => { if (!ctx.hidden) { ctx.hidden = true; ctx.replaceChildren(); } };
+function ctxOpen(pt, ll) {
+  hidePop("hover");
+  const lon = +ll.lng.toFixed(5), lat = +ll.lat.toFixed(5), sym = symbolPoint(pt);
+  const at = sym ? { ll: sym.ll, label: sym.name } : { ll: [lon, lat], label: T.mapPoint };
+  const item = (icon, text, fn, cls = "") => {
+    const b = el("button", `lm-ctx-item ${cls}`, { type: "button", role: "menuitem" });
+    b.innerHTML = svg(icon, 16);
+    b.append(el("span", "", {}, text));
+    b.addEventListener("click", (e) => { e.stopPropagation(); if (fn(b) !== false) ctxClose(); });
+    return b;
+  };
+  const items = [];
+  if (meas.on) items.push(item(ICON.plus, T.measureAdd, () => measureClick({ point: pt, lngLat: { lng: lon, lat } })));
+  items.push(item(ICON.pin, T.ctxHere, () => { if (meas.on) measureDone(); here(sym ? { lng: sym.ll[0], lat: sym.ll[1] } : ll, sym?.name || ""); tapPop(null, sym); }));
+  if (ROUTE) {
+    // with directions open, the point as their start or destination; else new directions
+    items.push(item(ICON.navigate, T.ctxFrom, () => {
+      if (meas.on) measureDone();
+      if (routeView.hidden) directions(null);
+      setFrom(at);
+    }));
+    items.push(item(ICON.flag, T.ctxTo, () => {
+      if (meas.on) measureDone();
+      if (routeView.hidden) return void directions(at);
+      route.to = at;
+      renderRoute();
+      findRoute();
+    }));
+  }
+  if (!meas.on) items.push(item(ICON.ruler, T.measure, () => measureStart([[lon, lat]])));
+  const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  items.push(item(ICON.copy, coords, (b) => {
+    navigator.clipboard?.writeText(coords).then(() => {
+      b.lastChild.textContent = T.copied;
+      setTimeout(ctxClose, 700);
+    }, () => prompt("", coords));
+    return false;
+  }, "lm-ctx-coords"));
+  ctx.replaceChildren(...items);
+  ctx.hidden = false;
+  const w = ctx.offsetWidth, h = ctx.offsetHeight, W = mapEl.clientWidth, H = mapEl.clientHeight;
+  ctx.style.left = `${Math.max(4, Math.min(pt.x, W - w - 4))}px`;
+  ctx.style.top = `${Math.max(4, pt.y + h > H - 4 ? pt.y - h : pt.y)}px`;
+  if (mouse.matches) items[0].focus({ preventScroll: true });
+}
+map.on("movestart", ctxClose);
+addEventListener("pointerdown", (e) => { if (!ctx.hidden && !ctx.contains(e.target)) ctxClose(); }, true);
+addEventListener("keydown", (e) => {
+  if (ctx.hidden) return;
+  if (e.key === "Escape") return ctxClose();
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const b = [...ctx.querySelectorAll("button")], i = b.indexOf(document.activeElement);
+    b[(i + (e.key === "ArrowDown" ? 1 : b.length - 1)) % b.length]?.focus();
+  }
+});
+
 navMute.addEventListener("click", () => {
   nav.muted = !nav.muted;
   store.set("hm-mute", nav.muted ? "1" : "0");

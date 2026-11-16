@@ -741,3 +741,28 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-alt[aria-checked=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .lm-alt-time { font-weight: 700; white-space: nowrap; }
 .lm-alt-via { min-width: 0; font-size: .85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Measure: the length or the area, the buttons, the profile, the files; the menu of a right click on the map */
+.lm-measure { position: relative; padding: 0 0 1rem; }
+.lm-measure .lm-dname { padding-right: 2.5rem; }
+.lm-measure-total { margin: .1rem 1rem .4rem; display: flex; align-items: baseline; flex-wrap: wrap; gap: .3rem .7rem; }
+.lm-measure-big { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lm-measure-sub { color: var(--muted); font-variant-numeric: tabular-nums; }
+.lm-measure-hint { margin: 0 1rem .7rem; }
+.lm-measure-acts { margin-bottom: .6rem; }
+.lm-measure-acts .lm-chip { display: inline-flex; align-items: center; gap: .3rem; }
+.lm-measure-acts .lm-chip:disabled { opacity: .45; cursor: default; }
+.lm-measure-note { margin: 0 1rem .6rem; }
+.lm-measure-prof .lm-notes { margin: .4rem 1rem; }
+.lm-measure-prof .lm-elev { border-top: 1px solid var(--line); }
+.lm-measure-files { margin: .8rem 1rem 0; flex-wrap: wrap; }
+.lm-measure-save { display: inline-flex; gap: .4rem; }
+.lm-measure-open { margin-left: auto; }
+.lm-ctx { position: absolute; z-index: 5; min-width: 13rem; max-width: calc(100% - 8px); padding: .3rem 0; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+.lm-ctx-item { display: flex; align-items: center; gap: .6rem; width: 100%; min-height: 36px; padding: .4rem .9rem; border: 0; background: none;
+  text-align: left; font-size: .9rem; cursor: pointer; }
+.lm-ctx-item > svg { flex: none; color: var(--muted); }
+.lm-ctx-item:hover, .lm-ctx-item:focus-visible { background: var(--hot); outline: none; }
+.lm-ctx-coords { margin-top: .25rem; border-top: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) { .lm-ctx-item { min-height: 44px; } }

@@ -762,13 +762,15 @@ try:
              " HTMLAnchorElement.prototype.click = function () { if (this.download) files.push(this); else c0.call(this); };"
              " try { for (const b of row.querySelectorAll('button')) b.click(); } finally { HTMLAnchorElement.prototype.click = c0; URL.createObjectURL = u0; }"
              " const t = await Promise.all(files.map((a) => blobs[a.href].arrayBuffer().then((b) => new TextDecoder('utf-8', { ignoreBOM: true }).decode(b))));"
-             " return { shown: !row.hidden && row.offsetHeight > 0, names: files.map((a) => a.download), csv: t[0] || '', gj: t[1] || '' }; })()")
+             " return { shown: !row.hidden && row.offsetHeight > 0, names: files.map((a) => a.download), csv: t[0] || '', gj: t[1] || '', gpx: t[2] || '' }; })()")
     rows = [l for l in got["csv"].split("\r\n") if l]
     gj = json.loads(got["gj"] or "{}")
-    check(got["shown"] and [n.rsplit(".", 1)[-1] for n in got["names"]] == ["csv", "geojson"] and all(n.startswith("hippomaps-hotels") for n in got["names"])
+    check(got["shown"] and [n.rsplit(".", 1)[-1] for n in got["names"]] == ["csv", "geojson", "gpx"] and all(n.startswith("hippomaps-hotels") for n in got["names"])
           and rows and rows[0].startswith("\ufeffid,name,lat,lon") and len(rows) - 1 == all_drawn
-          and len(gj.get("features", [])) == all_drawn and "OpenStreetMap" in gj.get("attribution", "") and gj.get("query"),
-          f"the results as CSV and GeoJSON ({got['names']}, {len(rows) - 1} rows, {len(gj.get('features', []))} features, {all_drawn} on the map)")
+          and len(gj.get("features", [])) == all_drawn and "OpenStreetMap" in gj.get("attribution", "") and gj.get("query")
+          and got["gpx"].count("<wpt ") == all_drawn and "<copyright author=\"OpenStreetMap contributors\">" in got["gpx"],
+          f"the results as CSV, GeoJSON and GPX waypoints ({got['names']}, {len(rows) - 1} rows, {len(gj.get('features', []))} features, "
+          f"{got['gpx'].count('<wpt ')} waypoints, {all_drawn} on the map)")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
     check(js("document.querySelector('.lm-dl').hidden"), "the X: no download without results")
 
@@ -2317,6 +2319,164 @@ try:
         js("window.hmFailSearch = false; window.fetch = window.hmFetchFb")
     else:
         print("  (no feedback on this server)", flush=True)
+    # Measure, on a phone: a long press on the map opens the menu of a right click; Measure distance from it; taps add
+    # points (their length on the sphere), the first point tapped closes the shape (its area), Undo opens it again; a
+    # point dragged moves (not the map); the height profile; the line as GPX, KML and GeoJSON; a GPX file opened and
+    # one dropped on the map; a file with no line; the X; the row of the menu; Directions from and to here; the route
+    # as GPX
+    fresh(URL)
+    js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15, pitch: 0, bearing: 0 })")
+    wait("hmMap.loaded() && !hmMap.isMoving()", 20)
+    time.sleep(1)
+    mbox = js("(() => { const b = hmMap.getCanvas().getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()")
+    def at(fx, fy):  # a point of the map on the screen, as parts of the width and the height
+        return [mbox[0] + mbox[2] * fx, mbox[1] + mbox[3] * fy]
+    def ll_of(p):
+        return js(f"(() => {{ const b = hmMap.getCanvas().getBoundingClientRect(), l = hmMap.unproject([{p[0]} - b.left, {p[1]} - b.top]); return [l.lng, l.lat]; }})()")
+    def press(p, secs=0.8):
+        call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": p[0], "y": p[1]}])
+        time.sleep(secs)
+        call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    def touch_at(p):
+        press(p, 0.05)
+        time.sleep(0.45)
+    meas_pts = "(hmMap.getStyle().sources['lm-measure'].data.features.filter(f => f.properties.v != null).map(f => f.geometry.coordinates))"
+    def km_of(pts, closed=False):
+        line = pts + [pts[0]] if closed else pts
+        r, d = math.pi / 180, 0
+        for a, b in zip(line, line[1:]):
+            h = math.sin((b[1] - a[1]) * r / 2) ** 2 + math.cos(a[1] * r) * math.cos(b[1] * r) * math.sin((b[0] - a[0]) * r / 2) ** 2
+            d += 2 * 6371.0088 * math.asin(math.sqrt(h))
+        return d
+    big = "document.querySelector('.lm-measure-big')?.textContent || ''"
+    p0, p1, p2, p3 = at(0.25, 0.25), at(0.75, 0.25), at(0.75, 0.42), at(0.25, 0.42)
+    press(p0)
+    menu_items = wait("!document.querySelector('.lm-ctx').hidden", 5) and js("[...document.querySelectorAll('.lm-ctx-item')].map(b => b.textContent)")
+    check(menu_items and "Measure distance" in menu_items and "What is here" in menu_items
+          and (not app_has("route") or "Directions to here" in menu_items and "Directions from here" in menu_items)
+          and any(re.match(r"^47\.\d{5}, 8\.\d{5}$", t) for t in menu_items),
+          f"a long press on the map: the menu with Measure distance, What is here, directions and the coordinates ({menu_items})")
+    time.sleep(0.8)
+    js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Measure distance').click()")
+    check(wait("!document.querySelector('.lm-measure').hidden", 5) and js("document.querySelector('.lm-ctx').hidden") and js(f"{meas_pts}.length") == 1
+          and js("!hmMap.doubleClickZoom.isEnabled()"),
+          "Measure distance: the panel, a first point where the finger was, no zoom on a double tap")
+    js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")  # the sheet may have moved the map
+    time.sleep(0.5)
+    # the first point again where p0 is now: start over with taps alone
+    js("document.querySelector('.lm-measure-clear').click()")
+    for p in (p0, p1):
+        touch_at(p)
+    pts = js(meas_pts) or []
+    want = km_of([ll_of(p0), ll_of(p1)])
+    got_m = js(big)
+    check(len(pts) == 2 and got_m == (f"{round(want * 1000)} m" if want < 1 else f"{want:.2f} km"),
+          f"two taps: two points and their length ({got_m}, {want * 1000:.0f} m)")
+    for p in (p2, p3):
+        touch_at(p)
+    touch_at(p0)  # the first point: the shape closes
+    pts = js(meas_pts) or []
+    area = js("hmMap.getStyle().sources['lm-measure'].data.features.some(f => f.geometry.type === 'Polygon')")
+    sub = js("document.querySelector('.lm-measure-sub')?.textContent || ''")
+    check(len(pts) == 4 and area and re.match(r"^[\d.]+ (ha|m²|km²)$", js(big) or "") and sub.startswith("Perimeter ")
+          and js("document.querySelector('.lm-measure-shape').textContent") == "Open the shape",
+          f"the first point tapped: the shape closed, its area and perimeter ({js(big)}, {sub})")
+    js("document.querySelector('.lm-measure-undo').click()")
+    check(wait("!hmMap.getStyle().sources['lm-measure'].data.features.some(f => f.geometry.type === 'Polygon')", 3) and js(f"{meas_pts}.length") == 4,
+          "Undo: the shape open again, its four points")
+    # a point dragged: it moves, the map does not
+    c0 = js("hmMap.getCenter().toArray()")
+    q = js(f"(() => {{ const b = hmMap.getCanvas().getBoundingClientRect(), p = hmMap.project({meas_pts}[1]); return [b.left + p.x, b.top + p.y]; }})()")
+    call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": q[0], "y": q[1]}])
+    for i in range(1, 9):
+        call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": q[0] - 6 * i, "y": q[1] + 5 * i}])
+        time.sleep(0.03)
+    call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    time.sleep(0.5)
+    moved = ll_of([q[0] - 48, q[1] + 40])
+    pts = js(meas_pts) or []
+    check(len(pts) == 4 and abs(pts[1][0] - moved[0]) < 2e-5 and abs(pts[1][1] - moved[1]) < 2e-5 and js("hmMap.getCenter().toArray()") == c0
+          and js("document.querySelector('.lm-ctx').hidden"),
+          f"a point dragged: it moves with the finger, the map stays ({pts[1] if len(pts) > 1 else None}, {moved})")
+    # the height profile of the line
+    if app_has("heights"):
+        js("window.hmHeights = performance.getEntriesByType('resource').filter(e => e.name.includes('/api/heights')).length;"
+           " document.querySelector('.lm-measure-profile').click()")
+        check(wait("!!document.querySelector('.lm-measure-prof .lm-elev svg path')", 20) and js("document.querySelector('.lm-measure-profile').getAttribute('aria-pressed')") == "true"
+              and js("/m up/.test(document.querySelector('.lm-measure-prof .lm-elev-up')?.textContent || '')"),
+              "Height profile: the heights of the line from the server, up and down")
+    else:
+        print("  (no heights on this server)", flush=True)
+    # the line as files: GPX with its heights, KML, GeoJSON with its length
+    saved = js("(async () => { const files = [], blobs = {}, c0 = HTMLAnchorElement.prototype.click, u0 = URL.createObjectURL;"
+               " URL.createObjectURL = (b) => { const u = u0(b); blobs[u] = b; return u; };"
+               " HTMLAnchorElement.prototype.click = function () { if (this.download) files.push(this); else c0.call(this); };"
+               " try { for (const b of document.querySelectorAll('.lm-measure-save button')) b.click(); } finally { HTMLAnchorElement.prototype.click = c0; URL.createObjectURL = u0; }"
+               " const t = await Promise.all(files.map((a) => blobs[a.href].text()));"
+               " return { names: files.map((a) => a.download), files: t }; })()") or {"names": [], "files": []}
+    f3 = saved["files"] + ["", "", ""]
+    gjm = json.loads(f3[2] or "{}")
+    feat = (gjm.get("features") or [{}])[0]
+    check(saved["names"] == ["hippomaps-line.gpx", "hippomaps-line.kml", "hippomaps-line.geojson"]
+          and f3[0].count("<trkpt ") == 4 and (not app_has("heights") or f3[0].count("<ele>") == 4) and "<LineString>" in f3[1]
+          and feat.get("geometry", {}).get("type") == "LineString" and abs(feat.get("properties", {}).get("length_m", 0) - km_of(pts) * 1000) < 2,
+          f"the line as GPX (with heights), KML and GeoJSON with its length ({saved['names']})")
+    # a GPX file opened: its track as the line, the map on it, its name; a file with no line: a note
+    gpx_text = ('<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Uetliberg walk</name><trkseg>'
+                '<trkpt lat="47.3496" lon="8.4918"/><trkpt lat="47.3550" lon="8.5000"/><trkpt lat="47.3620" lon="8.5120"/></trkseg></trk></gpx>')
+    js("(() => { const i = document.querySelector('.lm-measure-files input[type=file]'), d = new DataTransfer();"
+       f" d.items.add(new File([{json.dumps(gpx_text)}], 'walk.gpx', {{ type: 'application/gpx+xml' }})); i.files = d.files; i.dispatchEvent(new Event('change')); }})()")
+    check(wait(f"{meas_pts}.length === 3 && Math.abs({meas_pts}[0][1] - 47.3496) < 1e-6", 5) and wait("!hmMap.isMoving()", 5)
+          and js("hmMap.getBounds().contains([8.4918, 47.3496]) && hmMap.getBounds().contains([8.512, 47.362])"),
+          "a GPX file opened: its track as the line, the map on it")
+    js("(() => { const d = new DataTransfer(); d.items.add(new File(['<html>no line</html>'], 'x.gpx'));"
+       " document.querySelector('.lm-map').dispatchEvent(new DragEvent('drop', { dataTransfer: d, bubbles: true, cancelable: true })); })()")
+    check(wait("!document.querySelector('.lm-measure-note').hidden && /no line/.test(document.querySelector('.lm-measure-note').textContent)", 5),
+          "a file with no line dropped on the map: a note, the line kept")
+    kml = '<kml><Placemark><name>Lake</name><Polygon><outerBoundaryIs><LinearRing><coordinates>8.54,47.36 8.55,47.36 8.55,47.37 8.54,47.36</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>'
+    js("(() => { const d = new DataTransfer(); d.items.add(new File([" + json.dumps(kml) + "], 'lake.kml'));"
+       " document.querySelector('.lm-map').dispatchEvent(new DragEvent('drop', { dataTransfer: d, bubbles: true, cancelable: true })); })()")
+    check(wait(f"{meas_pts}.length === 3 && hmMap.getStyle().sources['lm-measure'].data.features.some(f => f.geometry.type === 'Polygon')", 5)
+          and js("document.querySelector('.lm-measure-note').hidden") and re.match(r"^[\d.]+ (ha|km²)$", js(big) or ""),
+          f"a KML shape dropped on the map: the shape with its area ({js(big)})")
+    # the X: the panel and the line go, a double tap zooms again
+    js("document.querySelector('.lm-measure .lm-card-x').click()")
+    check(wait("document.querySelector('.lm-measure').hidden", 3) and js("hmMap.getStyle().sources['lm-measure'].data.features.length") == 0
+          and js("hmMap.doubleClickZoom.isEnabled()"), "the X of Measure: the panel and the line go, a double tap zooms again")
+    # the row of the menu
+    js("document.querySelector('.lm-map-burger').click()")
+    wait("!document.querySelector('.lm-menu').hidden", 3)
+    check(js("document.querySelector('.lm-measure-row')?.textContent.startsWith('Measure distance')"), "the menu has Measure distance")
+    js("document.querySelector('.lm-measure-row').click()")
+    check(wait("document.querySelector('.lm-menu').hidden && !document.querySelector('.lm-measure').hidden", 3) and js(f"{meas_pts}.length") == 0,
+          "Measure distance of the menu: the panel, no point yet")
+    js("document.querySelector('.lm-measure .lm-card-x').click()")
+    # directions from one point and to another with the menu; the route as GPX
+    if app_has("route"):
+        js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")
+        wait("!hmMap.isMoving()", 5)
+        time.sleep(0.5)
+        press(at(0.3, 0.3))
+        wait("!document.querySelector('.lm-ctx').hidden", 5)
+        time.sleep(0.8)
+        js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Directions from here').click()")
+        wait("!document.querySelector('.lm-route').hidden", 5)
+        js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")
+        wait("!hmMap.isMoving()", 5)
+        time.sleep(0.5)
+        press(at(0.7, 0.35))
+        wait("!document.querySelector('.lm-ctx').hidden", 5)
+        time.sleep(0.8)
+        js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Directions to here').click()")
+        ok_route = wait("!!document.querySelector('.lm-route .lm-route-gpx')", 30)
+        rg = ok_route and js("(async () => { let f = null, b = null; const c0 = HTMLAnchorElement.prototype.click, u0 = URL.createObjectURL;"
+                             " URL.createObjectURL = (x) => { b = x; return u0(x); };"
+                             " HTMLAnchorElement.prototype.click = function () { if (this.download) f = this; else c0.call(this); };"
+                             " try { document.querySelector('.lm-route-gpx').click(); } finally { HTMLAnchorElement.prototype.click = c0; URL.createObjectURL = u0; }"
+                             " return { name: f?.download, text: await b?.text(), from: document.querySelector('.lm-end-from input')?.value }; })()") or {}
+        check(ok_route and (rg.get("text") or "").count("<trkpt ") > 2 and "OpenStreetMap contributors" in (rg.get("text") or "")
+              and (rg.get("name") or "").endswith(".gpx") and rg.get("from") not in ("", "Your location"),
+              f"Directions from here, then to here: a route between the two points, as GPX ({rg.get('name')}, from {rg.get('from')!r})")
     real = [e for e in errors if "Map cannot fit" not in e]
     check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
 finally:

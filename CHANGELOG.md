@@ -7,6 +7,16 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Added
 
+- Measure distance, from the menu or from the menu of a right click on the map (a long press on a phone): points set on
+  the map give the length of the line, and the first point clicked again closes the shape and gives its area and
+  perimeter. A point can be dragged, removed with a click, or added on the middle of a part; Undo goes back a step. The
+  height profile of the line, and the line as GPX (with its heights), KML or GeoJSON. A GPX, KML or GeoJSON file opened
+  or dropped on the map shows its track as such a line. Not in the Android app: opening and saving files.
+- A right click on the map (a long press on a phone): What is here, Directions from here, Directions to here (with
+  directions open, the point as their start or destination), Measure distance, and the coordinates of the point, copied
+  with a click.
+- The results of a search as GPX waypoints, beside CSV and GeoJSON, and a route as a GPX track with its heights by bike
+  and on foot.
 - A popup above a place of the map when it is tapped or clicked, and on a computer while the mouse is on it: its name,
   its kind and, once its page is there, whether it is open and its address.
 - More on the page of a place that OpenStreetMap does not have, looked up by the server: a picture (a photo on
