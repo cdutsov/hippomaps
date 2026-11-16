@@ -85,12 +85,17 @@ for pr in "licences|Licences and sources" "de/licences|Lizenzen und Quellen"; do
 done
 # the pages about the app (web/pages): features and guides in English and German, for search engines, in the sitemap
 # with each other language; their pictures there; the page of the app links them without JavaScript
-for pr in "features|A map you can ask in plain words" "de/features|Eine Karte, die Sie in Alltagssprache fragen" "guides/gpx|Put a route on a GPS device" "de/guides/gpx|Eine Route aufs GPS-Gerät bringen"; do
+for pr in "features|Features of hippomaps" "de/features|Funktionen von hippomaps" "guides/gpx|Put a route on a GPS device" "de/guides/gpx|Eine Route aufs GPS-Gerät bringen"; do
 	code=$(get "$PAGE/${pr%%|*}")
 	img=$(grep -o '/static/pages/img/[a-z]*/[a-z-]*\.webp?v=[0-9a-f]*' "$TMP/b" | head -n1)
 	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -qF "<link rel=\"canonical\" href=\"$PAGE/${pr%%|*}\">" "$TMP/b" && [[ -z $(hdr X-Robots-Tag) ]] &&
 		[[ -n $img && $(curl -s -o /dev/null -w '%{http_code}' "$PAGE$img") == 200 ]] && ok "the page /${pr%%|*}, with its pictures" || ko "/${pr%%|*}: HTTP $code"
 done
+# the font Overpass of the pages, as a font, let in by their CSP
+code=$(get "$PAGE/features")
+font=$(curl -s "$PAGE$(grep -o '/static/pages/pages.css?v=[0-9a-f]*' "$TMP/b" | head -n1)" | grep -o 'fonts/overpass-latin.woff2' | head -n1)
+[[ $(hdr Content-Security-Policy) == *"font-src 'self'"* && -n $font && $(curl -s -o /dev/null -w '%{content_type}' "$PAGE/static/pages/$font") == font/woff2 ]] &&
+	ok "the font Overpass of the pages" || ko "the font of the pages: CSP, pages.css or the file"
 code=$(get "$PAGE/sitemap.xml")
 grep -qF '<xhtml:link rel="alternate" hreflang="de" href="'"$PAGE"'/de/guides/gpx"/>' "$TMP/b" && ok "the guides in the sitemap, with their German pages" || ko "the sitemap does not list the guides"
 code=$(get "$PAGE/")
