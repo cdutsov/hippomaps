@@ -7578,7 +7578,7 @@ mapEl.addEventListener("drop", (e) => {
   openTrackFile(f);
 });
 // the row of the menu
-const measureRow = el("button", "lm-toggle lm-fb-row lm-measure-row", { type: "button" });
+const measureRow = el("button", "lm-toggle lm-measure-row", { type: "button" });
 measureRow.innerHTML = svg(ICON.ruler, 20);
 const measureRowText = el("span", "lm-toggle-text");
 measureRowText.append(el("span", "", { "data-t": "measure" }, T.measure), el("span", "lm-toggle-note", { "data-t": "measureNote" }, T.measureNote));
