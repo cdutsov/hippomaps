@@ -44,7 +44,6 @@ export function texts(num) {
   return {
     de: {
       placeholder: "Orte suchen, oder was und wo",
-      startText: "hippomaps versteht Alltagssprache, von kurzen Suchen wie {0} bis zu längeren wie {1}.",
       startArea: "In dieser Gegend",
       idea: {
         cats: { cafe: "Cafés", restaurant: "Restaurants", bar: "Bars", bakery: "Bäckereien", pharmacy: "Apotheken", icecream: "Eisdielen",
@@ -300,7 +299,6 @@ export function texts(num) {
     },
     fr: {
       placeholder: "Chercher des lieux, ou quoi et où",
-      startText: "hippomaps comprend le langage de tous les jours, des recherches courtes comme {0} aux plus longues comme {1}.",
       startArea: "Dans cette région",
       idea: {
         cats: { cafe: "cafés", restaurant: "restaurants", bar: "bars", bakery: "boulangeries", pharmacy: "pharmacies",
@@ -556,7 +554,6 @@ export function texts(num) {
     },
     it: {
       placeholder: "Cerca luoghi, oppure cosa e dove",
-      startText: "hippomaps capisce la lingua di tutti i giorni, dalle ricerche brevi come {0} a quelle più lunghe come {1}.",
       startArea: "In questa zona",
       idea: {
         cats: { cafe: "caffè", restaurant: "ristoranti", bakery: "panetterie", pharmacy: "farmacie", icecream: "gelaterie",

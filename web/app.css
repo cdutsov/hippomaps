@@ -709,13 +709,9 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-end-stop .lm-end-dot { background: var(--warm); box-shadow: 0 0 0 1px var(--warm); }
 .lm-along-add { color: var(--warm); }
 
-/* the start: what the search reads, with two searches in the sentence, and more searches of the map view; on a phone
-   these are a row of pills right under the search box (the sheet down), the sentence under them */
+/* the start: searches of the map view under In this area; on a phone a row of pills right under the search box (the
+   sheet down) */
 .lm-start { display: flex; flex-direction: column; padding: .3rem 0 .6rem; }
-.lm-start-text { margin: .2rem 1rem .4rem; color: var(--muted); font-size: .92rem; line-height: 1.6; }
-.lm-start-ex { border: 0; background: var(--hot); color: var(--accent); border-radius: 6px; padding: .05rem .4rem; margin: 0 .05rem;
-  font-size: inherit; line-height: 1.45; cursor: pointer; box-decoration-break: clone; -webkit-box-decoration-break: clone; text-align: left; }
-.lm-start-ex:hover { text-decoration: underline; }
 .lm-start-head { margin-top: .7rem; }
 .lm-start-list { list-style: none; margin: 0; padding: 0; }
 .lm-start-idea { display: flex; gap: .7rem; align-items: center; width: 100%; border: 0; background: none; padding: .55rem 1rem; text-align: left;
@@ -730,7 +726,6 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
   .lm-start-list::-webkit-scrollbar { display: none; }
   .lm-start-idea { width: auto; min-height: 36px; padding: 0 .9rem 0 .75rem; gap: .4rem; border: 1px solid var(--line); border-radius: var(--pill);
     background: var(--bg); font-size: .9rem; white-space: nowrap; }
-  .lm-start-text { margin-top: .7rem; }
 }
 
 /* the routes of directions to choose from, under Start: one line each */

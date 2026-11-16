@@ -59,9 +59,7 @@ const extraKeys = [...placeKeys, "what", "view"]; // view=1: the same search in 
 
 const EN = {
   placeholder: "Search places, or what and where",
-  // the start, under the search box: what the search reads, with a short and a longer search of the map view ({0}, {1}),
-  // and more searches of what the map shows (ideasFor)
-  startText: "hippomaps understands plain language, from short searches like {0} to longer ones like {1}.",
+  // the start, under the search box: searches of what the map shows (ideasFor)
   startArea: "In this area",
   // the searches of the start, sentences the search reads in this language: c a kind of place (cats), r a river as
   // the map names it, t a town, x a sight or station; each language its own grammar (the article of a river)
@@ -3272,13 +3270,12 @@ const placeActs = el("div", "lm-actions lm-place-acts"); // Directions when the 
 head.append(title, notes, placeActs);
 const placePic = el("figure", "lm-pic lm-place-pic"); // the photo of a town or region found
 placePic.hidden = true;
-// the start (intro): what the search reads, with two searches of the map view in the sentence, and more of them in a
-// list (ideas at the start, below); on a phone the list is a row of pills right under the search box
+// the start (intro): In this area and searches of the map view (ideas at the start, below); on a phone a row of pills
+// right under the search box
 const startBox = el("div", "lm-start");
 const startList = el("ul", "lm-start-list");
-const startText = el("p", "lm-start-text");
 const startHead = el("p", "lm-start-head", {}, T.startArea);
-startBox.append(startText, startHead, startList);
+startBox.append(startHead, startList);
 startBox.hidden = true;
 listView.append(startBox, head, placePic, chips, count, results, moreBtn, query, dl);
 qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textContent).then(() => {
@@ -3511,17 +3508,6 @@ function drawIdeas() {
   const key = JSON.stringify([UI, d]);
   if (key === ideasShown) return;
   ideasShown = key;
-  const ex = (text) => {
-    const b = el("button", "lm-start-ex", { type: "button" }, text);
-    b.addEventListener("click", () => runIdea(text));
-    return b;
-  };
-  startText.innerHTML = "";
-  T.startText.split(/(\{[01]\})/).forEach((part) => {
-    if (part === "{0}") startText.append(ex(d.short || (d.bare ? I.fallbackShort : "") || I.cats.restaurant));
-    else if (part === "{1}") startText.append(ex(d.long));
-    else if (part) startText.append(part);
-  });
   startHead.textContent = T.startArea;
   startList.innerHTML = "";
   for (const text of d.list) {

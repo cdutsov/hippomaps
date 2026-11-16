@@ -32,7 +32,7 @@ directions in their field, the panel at the height of its state when the keyboar
 focus at the start on a phone, with it on a computer (no list until a click); a place written in the search moved to the
 destination by Directions; the dot of the location and the map on it following the visitor; a route on a small phone with
 car, bike and walk and Start in view; the POIs of every kind with a name at the largest zooms; the popup of a POI (under the
-mouse, clicked, tapped on a phone); the picture and menu of a restaurant from its website (its page, its card when found by name); fewer places at the middle zooms; the start: what the search reads with two searches, and searches of the map view (a river of
+mouse, clicked, tapped on a phone); the picture and menu of a restaurant from its website (its page, its card when found by name); fewer places at the middle zooms; the start: searches of the map view, no sentence above them (a river of
 Zurich in them, a row under the box on a phone, a list on a computer, in German too), one tapped searches; the location blocked (the button says so, Directions asks for the start, the last location forgotten); the map
 on the visitor staying for directions and for a search; the back button of the browser (a result, the list, the start) and forward; the compass of
 the app for Android (a stand-in): the cone at the dot, the map turning with the phone from the button of the location and on the dot as it moves,
@@ -646,15 +646,15 @@ try:
     check(wait("document.querySelector('.lm-input').value === '' && !document.querySelector('.lm-listview').hidden && document.querySelector('.lm-route').hidden", 5),
           "the X clears the search and the views")
 
-    # the start: what the search reads, with two searches in the sentence, and searches of the map view as a row of
-    # pills right under the search box, the sheet down; by Zurich main station a river of the view in them (the Limmat
-    # or the Sihl); a tap on one searches it, the X brings the start back
+    # the start: searches of the map view as a row of pills right under the search box, the sheet down, and no sentence
+    # about the search above them (it said what In this area shows); by Zurich main station a river of the view in them
+    # (the Limmat or the Sihl); a tap on one searches it, the X brings the start back
     js("document.querySelector('.lm-input').blur(); location.hash = '#map=14/47.3779/8.5403'")
     wait("!hmMap.isMoving() && hmMap.loaded()", 20)
-    start_ok = wait("document.querySelectorAll('.lm-start-list .lm-start-idea').length >= 2 && document.querySelectorAll('.lm-start-text .lm-start-ex').length === 2"
+    start_ok = wait("document.querySelectorAll('.lm-start-list .lm-start-idea').length >= 2 && !document.querySelector('.lm-start-text, .lm-start-ex')"
                     " && [...document.querySelectorAll('.lm-start-label')].some(e => /the (Limmat|Sihl)/.test(e.textContent))", 20)
-    ideas = js("JSON.stringify([...document.querySelectorAll('.lm-start-ex, .lm-start-label')].map(e => e.textContent))")
-    check(start_ok, f"the start: the sentence with two searches, searches of the map view with its river ({ideas})")
+    ideas = js("JSON.stringify([...document.querySelectorAll('.lm-start-label')].map(e => e.textContent))")
+    check(start_ok, f"the start: searches of the map view with its river, no sentence above them ({ideas})")
     wait("document.getElementById('app').dataset.sheet === 'peek'", 5)
     check(js("(() => { const r = document.querySelector('.lm-start-list').getBoundingClientRect(), f = document.querySelector('.lm-form').getBoundingClientRect();"
              " return document.getElementById('app').dataset.sheet === 'peek' && r.top >= f.bottom - 1 && r.bottom <= innerHeight && r.height > 20; })()"),
@@ -1539,10 +1539,10 @@ try:
     check("Stations-service" in fr_bubbles and "Carburant" not in fr_bubbles and "Fuel" in en_bubbles and "Cafés" in en_bubbles
           and "Tankstellen" in de_bubbles and "Cafés" in de_bubbles and "Bancomaten" in de_bubbles,
           f"the bubbles keep their own words through French, English and German ({fr_bubbles}; {en_bubbles}; {de_bubbles})")
-    # the start in German: the sentence and the searches of the view, no English in them
+    # the start in German: the heading and the searches of the view, no English in them
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click(); document.querySelector('.lm-input').blur()")
-    de_ok = wait("/versteht Alltagssprache/.test(document.querySelector('.lm-start-text')?.textContent || '') && document.querySelectorAll('.lm-start-label').length >= 2", 15)
-    de_ideas = js("[...document.querySelectorAll('.lm-start-ex, .lm-start-label')].map(e => e.textContent)") or []
+    de_ok = wait("document.querySelector('.lm-start-head')?.textContent === 'In dieser Gegend' && document.querySelectorAll('.lm-start-label').length >= 2", 15)
+    de_ideas = js("[...document.querySelectorAll('.lm-start-label')].map(e => e.textContent)") or []
     check(de_ok and not any(re.search(r"\b(along|near|over|open|the)\b", t) for t in de_ideas), f"the start in German ({de_ideas})")
     # the words of the search in German too: what it understood, the other readings, the kinds and days of the places
     js("location.hash = '#map=16/47.3720/8.5390'")
@@ -1652,9 +1652,9 @@ try:
     focused = wait("!window.hmOld && document.activeElement === document.querySelector('.lm-input')", 15)
     check(focused and js("document.querySelector('.lm-suggest').hidden"),
           f"on a computer the cursor in the search box at the start, no list over the map ({focused}, {js('JSON.stringify([document.activeElement?.className, document.querySelector(\'.lm-suggest\').hidden, !!window.hmOld])')})")
-    check(wait("document.querySelectorAll('.lm-start-idea').length >= 2", 20) and js("document.querySelectorAll('.lm-start-text .lm-start-ex').length === 2"
+    check(wait("document.querySelectorAll('.lm-start-idea').length >= 2", 20) and js("!document.querySelector('.lm-start-text, .lm-start-ex')"
           " && document.querySelector('.lm-start-head').offsetHeight > 0 && document.querySelector('.lm-start-list').getBoundingClientRect().bottom < innerHeight"),
-          "on a computer the start under the search box: the sentence with two searches, In this area and its searches")
+          "on a computer the start under the search box: In this area and its searches, no sentence above them")
     # another tab, then back: the box gets the focus again, and that opens no list
     tab = call("Target.createTarget", url="about:blank").get("targetId")
     time.sleep(1)
