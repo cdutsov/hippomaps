@@ -785,6 +785,19 @@ try:
                    " && hmMap.queryRenderedFeatures({ layers: ['lm-drawn-dashed'] }).some((f) => f.properties.kind === 'circle')"
                    " && hmMap.queryRenderedFeatures({ layers: ['lm-point'] }).length > 0", 20),
           "Migros near a bus stop: the shops, the stops near them and a circle of 300 m around each stop")
+    # a point found is a pin in the colour of the results, the size of the blue pin of a tap; a click on its head opens it
+    pin = js("(() => { const l = hmMap.getLayer('lm-point'), a = hmMap.getImage('lm-pin-found'), b = hmMap.getImage('lm-pin-icon');"
+             " const c = hmMap.getCanvas().getBoundingClientRect();"
+             " const head = hmMap.queryRenderedFeatures({ layers: ['lm-point'] }).map((f) => hmMap.project(f.geometry.coordinates))"
+             "   .map((q) => [Math.round(c.left + q.x), Math.round(c.top + q.y - 26)])"
+             "   .find(([x, y]) => document.elementFromPoint(x, y)?.classList.contains('maplibregl-canvas'));"
+             " return { type: l?.type, icon: hmMap.getLayoutProperty('lm-point', 'icon-image'), same: !!a && !!b && a.data.width === b.data.width && a.data.height === b.data.height, head }; })()")
+    if pin.get("head"):
+        for t in ("mousePressed", "mouseReleased"):
+            call("Input.dispatchMouseEvent", type=t, x=pin["head"][0], y=pin["head"][1], button="left", clickCount=1)
+    check(pin.get("type") == "symbol" and pin.get("icon") == "lm-pin-found" and pin.get("same") and pin.get("head")
+          and wait("hmMap.queryRenderedFeatures({ layers: ['lm-sel'] }).length > 0", 5),
+          f"a point found: a pin the size of the pin of a tap, opened by a click on its head ({pin})")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
 
     # areas found are dots until they are large enough to see (zoom 16); a tap on a dot opens the area

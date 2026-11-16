@@ -1323,7 +1323,8 @@ const addIcons = () => {
     g.shadowColor = "transparent";
     g.lineJoin = "round"; g.lineWidth = 1.8; g.strokeStyle = "#fff"; g.stroke();
   });
-  drawIcon("lm-pin-icon", 32, 42, (g) => {
+  // the pin of a point tapped (blue) and of a point found (in the colour of the results), 32 by 42 px
+  for (const [name, colour] of [["lm-pin-icon", "#0369a1"], ["lm-pin-found", ACCENT]]) drawIcon(name, 32, 42, (g) => {
     g.beginPath();
     g.moveTo(16, 40);
     g.bezierCurveTo(13, 33, 4, 26, 4, 16);
@@ -1331,7 +1332,7 @@ const addIcons = () => {
     g.bezierCurveTo(28, 26, 19, 33, 16, 40);
     g.closePath();
     g.shadowColor = "rgba(0,0,0,.35)"; g.shadowBlur = 3; g.shadowOffsetY = 1.5;
-    g.fillStyle = "#0369a1"; g.fill();
+    g.fillStyle = colour; g.fill();
     g.shadowColor = "transparent";
     g.lineWidth = 2; g.strokeStyle = "#fff"; g.stroke();
     g.beginPath(); g.arc(16, 16, 4.5, 0, 2 * Math.PI); g.fillStyle = "#fff"; g.fill();
@@ -1393,8 +1394,10 @@ const addTurnHead = () => drawIcon("lm-turn-head", 22, 18, (g) => {
   g.fillStyle = "#fff"; g.fill();
   g.fillRect(11 - 2.75, 15, 5.5, 3); // the white of the line into the head (5.5 px: the line at the size of the head)
 });
-const pinLayer = (id, source, filter) => ({ id, type: "symbol", source, ...(filter ? { filter } : {}),
-  layout: { "icon-image": "lm-pin-icon", "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true } });
+const pinLayer = (id, source, filter, icon = "lm-pin-icon", more = {}) => ({ id, type: "symbol", source, ...(filter ? { filter } : {}),
+  layout: { "icon-image": icon, "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true, ...more } });
+// PIN_HEAD is how far above its point the middle of the head of a pin is (px), PIN_R its radius
+const PIN_HEAD = 26, PIN_R = 12;
 
 // the time of another route in its pill (addAltPills), by theme
 const altPillLayout = () => ({ "text-field": ["get", "text"], "text-font": ["Noto Sans Medium"], "text-size": 13, "icon-image": altPill(),
@@ -1448,15 +1451,17 @@ map.on("style.load", () => {
   // the places the results are near or far from (a bus stop, a wind turbine), in the blue of their circles
   add({ id: "lm-target", type: "circle", source: "lm-lines", filter: ["all", pts, ["==", ["get", "kind"], "target"]], paint: {
     "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 2.5, 15, 5.5], "circle-color": "#1f5fbf", "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
-  // an area found (a church, a park) is a dot too until it is large enough to see (zoom 16)
-  add({ id: "lm-dot", type: "circle", source: "lm-results", maxzoom: 16, filter: ["all", pts, ["has", "dot"]], paint: {
-    "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 15, 7], "circle-color": ACCENT, "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
-  add({ id: "lm-point", type: "circle", source: "lm-results", filter: ["all", pts, ["!", ["has", "dot"]]], paint: {
-    "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, ["case", ["boolean", ["get", "place"], false], 8, 3], 15, ["case", ["boolean", ["get", "place"], false], 10, 7]],
-    "circle-color": ["case", ["boolean", ["get", "place"], false], "#1f5fbf", ACCENT],
-    "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
-  add({ id: "lm-hover", type: "circle", source: "lm-hover", filter: pts,
-    paint: { "circle-radius": 11, "circle-color": ACCENT, "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+  // a point found is a pin, the size of the pin of a tap; an area found (a church, a park) too until it is large
+  // enough to see (zoom 16); a place (a town) is a blue circle
+  const place = ["boolean", ["get", "place"], false];
+  add({ id: "lm-place", type: "circle", source: "lm-results", filter: ["all", pts, ["!", ["has", "dot"]], place], paint: {
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 8, 15, 10], "circle-color": "#1f5fbf", "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
+  add({ ...pinLayer("lm-dot", "lm-results", ["all", pts, ["has", "dot"]], "lm-pin-found"), maxzoom: 16 });
+  add(pinLayer("lm-point", "lm-results", ["all", pts, ["!", ["has", "dot"]], ["!", place]], "lm-pin-found"));
+  // the one under the pointer or of the list: its pin larger, or the circle of a place
+  add({ id: "lm-hover-place", type: "circle", source: "lm-hover", filter: ["all", pts, place],
+    paint: { "circle-radius": 12, "circle-color": "#1f5fbf", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+  add(pinLayer("lm-hover", "lm-hover", ["all", pts, ["!", place]], "lm-pin-found", { "icon-size": 1.25 }));
   add({ id: "lm-hover-line", type: "line", source: "lm-hover", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 4, "line-opacity": 0.5 } });
   add({ id: "lm-sel-line", type: "line", source: "lm-selected", filter: ["!", pts], paint: { "line-color": "#111827", "line-width": 5, "line-opacity": 0.65 } });
   add(pinLayer("lm-sel", "lm-selected", pts));
@@ -1577,7 +1582,7 @@ const setSource = (name, d) => {
 };
 setInterval(() => setSource("night", nightSide()), 5 * 60e3); // the night moves 1.25° in five minutes
 const one = (f) => ({ type: "FeatureCollection", features: f ? [f] : [] });
-for (const layer of ["lm-point", "lm-dot", "lm-line", "lm-fill"]) {
+for (const layer of ["lm-point", "lm-place", "lm-dot", "lm-line", "lm-fill"]) {
   map.on("mouseenter", layer, (e) => {
     map.getCanvas().style.cursor = "pointer";
     const f = state.byId.get(e.features[0].properties.id);
@@ -4253,7 +4258,7 @@ function keepInView(ll) {
 // on a phone (24 px) or of a pointer (12 px); null when none is that near
 function resultAt(pt) {
   const r = phone() ? 24 : 12;
-  const layers = ["lm-point", "lm-dot", "lm-line", "lm-fill"].filter((l) => map.getLayer(l));
+  const layers = ["lm-point", "lm-place", "lm-dot", "lm-line", "lm-fill"].filter((l) => map.getLayer(l));
   let best = null, bestD = Infinity;
   for (const f of map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers })) {
     const full = state.byId.get(f.properties.id);
@@ -4262,6 +4267,8 @@ function resultAt(pt) {
     if (f.geometry.type === "Point") {
       const q = map.project(f.geometry.coordinates);
       d = Math.hypot(q.x - pt.x, q.y - pt.y);
+      // a pin: its head too
+      if (f.layer?.type === "symbol") d = Math.min(d, Math.max(0, Math.hypot(q.x - pt.x, q.y - PIN_HEAD - pt.y) - PIN_R));
     }
     if (d < bestD) { best = full; bestD = d; }
   }
@@ -4393,7 +4400,7 @@ function hoverAt() {
     return hidePop("hover");
   }
   let f = null, tile = null, ll = null, name = "";
-  const layers = ["lm-point", "lm-dot"].filter((l) => map.getLayer(l));
+  const layers = ["lm-point", "lm-place", "lm-dot"].filter((l) => map.getLayer(l));
   const r = layers.length ? map.queryRenderedFeatures([[pt.x - 8, pt.y - 8], [pt.x + 8, pt.y + 8]], { layers }).map((x) => state.byId.get(x.properties.id)).find(Boolean) : null;
   if (r) { f = r; ll = center(r); name = r.properties.name; }
   else if ((tile = symbolPoint(pt, 3))) { ll = tile.ll; name = tile.name; }
