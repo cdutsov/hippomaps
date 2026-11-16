@@ -168,6 +168,11 @@ try:
         return False
 
     def tap(selector):  # a finger on the middle of an element, as on a phone
+        # once the element is on top there (a note or a panel moving over it would take the touch), up to 2 s
+        top = (f"(() => {{ const e = document.querySelector({json.dumps(selector)}); if (!e) return false; const b = e.getBoundingClientRect();"
+               " const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!t && (e === t || e.contains(t)); })()")
+        if not wait(top, 2):
+            print(f"note: {selector} covered by {js(f'(() => {{ const e = document.querySelector({json.dumps(selector)}); if (!e) return null; const b = e.getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return t ? t.className || t.tagName : null; }})()')}", flush=True)
         r = js(f"(() => {{ const e = document.querySelector({json.dumps(selector)}); if (!e) return null; const b = e.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; }})()")
         if not r:
             return False
@@ -191,6 +196,10 @@ try:
             call("Input.dispatchTouchEvent", type="touchMove", touchPoints=[{"x": x, "y": y0 + (y1 - y0) * i / steps}])
             time.sleep(0.03)
         call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    def map_spot(x, y):  # the nearest point to x, y where the map itself is on top (no popup, note or button over it)
+        return js(f"(() => {{ for (let r = 0; r < 200; r += 10) for (const [dx, dy] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, r], [r, -r], [-r, -r]]) {{"
+                  f" const e = document.elementFromPoint({x} + dx, {y} + dy); if (e?.classList.contains('maplibregl-canvas')) return [{x} + dx, {y} + dy]; }}"
+                  " return null; })()") or [x, y]
     def first_visit(what):
         call("Page.navigate", url=URL)
         wait("window.hmMap?.loaded()", 30)
@@ -1821,10 +1830,12 @@ try:
         pic = ans.get("picture")
         shown = wait("document.querySelector('.lm-detail .lm-pic:not([hidden]) img')?.naturalWidth > 0", 20) if pic else True
         link = js("document.querySelector('.lm-detail .lm-pic:not([hidden]) figcaption a')?.href || ''")
+        # the menu comes with the answer of the server, which may come after the picture
+        wait(f"(document.querySelector('.lm-detail [data-t=foodMenu]')?.closest('a')?.href || '') === {json.dumps(ans.get('menu', ''))}", 15)
         menu = js("document.querySelector('.lm-detail [data-t=foodMenu]')?.closest('a')?.href || ''")
         after = js("document.querySelector('.lm-detail [data-t=foodMenu]')?.closest('a')?.previousElementSibling?.textContent.trim() || ''")
         check(shown and (not pic or link == pic["page"]) and menu == ans.get("menu", "") and (not menu or after == "Website"),
-              f"the page of a restaurant: the picture and menu of its website, or near it ({ans.get('site')}, {pic and pic['source']}, {menu or 'no menu'})")
+              f"the page of a restaurant: the picture and menu of its website, or near it ({ans.get('site')}, {pic and pic['source']}, {menu or 'no menu'}, the server: {ans.get('menu') or 'no menu'})")
         fresh(URL + "/?q=" + urllib.parse.quote("Ristorante Italia Zürich") + "#map=16/47.3763/8.5293", "window.hmMap?.loaded() && document.querySelector('.lm-place-acts')?.children.length >= 2")
         card = wait("document.querySelector('.lm-place-pic:not([hidden]) img')?.naturalWidth > 0", 20) if pic else True
         acts = js("[...document.querySelectorAll('.lm-place-acts > *')].map((e) => e.textContent.trim()).join('|')") or ""
@@ -1962,7 +1973,10 @@ try:
     check(js(bearing_near(0, 0.5)) and js(cone_near(250)), f"north up: the cone turns with the phone, the map not ({js(bearing)})")
     tap(".lm-locate")
     turning = wait(bearing_near(250), 5)
-    drag(195, 260, 330)
+    # the finger on the map itself: a note or popup over the middle of it would take the touch
+    over = js("document.elementFromPoint(195, 260)?.className || ''")
+    gx, gy = map_spot(195, 260)
+    drag(gx, gy, gy + 70)
     time.sleep(0.5)
     b0 = js(bearing)
     js("hmTurn(300, 10)")
@@ -1970,7 +1984,7 @@ try:
     b1 = js(bearing)
     check(turning and js("!document.querySelector('.lm-locate.lm-turning')") and abs((b1 - b0 + 540) % 360 - 180) < 0.5 and abs((b0 - 250 + 540) % 360 - 180) < 3
           and js(label) == ["Show my location", None],
-          f"a finger moves the map: it stops turning with the phone and stays turned ({b0}, {b1}, {js(label)})")
+          f"a finger moves the map: it stops turning with the phone and stays turned ({turning}, {b0}, {b1}, {js(label)}, at {gx},{gy}, over the middle: {over})")
     tap(".lm-locate")
     check(wait("!hmMap.isMoving() && " + close_to(map_mid, *p, 15), 10) and js("!document.querySelector('.lm-locate.lm-turning')")
           and wait(f"{json.dumps(['Turn the map with the phone', 'false'])}.join() === {label}.join()", 3),
@@ -2088,8 +2102,8 @@ try:
     fresh(URL)
     wait("!hmMap.isMoving() && hmMap.loaded() && " + close_to(map_mid, *ZURICH, 15), 20)
     time.sleep(0.5)
-    check(js("navigator.maxTouchPoints === 0 && !document.querySelector('.lm-heading')") and js(label) == ["Show my location", None],
-          f"a computer: no compass ({js(label)})")
+    check(wait("navigator.maxTouchPoints === 0 && !document.querySelector('.lm-heading')", 3) and js(label) == ["Show my location", None],
+          f"a computer: no compass ({js(label)}, touch points {js('navigator.maxTouchPoints')}, cone {js('!!document.querySelector(\'.lm-heading\')')})")
     call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
     call("Emulation.setTouchEmulationEnabled", enabled=True)
 
@@ -2113,7 +2127,9 @@ try:
     if wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && document.querySelector('.lm-nav-go .lm-chip')", 40):
         js("document.querySelector('.lm-nav-go .lm-chip').click()")
         on = wait("document.getElementById('app').classList.contains('lm-navigating')", 5)
-        check(on and wait("/arrived/i.test(document.querySelector('.lm-nav-banner')?.textContent || '')", 90), "Preview of a short route by car, to its end: You have arrived")
+        check(on and wait("/arrived/i.test(document.querySelector('.lm-nav-banner')?.textContent || '')", 90),
+              f"Preview of a short route by car, to its end: You have arrived ({on}, {js('document.querySelector(\'.lm-nav-banner\')?.textContent.slice(0, 80)')},"
+              f" navigating {js('document.getElementById(\'app\').classList.contains(\'lm-navigating\')')})")
         check(wait("!document.getElementById('app').classList.contains('lm-navigating')", 25)
               and wait("!document.querySelector('.lm-route').hidden && document.querySelector('.lm-route-sum')?.textContent.includes('min') && hmMap.getPitch() < 1"
                        " && (() => { const b = document.querySelector('.lm-nav-start')?.getBoundingClientRect(); return !!b && b.top >= 0 && b.bottom <= innerHeight; })()", 10),
@@ -2230,8 +2246,10 @@ try:
             js("window.hmHold?.(false)")
             answered = wait(done + " && document.querySelectorAll('.lm-trip-row .lm-trip-times').length > 0 && document.querySelector('.lm-route-msg').textContent === ''", 40)
             js("window.fetch = window.hmFetch")
+            then = "" if answered else ", then: " + str(js("[document.querySelector('.lm-route-msg')?.textContent, !!document.querySelector('.lm-trips-wait'),"
+                                                         " document.querySelectorAll('.lm-trip-row .lm-trip-times').length]"))
             check(waiting and failed and again and answered,
-                  f"connections searched for: a turning ring before the message and three pulsing rows; gone with a failure and with the answer ({waiting}, {failed}, {again}, {answered})")
+                  f"connections searched for: a turning ring before the message and three pulsing rows; gone with a failure and with the answer ({waiting}, {failed}, {again}, {answered}{then})")
             # an arrival tomorrow by 09:00: on the clocks of the journey (Zurich), whatever the clock of the browser
             import datetime, zoneinfo
             day = datetime.date.today() + datetime.timedelta(days=1)
