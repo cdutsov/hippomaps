@@ -44,9 +44,6 @@ export function texts(num) {
   return {
     de: {
       placeholder: "Orte suchen, oder was und wo",
-      hints: ["Restaurants am Zürichsee", "Tankstellen entlang der A3", "Campingplätze am Genfersee", "Biergärten in München",
-        "vegane Restaurants in Zürich", "Aussichtspunkte bei Luzern", "Brücken über den Rhein in Basel", "Burgen im Tessin",
-        "Berghütten über 2500 m im Wallis", "Leuchttürme in der Bretagne"],
       startText: "hippomaps versteht Alltagssprache, von kurzen Suchen wie {0} bis zu längeren wie {1}.",
       startArea: "In dieser Gegend",
       idea: {
@@ -303,9 +300,6 @@ export function texts(num) {
     },
     fr: {
       placeholder: "Chercher des lieux, ou quoi et où",
-      hints: ["cabanes au-dessus de 2500 m en Valais", "restaurants végans à Zurich", "points de vue près de Lucerne", "châteaux en Valais",
-        "fontaines à Genève", "restaurants au bord du lac de Neuchâtel", "boulangeries à Lausanne", "ponts sur le Rhin à Bâle",
-        "châteaux au Tessin", "phares en Bretagne"],
       startText: "hippomaps comprend le langage de tous les jours, des recherches courtes comme {0} aux plus longues comme {1}.",
       startArea: "Dans cette région",
       idea: {
@@ -562,7 +556,6 @@ export function texts(num) {
     },
     it: {
       placeholder: "Cerca luoghi, oppure cosa e dove",
-      hints: ["distributori lungo la A3", "castelli in Ticino", "gelaterie a Lugano", "castelli in Valle d'Aosta"],
       startText: "hippomaps capisce la lingua di tutti i giorni, dalle ricerche brevi come {0} a quelle più lunghe come {1}.",
       startArea: "In questa zona",
       idea: {

@@ -59,10 +59,6 @@ const extraKeys = [...placeKeys, "what", "view"]; // view=1: the same search in 
 
 const EN = {
   placeholder: "Search places, or what and where",
-  // the hint of the empty search box: one of these at random; each runs on the search as written
-  hints: ["restaurants near Lake Zurich", "gas stations along the A3", "bridges over the Rhine in Basel", "castles in Ticino",
-    "mountain huts over 2500 m in Valais", "campsites by Lake Geneva", "beer gardens in Munich", "lighthouses in Brittany",
-    "vegan restaurants in Zurich", "viewpoints near Lucerne", "drinking water in Geneva", "ice cream along the Limmat"],
   // the start, under the search box: what the search reads, with a short and a longer search of the map view ({0}, {1}),
   // and more searches of what the map shows (ideasFor)
   startText: "hippomaps understands plain language, from short searches like {0} to longer ones like {1}.",
@@ -788,11 +784,19 @@ combo.addEventListener("mousedown", (e) => { // the edge of the box above and be
 const clearBtn = el("button", "lm-clear", { type: "button", "aria-label": T.clear });
 clearBtn.innerHTML = svg(ICON.close, 16);
 clearBtn.hidden = true;
-// the hint of the empty box: an example of a search picked at random each time the box is empty
-// again (the start, the X, the text deleted), not the one shown before
-const hints = (T.hints || []).slice();
-const newHint = () => {
-  if (!hints.length) return;
+// the hint of the empty box: one of the searches of the map view, as the start offers them (ideasFor), picked at random
+// each time the box is empty again (the start, the X, the text deleted), not the one shown before; and when the view
+// moves to where it is not one of them. With none (the map not there yet, nothing named in view): T.placeholder.
+// Not the example of the start for a view without names (I.fallback, of Zürich): "ice cream along the Limmat" in Sofia.
+const hintsOfView = () => {
+  try {
+    if (!map.loaded()) return [];
+    const I = T.idea, d = ideasFor(viewThings(), I, new Date().getHours(), ideaPick);
+    return [...new Set([d.short, d.long, ...d.list])].filter((h) => h && h !== I.fallback && h !== I.fallbackShort);
+  } catch { return []; } // before the map is made
+};
+const newHint = (hints = hintsOfView()) => {
+  if (!hints.length) return void (input.placeholder = T.placeholder);
   const others = hints.length > 1 ? hints.filter((h) => h !== input.placeholder) : hints;
   input.placeholder = others[Math.floor(Math.random() * others.length)];
 };
@@ -3539,7 +3543,11 @@ function runIdea(text) {
   run(text, {});
 }
 // the view moved, the tiles came: the ideas of the new view (only while the start is shown)
-map.on("idle", () => { if (!startBox.hidden) drawIdeas(); });
+map.on("idle", () => {
+  if (!startBox.hidden) drawIdeas();
+  // the hint of the empty box: a search of this view (newHint), kept while it still is one
+  if (!input.value) { const h = hintsOfView(); if (!h.includes(input.placeholder)) newHint(h); }
+});
 
 let quietUntil = 0; // until then the map moves for a search, not for the visitor
 // The padding of an easeTo or flyTo stays with the map, and fitBounds adds its own to it: with
@@ -7746,7 +7754,6 @@ function setLang(chosen) {
   footLink.href = licencesLink.href = licencesHref();
   footGuides.href = guidesLink.href = guidesHref();
   poweredLink.href = overpassHref();
-  hints.splice(0, hints.length, ...(T.hints || []));
   if (!input.value) newHint();
   drawIdeas(); // the ideas at the start in the new language, with the names of the map in it
   // the names the page gave a start, a stop or the destination (a field shows the name of its place again when it

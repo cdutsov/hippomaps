@@ -846,6 +846,15 @@ try:
     check(js(f"document.querySelector('.lm-input').placeholder !== {json.dumps(first)} && document.querySelector('.lm-input').placeholder.length > 0"),
           "the empty search box: another example after the X")
     js("document.querySelector('.lm-input').blur()")
+    # the example is a search of the map view, as the start offers: in Sofia none of Zürich ("ice cream along the Limmat")
+    back = js("JSON.stringify({ center: hmMap.getCenter(), zoom: hmMap.getZoom() })")
+    js("hmMap.jumpTo({ center: [23.3219, 42.6977], zoom: 14 })")
+    sofia = "(() => { const h = document.querySelector('.lm-input').placeholder; return h.length > 0 && h !== 'Search places, or what and where' && !/Limmat|Z[uü]rich|Lucerne|Geneva|Basel|Ticino|Valais/.test(h); })()"
+    check(wait(sofia, 20), f"the empty search box in Sofia: a search of Sofia ({js('document.querySelector(\'.lm-input\').placeholder')})")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+    check(js(sofia), f"the empty search box in Sofia after the X ({js('document.querySelector(\'.lm-input\').placeholder')})")
+    js("document.querySelector('.lm-input').blur()")
+    js(f"hmMap.jumpTo({back})")
 
     # a place starred: in the empty search box, and on the map; the last search there too
     js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Thun'; document.querySelector('.lm-form').requestSubmit(); })()")
