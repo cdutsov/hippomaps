@@ -215,3 +215,30 @@ func TestDetailIn(t *testing.T) {
 		}
 	}
 }
+
+// The times a search asks places to be open at (overpass-search: the reading and open.label) in German, French and
+// Italian: the count above the list said "80 open on Sunday, von 118 mit Öffnungszeiten".
+func TestOpenIn(t *testing.T) {
+	for _, c := range []struct{ en, de, fr, it string }{
+		{"open now", "jetzt offen", "ouvert maintenant", "aperto ora"},
+		{"open today", "heute offen", "ouvert aujourd’hui", "aperto oggi"},
+		{"open at 23:00 today", "heute um 23:00 offen", "ouvert aujourd’hui à 23:00", "aperto oggi alle 23:00"},
+		{"open on Saturday and Sunday", "am Samstag und Sonntag offen", "ouvert samedi et dimanche", "aperto sabato e domenica"},
+		{"open on Sunday", "am Sonntag offen", "ouvert le dimanche", "aperto la domenica"},
+		{"open on Monday at 07:30", "am Montag um 07:30 offen", "ouvert le lundi à 07:30", "aperto lunedì alle 07:30"},
+		{"something else", "something else", "something else", "something else"},
+	} {
+		for i, want := range []string{c.de, c.fr, c.it} {
+			if got := openIn(c.en, i+1); got != want {
+				t.Errorf("%q in %d: %q, want %q", c.en, i+1, got, want)
+			}
+		}
+	}
+	if got := understoodIn("Bakery · open on Sunday, inside the boundary of Zürich", 1); got != "Bäckerei · am Sonntag offen, in Zürich" {
+		t.Errorf("understood: %q", got)
+	}
+	body := translate([]byte(`{"understood":"Bakery · open on Sunday, inside the boundary of Zürich","open":{"day":0,"minute":-1,"label":"open on Sunday","country":"ch"}}`), "search", "de")
+	if !strings.Contains(string(body), `"label":"am Sonntag offen"`) || !strings.Contains(string(body), `"country":"ch"`) {
+		t.Errorf("translate: %s", body)
+	}
+}

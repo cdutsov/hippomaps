@@ -53,6 +53,8 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Fixed
 
+- A search for places open at a time ("bakeries open on Sunday") said it in English on a page in German, French or
+  Italian, above the list and in the count of places open then.
 - The map opens where you were the last time the page knew your location (kept on the device to about 100 m), not at the
   town of your IP address, which a phone network, a SIM from another country or a VPN can put far away. The location is
   asked for as the page starts, and a location out of view is jumped to rather than flown to.

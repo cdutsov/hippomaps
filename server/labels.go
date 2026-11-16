@@ -280,6 +280,44 @@ var (
 		"Minibus": {"Minibuslinie", "Ligne de minibus", "Linea minibus"}}
 )
 
+// the days of opening hours of overpass-search ("open on Sunday"), in German, French and Italian; the Italian with its article
+var days = map[string][3]string{
+	"Monday": {"Montag", "lundi", "il lunedì"}, "Tuesday": {"Dienstag", "mardi", "il martedì"}, "Wednesday": {"Mittwoch", "mercredi", "il mercoledì"},
+	"Thursday": {"Donnerstag", "jeudi", "il giovedì"}, "Friday": {"Freitag", "vendredi", "il venerdì"}, "Saturday": {"Samstag", "samedi", "il sabato"},
+	"Sunday": {"Sonntag", "dimanche", "la domenica"},
+}
+
+var (
+	openTodayAtRe = regexp.MustCompile(`^open at (\d\d:\d\d) today$`)
+	openDayAtRe   = regexp.MustCompile(`^open on (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?: at (\d\d:\d\d))?$`)
+)
+
+// openIn puts a time a search asks places to be open at (the label of open in an answer of overpass-search: "open now",
+// "open today", "open at 23:00 today", "open on Saturday and Sunday", "open on Sunday", "open on Sunday at 10:00") in
+// language i; another text stays as it is
+func openIn(s string, i int) string {
+	switch s {
+	case "open now":
+		return tr(words, s, i)
+	case "open today":
+		return [3]string{"heute offen", "ouvert aujourd’hui", "aperto oggi"}[i-1]
+	case "open on Saturday and Sunday":
+		return [3]string{"am Samstag und Sonntag offen", "ouvert samedi et dimanche", "aperto sabato e domenica"}[i-1]
+	}
+	if m := openTodayAtRe.FindStringSubmatch(s); m != nil {
+		return [3]string{"heute um " + m[1] + " offen", "ouvert aujourd’hui à " + m[1], "aperto oggi alle " + m[1]}[i-1]
+	}
+	if m := openDayAtRe.FindStringSubmatch(s); m != nil {
+		d := days[m[1]][i-1]
+		if m[2] == "" {
+			return [3]string{"am " + d + " offen", "ouvert le " + d, "aperto " + d}[i-1]
+		}
+		it, _ := strings.CutPrefix(strings.TrimPrefix(d, "il "), "la ") // "aperto domenica alle 10:00"
+		return [3]string{"am " + d + " um " + m[2] + " offen", "ouvert le " + d + " à " + m[2], "aperto " + it + " alle " + m[2]}[i-1]
+	}
+	return s
+}
+
 // readingIn puts the reading of a search ("vegan: Restaurant · open now") in language i
 func readingIn(s string, i int) string {
 	parts := strings.Split(s, " · ")
@@ -288,6 +326,8 @@ func readingIn(s string, i int) string {
 			parts[k+1] = tr(words, m[1], i) + " " + tr(words, m[2], i) + " " + m[3]
 		} else if starsRe.MatchString(c) {
 			parts[k+1] = starsRe.ReplaceAllString(c, starsTo[i-1])
+		} else if o := openIn(c, i); o != c {
+			parts[k+1] = o
 		} else {
 			parts[k+1] = tr(words, c, i)
 		}
@@ -505,6 +545,9 @@ func translate(body []byte, path, lang string) []byte {
 		}
 		each("try", func(t map[string]any) { str(t, "label", tryIn); str(t, "q", tryIn) })
 		each("places", func(p map[string]any) { str(p, "detail", detailIn) })
+		if o, ok := d["open"].(map[string]any); ok { // the count of the places open then: "80 am Sonntag offen, von 118 …"
+			str(o, "label", openIn)
+		}
 		kindsIn(d, i)
 	case "here": // a tap on the map: the address, the area, the places around
 		for _, k := range []string{"place", "area"} {
