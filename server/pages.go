@@ -127,7 +127,7 @@ func (s *Server) servePage(pg *page) http.HandlerFunc {
 		h := w.Header()
 		h.Set("Content-Type", "text/html; charset=utf-8")
 		h.Set("Cache-Control", "no-cache")
-		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Write(buf.Bytes())
 	}

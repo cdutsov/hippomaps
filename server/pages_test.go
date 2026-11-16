@@ -26,7 +26,8 @@ func TestPages(t *testing.T) {
 	}
 	sitemap := get(own, "/sitemap.xml").Body.String()
 	href := regexp.MustCompile(`(?:href|src)="([^"]+)"`)
-	banned := regexp.MustCompile(`(?i)\b(seamless|robust|leverage|honestly|exactly|simply|load-bearing|delve|crucial)\b|Here is how|’s (?:page|plan|map)\b`)
+	// words of AI writing (the owner list and Wikipedia: Signs of AI writing), and "verb no noun" (shows no ads, braucht kein Konto)
+	banned := regexp.MustCompile(`(?i)\b(seamless|robust|leverage|honestly|exactly|simply|load-bearing|delve|crucial|boasts?|vibrant|showcase|testament|pivotal|nestled|additionally|ensures?|enhances?|effortless(?:ly)?)\b|Here is how|in the heart of|stands as|’s (?:page|plan|map)\b|\b(?:needs|shows|has|finds|gives|takes|keeps|sends|uses|braucht|zeigt|hat|findet|gibt|nimmt) (?:no|kein\w*)\b|\b(?:New to|Neu bei) hippomaps\?`)
 	for u, pg := range own.pages {
 		w := get(own, u)
 		body := w.Body.String()
@@ -85,6 +86,18 @@ func TestPages(t *testing.T) {
 		}
 		return nil
 	})
+	// the font Overpass of pages.css: served as a font, and the CSP of the pages lets it in
+	for _, f := range []string{"overpass-latin.woff2", "overpass-latin-ext.woff2"} {
+		if !strings.Contains(get(own, "/static/pages/pages.css").Body.String(), "url(fonts/"+f+")") {
+			t.Errorf("pages.css: no %s", f)
+		}
+		if w := get(own, "/static/pages/fonts/"+f); w.Code != 200 || w.Header().Get("Content-Type") != "font/woff2" {
+			t.Errorf("%s: %d %s", f, w.Code, w.Header().Get("Content-Type"))
+		}
+	}
+	if w := get(own, "/features"); !strings.Contains(w.Header().Get("Content-Security-Policy"), "font-src 'self'") {
+		t.Errorf("/features: CSP without fonts: %s", w.Header().Get("Content-Security-Policy"))
+	}
 	// the templates are not served as files
 	if w := get(own, "/static/pages/en/features.html"); w.Code == 200 {
 		t.Error("a template served as a file")

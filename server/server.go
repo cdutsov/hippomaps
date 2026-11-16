@@ -493,7 +493,7 @@ func (s *Server) csp() string {
 }
 
 var types = map[string]string{".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".txt": "text/plain; charset=utf-8", ".png": "image/png", ".webp": "image/webp"}
+	".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".txt": "text/plain; charset=utf-8", ".png": "image/png", ".webp": "image/webp", ".woff2": "font/woff2"}
 
 // static serves the files of the app. With the hash of the file in v they are kept for a
 // year; the libraries in vendor/ have their version in the path.
