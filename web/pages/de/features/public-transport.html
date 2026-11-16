@@ -1,0 +1,38 @@
+{{define "title"}}ÖV-Verbindungen in Europa{{end}}
+{{define "desc"}}Verbindungen mit Zug, Tram, Bus, Schiff und Seilbahn in ganz Europa in hippomaps: jetzt oder zu einer gewählten Zeit, mit Gleisen, Fusswegen zu den Haltestellen und Live-Verspätungen in der Schweiz.{{end}}
+{{define "image"}}transit{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Funktionen</a></p>
+<h1>Öffentlicher Verkehr in Europa</h1>
+<p class="pg-lead">Wählen Sie in der Route ÖV, und hippomaps findet Verbindungen mit Zug, Tram, Metro, Bus, Schiff und Seilbahn, mit den Fusswegen zu den Haltestellen und von ihnen weg.</p>
+<ul class="pg-try">
+<li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "46.00548,8.94696" "tn" "Lugano" "mode" "transit"}}">Vom Zürich HB nach Lugano</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "transit"}}" width="1280" height="800" alt="Verbindungen mit dem Zug vom Zürich HB nach Lugano: Zeiten, Halte und Fusswege und die Linie auf der Karte"></figure>
+<div class="pg-split">
+<div>
+<h2>Eine Verbindung</h2>
+<ul>
+<li>jetzt abfahren oder eine Zeit für Abfahrt oder Ankunft wählen</li>
+<li>jede Teilstrecke mit Linie, Richtung, der Haltestelle zum Ein- und Aussteigen, dem Gleis und der Zahl der Halte</li>
+<li>die Fusswege zur ersten und von der letzten Haltestelle, den Strassen entlang</li>
+<li>die Linie auf der Karte in ihrer Farbe</li>
+<li>frühere und spätere Verbindungen</li>
+</ul>
+<h2>Verspätungen</h2>
+<p>Wo ein Betreiber sie veröffentlicht, rechnen die Zeiten mit Verspätungen, und Meldungen zu Störungen stehen bei der Verbindung. In der Schweiz gilt das für Züge, Trams und Busse von opentransportdata.swiss.</p>
+</div>
+<figure class="pg-shot pg-phone"><img src="{{img "phone-transit"}}" width="390" height="844" alt="ÖV von Zürich Triemli nach Umiken auf einem Handy: Tram, Zug und Bus auf der Karte und die Verbindung mit Linien, Zeiten und Gleisen" loading="lazy"></figure>
+</div>
+<div class="pg-text">
+<h2>Wo</h2>
+<p>Die Fahrpläne decken 43 Regionen Europas ab: die Fahrpläne, die Betreiber und Behörden veröffentlichen, gesammelt von <a href="https://transitous.org">Transitous</a>. Sie werden jede Nacht neu geladen. Die <a href="{{.Licences}}">Seite der Lizenzen</a> nennt die Quellen.</p>
+<p>Metro-, Stadtbahn- und Tramlinien lassen sich auch auf der Karte in ihren Farben zeigen: ÖV im Menü.</p>
+<p>Die Schritte für eine Reise stehen in der Anleitung <a href="{{link "/guides/train"}}">Eine Zugverbindung finden</a>.</p>
+<p class="pg-note">Die Verbindungen findet <a href="https://github.com/motis-project/motis">MOTIS</a>.</p>
+</div>
+</div>
+{{end}}

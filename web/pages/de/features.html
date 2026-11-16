@@ -1,0 +1,28 @@
+{{define "title"}}Funktionen{{end}}
+{{define "desc"}}hippomaps ist eine freie Karte fürs Web und für Android: Suche in Alltagssprache, Ortsseiten mit Fotos und Öffnungszeiten, Routen, ÖV in Europa, gesprochene Navigation und GPS-Dateien.{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<h1>Eine Karte, die Sie in Alltagssprache fragen</h1>
+<p class="pg-lead">hippomaps ist eine freie Karte fürs Web und für Android, gemacht mit Daten von OpenStreetMap. Schreiben Sie, was Sie suchen, so wie Sie es sagen würden. Die Karte zeigt jeden Ort mit Foto, Öffnungszeiten und dem Weg dorthin.</p>
+<p><a class="pg-btn" href="{{.Home}}">Karte öffnen</a></p>
+</section>
+<figure class="pg-shot"><img src="{{img "search"}}" width="1280" height="800" alt="Die Suche «Cafés in Zürich an der Limmat» in hippomaps: der Fluss auf der Karte, die Cafés daran und die Liste der Cafés mit ihren Öffnungszeiten"></figure>
+<ul class="pg-cards">
+<li><a class="pg-card" href="{{link "/features/search"}}"><img src="{{img "peaks"}}" alt="" loading="lazy" width="1280" height="800"><span>Suche in Alltagssprache</span><small>«Gipfel über 4000 m im Wallis», «Bäckereien am Sonntag offen in Zürich»: Sätze in 16 Sprachen, gelesen als Abfrage der Kartendaten.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/places"}}"><img src="{{img "place"}}" alt="" loading="lazy" width="1280" height="800"><span>Ortsseiten</span><small>Foto, Öffnungszeiten mit der nächsten Änderung, Website, Telefon, Rollstuhlzugang, die Speisekarte eines Restaurants.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/directions"}}"><img src="{{img "bike"}}" alt="" loading="lazy" width="1280" height="800"><span>Routen</span><small>Mit Auto, Velo und zu Fuss, mit Zwischenzielen, anderen Routen, Live-Verkehr in der Schweiz und Höhenprofil.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/public-transport"}}"><img src="{{img "transit"}}" alt="" loading="lazy" width="1280" height="800"><span>Öffentlicher Verkehr</span><small>Zug, Tram, Bus, Schiff und Seilbahn in ganz Europa, mit Gleisen, Fusswegen zu den Haltestellen und Verspätungen.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/navigation"}}"><img src="{{img "phone-navigation"}}" alt="" loading="lazy" width="390" height="844"><span>Gesprochene Navigation</span><small>Abbiegung für Abbiegung in 18 Sprachen, mit Fahrspuren, Tempolimits und der Karte der Route für Funklöcher gespeichert.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/measure"}}"><img src="{{img "measure"}}" alt="" loading="lazy" width="1280" height="800"><span>Messen und GPS-Dateien</span><small>Distanzen, Flächen und Höhenprofile; Routen, Linien und Orte als GPX, KML oder GeoJSON.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/map"}}"><img src="{{img "terrain"}}" alt="" loading="lazy" width="1280" height="800"><span>Die Karte</span><small>Stile für Tag und Nacht, Gelände und Gebäude in 3D, Reliefschattierung, ÖV-Linien, Verkehr und der Kompass des Handys.</small></a></li>
+</ul>
+<div class="pg-text">
+<h2>Frei, ohne Konto</h2>
+<p>hippomaps braucht kein Konto und zeigt keine Werbung. Einstellungen, markierte Orte und letzte Suchen bleiben in Ihrem Browser. Der Quellcode ist freie Software unter der GPL, auf <a href="https://gitlab.com/cdutsov/hippomaps">GitLab</a> und <a href="https://github.com/cdutsov/hippomaps">GitHub</a>. Karten, Suche und Höhen kommen von <a href="https://overpass.ch/de/">overpass.ch</a>, das die Dienste in der Schweiz betreibt.</p>
+<h2>Auf dem Handy</h2>
+<p>hippomaps.ch läuft im Browser jedes Handys. Die App für Android navigiert auch bei gesperrtem Bildschirm, nutzt den Kompass des Handys und öffnet Links auf Orte aus anderen Karten-Apps. Sie steht auf der <a href="https://gitlab.com/cdutsov/hippomaps/-/releases">Release-Seite</a> des Projekts.</p>
+<p>Neu bei hippomaps? Die <a href="{{link "/guides"}}">Anleitungen</a> gehen häufige Aufgaben Schritt für Schritt durch.</p>
+</div>
+</div>
+{{end}}

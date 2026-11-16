@@ -1,0 +1,28 @@
+{{define "title"}}Features{{end}}
+{{define "desc"}}hippomaps is a free map for the web and Android: search in plain words, place pages with photos and opening hours, directions, public transport in Europe, spoken navigation and GPS files.{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<h1>A map you can ask in plain words</h1>
+<p class="pg-lead">hippomaps is a free map for the web and Android, made with OpenStreetMap data. Type what you are looking for as you would say it, and the map shows each place with its photo, opening hours and the way there.</p>
+<p><a class="pg-btn" href="{{.Home}}">Open the map</a></p>
+</section>
+<figure class="pg-shot"><img src="{{img "search"}}" width="1280" height="800" alt="The search “cafés in Zurich by the Limmat” in hippomaps: the river drawn on the map, the cafés along it, and the list of cafés with their opening hours"></figure>
+<ul class="pg-cards">
+<li><a class="pg-card" href="{{link "/features/search"}}"><img src="{{img "peaks"}}" alt="" loading="lazy" width="1280" height="800"><span>Search in plain words</span><small>“Peaks over 4000 m in Valais”, “bakeries open on Sunday in Zurich”: sentences in 16 languages, read into a query of the map data.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/places"}}"><img src="{{img "place"}}" alt="" loading="lazy" width="1280" height="800"><span>Place pages</span><small>Photo, opening hours with the next change, website, phone, wheelchair access, the menu of a restaurant.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/directions"}}"><img src="{{img "bike"}}" alt="" loading="lazy" width="1280" height="800"><span>Directions</span><small>By car, bike and on foot, with stops, other routes, live traffic in Switzerland and a height profile.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/public-transport"}}"><img src="{{img "transit"}}" alt="" loading="lazy" width="1280" height="800"><span>Public transport</span><small>Trains, trams, buses, boats and cable cars across Europe, with platforms, walks to the stops and delays.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/navigation"}}"><img src="{{img "phone-navigation"}}" alt="" loading="lazy" width="390" height="844"><span>Spoken navigation</span><small>Turn by turn in 18 languages, with lanes, speed limits and the map of the route saved for dead spots.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/measure"}}"><img src="{{img "measure"}}" alt="" loading="lazy" width="1280" height="800"><span>Measure and GPS files</span><small>Distances, areas and height profiles; routes, lines and places as GPX, KML or GeoJSON.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/map"}}"><img src="{{img "terrain"}}" alt="" loading="lazy" width="1280" height="800"><span>The map</span><small>Day and night styles, 3D terrain and buildings, relief shading, transit lines, traffic and the compass of the phone.</small></a></li>
+</ul>
+<div class="pg-text">
+<h2>Free, without an account</h2>
+<p>hippomaps needs no account and shows no ads. Settings, starred places and recent searches stay in your browser. The source code is free software under the GPL, on <a href="https://gitlab.com/cdutsov/hippomaps">GitLab</a> and <a href="https://github.com/cdutsov/hippomaps">GitHub</a>. Maps, search and heights come from <a href="https://overpass.ch">overpass.ch</a>, which hosts the services in Switzerland.</p>
+<h2>On a phone</h2>
+<p>hippomaps.ch works in the browser of any phone. The app for Android adds navigation with the screen locked, the compass of the phone, and opens links to places from other map apps. It is on the <a href="https://gitlab.com/cdutsov/hippomaps/-/releases">releases page</a> of the project.</p>
+<p>New to hippomaps? The <a href="{{link "/guides"}}">guides</a> go through common tasks step by step.</p>
+</div>
+</div>
+{{end}}

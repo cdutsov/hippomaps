@@ -11,7 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"html"
+	"io"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -128,6 +128,7 @@ type Server struct {
 	mux          *http.ServeMux
 	page         *template.Template
 	privacyPages *template.Template // privacy.html, privacy-de.html
+	pages        map[string]*page   // the pages about the app, by their path (pages.go)
 	hashes       map[string]string  // file -> short hash, for addresses that change with the file
 	files        map[string][]byte  // the scripts served with the hashes of their imports in the addresses (served)
 	worker       string             // the address of the worker of MapLibre (mapWorker)
@@ -228,6 +229,8 @@ func New(cfg Config) *Server {
 	// the licences and sources (voices, traffic, map data, libraries): the page links it small
 	s.mux.HandleFunc("GET "+base+"/licences", s.privacy("licences.html"))
 	s.mux.HandleFunc("GET "+base+"/de/licences", s.privacy("licences-de.html"))
+	// the features and guides (pages.go)
+	s.loadPages()
 	s.mux.Handle("GET "+base+"/static/", http.StripPrefix(base+"/static/", http.HandlerFunc(s.static)))
 	// the service worker (web/sw.js): the page and the map of a route without a connection; next to the page, with
 	// the page in its scope
@@ -301,9 +304,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-// listed: the page, the privacy policy and the licences, the pages of the sitemap
+// listed: the page, the pages about it, the privacy policy and the licences, the pages of the sitemap
 func (s *Server) listed(p string) bool {
 	b := strings.TrimRight(s.cfg.Base, "/")
+	if _, ok := s.pages[p]; ok {
+		return true
+	}
 	return p == s.home() || p == b+"/privacy" || p == b+"/de/privacy" || p == b+"/licences" || p == b+"/de/licences"
 }
 
@@ -323,8 +329,7 @@ func (s *Server) robots(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) sitemap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+"\n"+`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>%[1]s/</loc></url><url><loc>%[1]s/privacy</loc></url><url><loc>%[1]s/de/privacy</loc></url><url><loc>%[1]s/licences</loc></url><url><loc>%[1]s/de/licences</loc></url></urlset>`+"\n",
-		html.EscapeString(strings.TrimRight(s.cfg.PublicURL, "/")))
+	io.WriteString(w, s.sitemapXML())
 }
 
 // asset is the address of a file of the app, with its hash: browsers keep it for a year.
@@ -488,7 +493,7 @@ func (s *Server) csp() string {
 }
 
 var types = map[string]string{".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".txt": "text/plain; charset=utf-8", ".png": "image/png"}
+	".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".txt": "text/plain; charset=utf-8", ".png": "image/png", ".webp": "image/webp"}
 
 // static serves the files of the app. With the hash of the file in v they are kept for a
 // year; the libraries in vendor/ have their version in the path.

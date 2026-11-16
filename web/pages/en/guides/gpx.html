@@ -1,0 +1,38 @@
+{{define "title"}}Put a route on a GPS device{{end}}
+{{define "desc"}}Save a route, a measured line or search results from hippomaps as GPX for Garmin, Wahoo, Komoot or another app, and open GPX, KML or GeoJSON files on the map.{{end}}
+{{define "image"}}measure{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Guides</a></p>
+<h1>Put a route on a GPS device</h1>
+<p class="pg-lead">GPX is the file that bike computers, watches and outdoor apps read. hippomaps saves three things as GPX, and opens GPX files too.</p>
+</section>
+<div class="pg-text">
+<h2>A route</h2>
+<ol class="pg-steps">
+<li>Plan the route in directions: by bike or on foot to get the heights in the file (<a href="{{link "/guides/bike-route"}}">bike route guide</a>).</li>
+<li>Tap GPX under the route. The file is saved in the downloads of your browser.</li>
+<li>Copy it to the device or import it in its app (below).</li>
+</ol>
+<h2>A line you drew</h2>
+<ol class="pg-steps">
+<li>Open Measure distance from the menu, or right-click the map and choose it.</li>
+<li>Click points along the way you want. Drag the dot in the middle of a part to bend it.</li>
+<li>Save it as GPX, with the heights of each point. KML (for Google Earth) and GeoJSON are next to it.</li>
+</ol>
+<h2>Places of a search</h2>
+<p>Under the results of a search, GPX saves them as waypoints with their names, such as all the <a href="{{app "q" "mountain huts in Graubünden"}}">mountain huts in Graubünden</a> or <a href="{{app "q" "drinking water in Zurich"}}">drinking water in Zurich</a>. CSV and GeoJSON are next to it.</p>
+<h2>On the device</h2>
+<ul>
+<li>Garmin: import the file in Garmin Connect (Courses, Import), or copy it to the folder <code>Garmin/NewFiles</code> of a device connected by USB.</li>
+<li>Wahoo, Hammerhead, Komoot, Strava and most outdoor apps import GPX from their route or course page.</li>
+<li>On a phone, open the file from the downloads and choose the app.</li>
+</ul>
+<h2>Open a GPX file</h2>
+<p>To see a track someone sent you, open Measure distance, tap Open a file and choose a GPX, KML or GeoJSON file. On a computer you can also drop the file on the map. The track appears with its length and height profile, and you can change it and save it again.</p>
+<figure class="pg-shot"><img src="{{img "measure"}}" width="1280" height="800" alt="A line drawn with Measure distance, its total and the buttons to save it as GPX, KML or GeoJSON" loading="lazy"></figure>
+<p class="pg-note">Saving and opening files works in the browser. The app for Android cannot save files made in the page: use hippomaps.ch in the browser of the phone for this.</p>
+</div>
+</div>
+{{end}}

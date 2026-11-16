@@ -1,0 +1,35 @@
+{{define "title"}}Distanz und Fläche messen, GPX, KML und GeoJSON{{end}}
+{{define "desc"}}Messen Sie mit hippomaps eine Distanz oder Fläche auf der Karte, sehen Sie ihr Höhenprofil, und speichern Sie Linien, Routen und Orte als GPX, KML oder GeoJSON. GPX-, KML- und GeoJSON-Dateien öffnen.{{end}}
+{{define "image"}}measure{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Funktionen</a></p>
+<h1>Messen und GPS-Dateien</h1>
+<p class="pg-lead">Messen Sie die Länge einer Wanderung oder die Fläche eines Felds, sehen Sie die Höhen entlang einer Linie, und bringen Sie Tracks zwischen hippomaps und einem GPS-Gerät hin und her.</p>
+<ul class="pg-try"><li><a href="{{view "16.6/47.36530/8.54640"}}">Die Karte am Sechseläutenplatz in Zürich öffnen</a></li></ul>
+</section>
+<figure class="pg-shot"><img src="{{img "measure"}}" width="1280" height="800" alt="Die Fläche des Sechseläutenplatzes in Zürich gemessen: die Form auf der Karte, ihre Fläche und ihr Umfang"><figcaption>Eine geschlossene Form ergibt Fläche und Umfang.</figcaption></figure>
+<div class="pg-text">
+<h2>Distanz messen</h2>
+<p>Öffnen Sie Distanz messen im Menü, oder klicken Sie mit der rechten Maustaste auf die Karte (am Handy langes Drücken) und wählen Sie es dort. Dann:</p>
+<ul>
+<li>jeder Klick auf die Karte setzt einen Punkt und zeigt die Länge der Linie</li>
+<li>ein Klick auf den ersten Punkt schliesst die Form und ergibt Fläche und Umfang</li>
+<li>ziehen Sie einen Punkt, um ihn zu verschieben, klicken Sie ihn an, um ihn zu entfernen, oder ziehen Sie den Punkt in der Mitte eines Teils, um einen neuen zu setzen</li>
+<li>Rückgängig, <kbd>Ctrl</kbd>+<kbd>Z</kbd> oder <kbd>Backspace</kbd> gehen einen Schritt zurück</li>
+</ul>
+<p>Längen und Flächen werden auf der Kugel der Erde berechnet und stimmen so auch für lange Linien.</p>
+<h2>Höhenprofil</h2>
+<p>Höhenprofil zeigt die Höhen entlang der Linie mit Auf- und Abstieg. Fahren Sie es entlang, um jeden Punkt auf der Karte zu sehen. Die Höhen kommen in der Schweiz aus einem 2-m-Raster, sonst aus einem 30-m-Raster.</p>
+<h2>Dateien</h2>
+<p>Eine gemessene Linie lässt sich als GPX (mit ihren Höhen), KML für Google Earth oder GeoJSON für ein GIS speichern. Das geht auch mit anderem in hippomaps:</p>
+<ul>
+<li>eine Route, als GPX-Track mit den Höhen bei Velo und zu Fuss</li>
+<li>die Ergebnisse einer Suche, als GPX-Wegpunkte, CSV oder GeoJSON</li>
+</ul>
+<p>Öffnen Sie eine GPX-, KML- oder GeoJSON-Datei in Distanz messen, oder ziehen Sie sie auf die Karte, um ihren Track mit Länge und Höhen zu sehen. Die Anleitung <a href="{{link "/guides/gpx"}}">Eine Route aufs GPS-Gerät bringen</a> geht es Schritt für Schritt durch.</p>
+<p class="pg-note">Dateien speichern und öffnen geht im Browser. Die App für Android kann keine Dateien speichern, die in der Seite entstehen.</p>
+</div>
+</div>
+{{end}}

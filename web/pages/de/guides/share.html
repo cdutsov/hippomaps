@@ -1,0 +1,24 @@
+{{define "title"}}Einen Ort, eine Suche oder eine Route teilen{{end}}
+{{define "desc"}}Links auf hippomaps öffnen für die Person, der Sie sie schicken, denselben Ort, dieselbe Suche oder dieselbe Route, im Browser oder in der App für Android.{{end}}
+{{define "image"}}place{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Anleitungen</a></p>
+<h1>Einen Ort, eine Suche oder eine Route teilen</h1>
+<p class="pg-lead">Jeder Knopf Teilen macht einen Link. Am Handy öffnet er das Menü zum Teilen, am Computer kopiert er den Link.</p>
+</section>
+<div class="pg-text">
+<h2>Ein Ort</h2>
+<p>Öffnen Sie den Ort und tippen Sie unter seinem Foto auf Teilen. Einen Punkt auf der Karte teilen Sie genauso aus Was ist hier. Der Link öffnet die Karte am Ort mit seiner Seite.</p>
+<h2>Eine Suche</h2>
+<p>Die Adresse im Browser enthält die Suche, etwa <a href="{{app "q" "Cafés in Zürich an der Limmat"}}">hippomaps.ch/?q=Cafés in Zürich an der Limmat</a>. Kopieren Sie sie, oder tippen Sie auf Teilen neben dem Ort der Suche. Ist ein Ergebnis offen, öffnet der Link dieses Ergebnis.</p>
+<h2>Eine Route</h2>
+<p>Tippen Sie unter der Route auf Teilen. Der Link enthält Start, Zwischenziele, Ziel und Verkehrsmittel. Ist der Start Ihr Standort, fehlt er im Link: Die Route öffnet sich dann ab dem Standort der Person, die ihn öffnet.</p>
+<h2>Ein Kartenausschnitt</h2>
+<p>Die Adresse der Seite enthält nach <code>#map=</code> auch den Ausschnitt: Zoom, Ort und in 3D den Winkel. Kopieren Sie sie, um zu teilen, was Sie sehen, etwa <a href="{{view "13.4/45.97630/7.65860/-115/62"}}">das Matterhorn in 3D</a>.</p>
+<h2>In der App</h2>
+<p>Auf einem Handy mit der App für Android öffnen sich Links auf hippomaps.ch in der App. Auch Links von Google Maps, Apple Maps, OpenStreetMap und <code>geo:</code>-Links lassen sich mit hippomaps öffnen.</p>
+</div>
+</div>
+{{end}}

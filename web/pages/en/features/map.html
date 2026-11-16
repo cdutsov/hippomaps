@@ -1,0 +1,34 @@
+{{define "title"}}Map styles, 3D terrain and live traffic{{end}}
+{{define "desc"}}The hippomaps map: day and night styles, an outdoor and a relief map, 3D terrain and buildings, relief shading, transit lines, live traffic in Switzerland, and the compass of your phone.{{end}}
+{{define "image"}}terrain{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>The map</h1>
+<p class="pg-lead">A vector map of the whole world from OpenStreetMap, sharp at every zoom, in the colours of Swiss topographic maps by day.</p>
+<ul class="pg-try"><li><a href="{{view "13.4/45.97630/7.65860/-115/62"}}">The Matterhorn in 3D</a></li></ul>
+</section>
+<figure class="pg-shot"><img src="{{img "terrain"}}" width="1280" height="800" alt="The Matterhorn and the glaciers around it in 3D on the outdoor map"><figcaption>The outdoor map in 3D, with relief shading.</figcaption></figure>
+<div class="pg-text">
+<h2>Styles</h2>
+<p>The menu has six styles: Day and night, Light, Dark, Outdoor, Relief and Driving. Day and night shows the light map by day and the dark map after sunset, by the sun where you are.</p>
+<h2>3D</h2>
+<p>The 3D button on the map tilts it and raises the terrain. 3D buildings and relief shading are switches in the menu. Turn the map with two fingers, or with the right mouse button.</p>
+</div>
+<figure class="pg-shot"><img src="{{img "night"}}" width="1280" height="800" alt="Zurich at night on the dark map with 3D buildings" loading="lazy"></figure>
+<div class="pg-split">
+<div>
+<h2>Traffic</h2>
+<p>In Switzerland, Traffic in the menu shows closures, queues and roadworks reported by the Federal Roads Office. Routes by car count them.</p>
+<h2>Transit lines</h2>
+<p>Transit in the menu draws the metro, light rail and tram lines of a city in their colours.</p>
+<h2>Compass</h2>
+<p>On a phone, a cone at your location shows where the phone points. Tap the location button again and the map turns with the phone. In Safari on an iPhone or iPad, the page asks once for the compass.</p>
+<h2>Languages</h2>
+<p>The page and the names on the map are in English, German, French or Italian, chosen under Language in the menu.</p>
+</div>
+<figure class="pg-shot"><img src="{{img "traffic"}}" width="1280" height="800" alt="Traffic around Zurich: closures, queues and roadworks on the motorways" loading="lazy"></figure>
+</div>
+</div>
+{{end}}

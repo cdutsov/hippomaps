@@ -1,0 +1,35 @@
+{{define "title"}}Gesprochene Navigation{{end}}
+{{define "desc"}}Freie Navigation Abbiegung für Abbiegung im Browser und auf Android: gesprochen in 18 Sprachen, mit Fahrspuren, Tempolimits, 3D-Ansicht und der Karte der Route für Orte ohne Verbindung gespeichert.{{end}}
+{{define "image"}}phone-navigation{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Funktionen</a></p>
+<h1>Gesprochene Navigation</h1>
+<p class="pg-lead">Tippen Sie unter einer Route mit Auto, Velo oder zu Fuss auf Start. hippomaps folgt Ihrem Standort, zeigt die nächste Abbiegung und sagt sie an.</p>
+</section>
+<div class="pg-split">
+<figure class="pg-shot pg-phone"><img src="{{img "phone-navigation"}}" width="390" height="844" alt="Navigation mit dem Auto auf einem Handy: die nächste Abbiegung oben, das Tempolimit und das Auto in 3D auf der Route"></figure>
+<div>
+<h2>Unterwegs</h2>
+<ul>
+<li>die nächste Abbiegung mit Distanz und Strasse und ein Pfeil auf der Karte an der Abbiegung</li>
+<li>mit dem Auto die Fahrspuren und das Tempolimit</li>
+<li>die Ankunftszeit und die restliche Distanz</li>
+<li>eine 3D-Ansicht, die sich mit Ihnen dreht, und Ganze Route für den Überblick</li>
+<li>eine neue Route, wenn Sie diese verlassen</li>
+</ul>
+<p>Vorschau fährt die Route vor der Abfahrt auf der Karte ab, dreimal so schnell.</p>
+<h2>In Ihrer Sprache</h2>
+<p>Die Ansagen gibt es auf Bulgarisch, Deutsch, Englisch, Estnisch, Finnisch, Französisch, Griechisch, Italienisch, Niederländisch, Norwegisch, Polnisch, Portugiesisch, Rumänisch, Russisch, Schwedisch, Spanisch, Ukrainisch und Ungarisch. Die Sprache von Route und Stimme stellen Sie im Menü unabhängig von der Sprache der Seite ein.</p>
+</div>
+</div>
+<div class="pg-text">
+<h2>Ohne Verbindung</h2>
+<p>Beim Start speichert hippomaps die Karte entlang der Route auf Ihrem Gerät, etwa 15 MB für 25 km mit dem Auto. Fällt die Verbindung in einem Tal oder Tunnel weg, geht die Navigation mit ihrer Karte und den Ansagen weiter. Eine neue Route braucht wieder die Verbindung. Der Schalter «Route für die Offline-Navigation automatisch speichern» im Menü schaltet das aus. Die Anleitung <a href="{{link "/guides/offline"}}">Ohne Verbindung navigieren</a> hat die Einzelheiten.</p>
+<h2>Im Browser oder in der App</h2>
+<p>Im Browser eines Handys läuft die Navigation, solange die Seite offen ist; hippomaps hält den Bildschirm an. Die App für Android navigiert auch bei gesperrtem Bildschirm oder mit einer anderen App im Vordergrund. Sie steht auf der <a href="https://gitlab.com/cdutsov/hippomaps/-/releases">Release-Seite</a> des Projekts.</p>
+<p class="pg-note">Die Stimmen sind Stimmen von <a href="https://github.com/OHF-Voice/piper1-gpl">Piper</a>, auf dem Server von hippomaps.</p>
+</div>
+</div>
+{{end}}

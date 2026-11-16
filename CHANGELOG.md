@@ -7,6 +7,12 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Added
 
+- Pages about the app on hippomaps.ch, in English and German: Features (search, place pages, directions, public
+  transport, navigation, measuring and GPS files, the map) and Guides (searches to try, a bike route with its height
+  profile, a train connection, GPX for a GPS device, navigation without a connection, sharing), with pictures and links
+  that open the map with each example. A link Guides under the panel and in the menu. The page of the app has a title
+  and description for search engines and a picture for links shared elsewhere; the sitemap lists the pages with their
+  other language.
 - Measure distance, from the menu or from the menu of a right click on the map (a long press on a phone): points set on
   the map give the length of the line, and the first point clicked again closes the shape and gives its area and
   perimeter. A point can be dragged, removed with a click, or added on the middle of a part; Undo goes back a step. The

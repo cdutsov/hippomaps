@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{template "title" .}} – hippomaps</title>
+<meta name="description" content="{{template "desc" .}}">
+<link rel="icon" href="{{asset "icon-32.png"}}" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
+<link rel="stylesheet" href="{{asset "pages/pages.css"}}">
+{{if .Public}}<link rel="canonical" href="{{.Public}}{{.URL}}">
+{{range .Alts}}<link rel="alternate" hreflang="{{.Lang}}" href="{{$.Public}}{{.URL}}">
+{{end}}<meta property="og:type" content="website">
+<meta property="og:site_name" content="hippomaps">
+<meta property="og:title" content="{{template "title" .}}">
+<meta property="og:description" content="{{template "desc" .}}">
+<meta property="og:url" content="{{.Public}}{{.URL}}">
+<meta property="og:image" content="{{.Public}}{{img .Image}}">
+<meta name="twitter:card" content="summary_large_image">
+{{end}}</head>
+<body class="pg pg-{{.Section}}">
+<header class="pg-head">
+  <div class="pg-wrap pg-bar">
+    <a class="pg-brand" href="{{.Home}}"><img src="{{asset "icon-192.png"}}" alt="" width="30" height="30"><span><span>hippo</span><span class="pg-maps">maps</span></span></a>
+    <nav class="pg-nav" aria-label="{{if eq .Lang "de"}}Seiten{{else}}Pages{{end}}">
+      <a href="{{.Features}}"{{if eq .Section "features"}} aria-current="page"{{end}}>{{if eq .Lang "de"}}Funktionen{{else}}Features{{end}}</a>
+      <a href="{{.Guides}}"{{if eq .Section "guides"}} aria-current="page"{{end}}>{{if eq .Lang "de"}}Anleitungen{{else}}Guides{{end}}</a>
+      {{range .Alts}}{{if ne .Lang $.Lang}}<a class="pg-lang" href="{{.URL}}" hreflang="{{.Lang}}" lang="{{.Lang}}">{{.Name}}</a>{{end}}{{end}}
+      <a class="pg-open" href="{{.Home}}">{{if eq .Lang "de"}}Karte öffnen{{else}}Open the map{{end}}</a>
+    </nav>
+  </div>
+</header>
+<main class="pg-main">
+{{template "body" .}}
+</main>
+<footer class="pg-foot">
+  <div class="pg-wrap">
+    <p><a href="{{.Home}}">hippomaps.ch</a> · <a href="{{.Features}}">{{if eq .Lang "de"}}Funktionen{{else}}Features{{end}}</a> · <a href="{{.Guides}}">{{if eq .Lang "de"}}Anleitungen{{else}}Guides{{end}}</a> · <a href="{{.Privacy}}">{{if eq .Lang "de"}}Datenschutz{{else}}Privacy{{end}}</a> · <a href="{{.Licences}}">{{if eq .Lang "de"}}Lizenzen{{else}}Licences{{end}}</a> · <a href="https://gitlab.com/cdutsov/hippomaps">{{if eq .Lang "de"}}Quellcode{{else}}Source code{{end}}</a></p>
+    <p>{{if eq .Lang "de"}}Kartendaten © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende. Karten, Suche und Höhen von <a href="https://overpass.ch">overpass.ch</a>.{{else}}Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors. Maps, search and heights by <a href="https://overpass.ch">overpass.ch</a>.{{end}}</p>
+  </div>
+</footer>
+</body>
+</html>

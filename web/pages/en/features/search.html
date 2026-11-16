@@ -1,0 +1,44 @@
+{{define "title"}}Search the map in plain words{{end}}
+{{define "desc"}}Search OpenStreetMap in plain sentences such as “cafés in Zurich by the Limmat” or “peaks over 4000 m in Valais”, in 16 languages, with photos, opening hours and downloads.{{end}}
+{{define "image"}}peaks{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>Search the map in plain words</h1>
+<p class="pg-lead">Write what you want to find and where, as a sentence. hippomaps reads it into a query of OpenStreetMap and draws every place it finds.</p>
+<ul class="pg-try">
+<li><a href="{{app "q" "peaks over 4000 m in Valais"}}">peaks over 4000 m in Valais</a></li>
+<li><a href="{{app "q" "bakeries open on Sunday in Zurich"}}">bakeries open on Sunday in Zurich</a></li>
+<li><a href="{{app "q" "charging stations along the A1 in Switzerland"}}">charging stations along the A1 in Switzerland</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "peaks"}}" width="1280" height="800" alt="The search “peaks over 4000 m in Switzerland”: the list of peaks with their photos, and the peaks on the map"><figcaption>“Peaks over 4000 m in Switzerland”: each peak with its photo from Wikimedia Commons.</figcaption></figure>
+<div class="pg-split">
+<div>
+<h2>What a sentence can say</h2>
+<p>A search names a kind of place and where to look. It can add more:</p>
+<ul>
+<li>a place: a town, a canton or state, a country, a street or a station (“museums in Vienna”)</li>
+<li>a river, a lake, a road or a border (“cafés by the Limmat”, “charging stations along the A1”, “bridges over the Rhine in Basel”)</li>
+<li>a distance from something (“hotels near Zurich main station”, “playgrounds near the lake”)</li>
+<li>a height (“peaks over 4000 m”), opening hours (“open on Sunday”, “open now”) or a feature (“with outdoor seating”, “vegan”, “with wifi”)</li>
+<li>a way between two places (“hiking trails from Grindelwald to Wengen”)</li>
+<li>a brand or a name (“Migros in Bern”)</li>
+</ul>
+<p>Without a place, the search looks in the part of the map you see.</p>
+</div>
+<figure class="pg-shot pg-phone"><img src="{{img "phone-search"}}" width="390" height="844" alt="The search “bakeries open on Sunday in Zurich” on a phone: the bakeries on the map and the list with their opening hours"></figure>
+</div>
+<div class="pg-text">
+<h2>The answer</h2>
+<p>The line above the list says how the sentence was read, such as “Cafe, by Limmat (within 150 m) in Zurich”. When a word has more than one meaning, other readings appear as buttons under it, and places of the same name as well. The river, road or border of the search is drawn on the map.</p>
+<p>Each result shows its kind, address, a photo or logo, and whether it is open now. Once you zoom or move the map, the list shows the results in view. A tap opens the <a href="{{link "/features/places"}}">page of the place</a>.</p>
+<p>The results can be downloaded as CSV for a spreadsheet, GeoJSON for a GIS, or GPX waypoints for a GPS device (<a href="{{link "/guides/gpx"}}">how</a>).</p>
+<h2>Languages</h2>
+<p>The search reads sentences in English, German, French, Italian, Spanish, Portuguese, Dutch, Polish, Czech, Hungarian, Swedish, Greek, Turkish, Russian, Ukrainian and Bulgarian. Place names are understood in their own language and in yours: “Genf”, “Genève” and “Geneva” are the same city.</p>
+<p>The search is <a href="https://gitlab.com/cdutsov/overpass-search">overpass-search</a>. It reads the sentence with word lists and templates, without a language model, so the same sentence always gives the same query.</p>
+<p>More searches to try are in the <a href="{{link "/guides/search-examples"}}">list of examples</a>.</p>
+</div>
+</div>
+{{end}}

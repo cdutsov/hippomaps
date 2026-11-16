@@ -83,6 +83,18 @@ for pr in "licences|Licences and sources" "de/licences|Lizenzen und Quellen"; do
 	grep -qF '<a href="https://opentransportdata.swiss">opentransportdata.swiss</a>' "$TMP/b" && grep -qF 'https://transitous.org/sources/' "$TMP/b" && grep -qF 'sofia.bg' "$TMP/b" &&
 		ok "the licences /${pr%%|*}: the sources of the timetables" || ko "/${pr%%|*}: no sources of the timetables"
 done
+# the pages about the app (web/pages): features and guides in English and German, for search engines, in the sitemap
+# with each other language; their pictures there; the page of the app links them without JavaScript
+for pr in "features|A map you can ask in plain words" "de/features|Eine Karte, die Sie in Alltagssprache fragen" "guides/gpx|Put a route on a GPS device" "de/guides/gpx|Eine Route aufs GPS-Gerät bringen"; do
+	code=$(get "$PAGE/${pr%%|*}")
+	img=$(grep -o '/static/pages/img/[a-z]*/[a-z-]*\.webp?v=[0-9a-f]*' "$TMP/b" | head -n1)
+	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -qF "<link rel=\"canonical\" href=\"$PAGE/${pr%%|*}\">" "$TMP/b" && [[ -z $(hdr X-Robots-Tag) ]] &&
+		[[ -n $img && $(curl -s -o /dev/null -w '%{http_code}' "$PAGE$img") == 200 ]] && ok "the page /${pr%%|*}, with its pictures" || ko "/${pr%%|*}: HTTP $code"
+done
+code=$(get "$PAGE/sitemap.xml")
+grep -qF '<xhtml:link rel="alternate" hreflang="de" href="'"$PAGE"'/de/guides/gpx"/>' "$TMP/b" && ok "the guides in the sitemap, with their German pages" || ko "the sitemap does not list the guides"
+code=$(get "$PAGE/")
+grep -qF '"@type":"WebApplication"' "$TMP/b" && grep -qF '<meta property="og:image"' "$TMP/b" && grep -qF 'href="/guides">Guides</a>' "$TMP/b" && ok "the page: its description for search engines and links, and the guides" || ko "the page: no description for search engines"
 # the app for Android opens links of the site: its signing key in assetlinks.json
 code=$(get "$PAGE/.well-known/assetlinks.json")
 [[ $code == 200 ]] && jq -e '.[0].target.package_name == "ch.hippomaps.app" and (.[0].target.sha256_cert_fingerprints | length) > 0' "$TMP/b" >/dev/null && ok "assetlinks.json for the app" || ko "assetlinks.json: HTTP $code"

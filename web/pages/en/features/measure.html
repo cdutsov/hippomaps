@@ -1,0 +1,35 @@
+{{define "title"}}Measure distance and area, GPX, KML and GeoJSON{{end}}
+{{define "desc"}}Measure a distance or an area on the map with hippomaps, get its height profile, and save lines, routes and places as GPX, KML or GeoJSON. Open GPX, KML and GeoJSON files to see a track.{{end}}
+{{define "image"}}measure{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>Measure and GPS files</h1>
+<p class="pg-lead">Measure the length of a walk or the area of a field, see the heights along a line, and move tracks between hippomaps and a GPS device.</p>
+<ul class="pg-try"><li><a href="{{view "16.6/47.36530/8.54640"}}">Open the map at the Sechseläutenplatz in Zurich</a></li></ul>
+</section>
+<figure class="pg-shot"><img src="{{img "measure"}}" width="1280" height="800" alt="The area of the Sechseläutenplatz in Zurich measured: the shape on the map, its area and its perimeter"><figcaption>A closed shape gives its area and perimeter.</figcaption></figure>
+<div class="pg-text">
+<h2>Measure distance</h2>
+<p>Open Measure distance from the menu, or right-click the map (long press on a phone) and choose it there. Then:</p>
+<ul>
+<li>each click on the map adds a point and shows the length of the line</li>
+<li>a click on the first point closes the shape and gives its area and perimeter</li>
+<li>drag a point to move it, click it to remove it, or drag the dot in the middle of a part to add one</li>
+<li>Undo, <kbd>Ctrl</kbd>+<kbd>Z</kbd> or <kbd>Backspace</kbd> go back a step</li>
+</ul>
+<p>Lengths and areas are calculated on the sphere of the Earth, so they hold for long lines too.</p>
+<h2>Height profile</h2>
+<p>Height profile shows the heights along the line with the climb and the descent. Move along it to see each point on the map. The heights come from a 2 m grid in Switzerland and a 30 m grid elsewhere.</p>
+<h2>Files</h2>
+<p>A measured line can be saved as GPX (with its heights), KML for Google Earth, or GeoJSON for a GIS. The same goes for other things in hippomaps:</p>
+<ul>
+<li>a route, as a GPX track with its heights by bike and on foot</li>
+<li>the results of a search, as GPX waypoints, CSV or GeoJSON</li>
+</ul>
+<p>Open a GPX, KML or GeoJSON file in Measure, or drop it on the map, to see its track with its length and heights. The guide <a href="{{link "/guides/gpx"}}">Put a route on a GPS device</a> goes through it step by step.</p>
+<p class="pg-note">Saving and opening files works in the browser. The app for Android cannot save files made in the page.</p>
+</div>
+</div>
+{{end}}

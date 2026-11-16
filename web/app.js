@@ -327,6 +327,7 @@ const EN = {
   poweredBy: "Powered by",
   privacy: "Privacy",
   licences: "Licences",
+  guides: "Guides",
   clear: "Clear",
   search: "Search",
   sheet: "Show or hide the list",
@@ -877,9 +878,12 @@ const showView = (v) => {
 // the credits of the voices and the traffic; the map credits OpenStreetMap itself, each picture its source
 // the credits (voices, traffic, map data, libraries) are a page of their own, linked small under the panel and in the menu
 const licencesHref = () => root.dataset.privacy.replace(/\/privacy$/, UI === "de" ? "/de/licences" : "/licences");
+// the guides and the pages of the features (web/pages), in German for German, else in English
+const guidesHref = () => root.dataset.privacy.replace(/\/privacy$/, UI === "de" ? "/de/guides" : "/guides");
 const foot = el("div", "lm-foot");
 const footLink = el("a", "lm-licences", { href: licencesHref() }, T.licences);
-foot.append(footLink);
+const footGuides = el("a", "lm-guides", { href: guidesHref(), "data-t": "guides" }, T.guides);
+foot.append(footGuides, " · ", footLink);
 foot.hidden = !foot.textContent;
 side.append(sheetBtn, top, form, status, body, foot);
 
@@ -2088,6 +2092,7 @@ langSel.addEventListener("change", () => {
 const privacyHref = () => root.dataset.privacy.replace(/\/privacy$/, UI === "de" ? "/de/privacy" : "/privacy");
 const privacyLink = el("a", "lm-menu-privacy", { href: privacyHref() }, T.privacy);
 const licencesLink = el("a", "lm-menu-privacy lm-licences", { href: licencesHref() }, T.licences);
+const guidesLink = el("a", "lm-menu-privacy lm-guides", { href: guidesHref(), "data-t": "guides" }, T.guides);
 // overpass.ch, its German pages for German
 const overpassHref = () => UI === "de" ? "https://overpass.ch/de/" : "https://overpass.ch/";
 const poweredLink = poweredBy();
@@ -2133,7 +2138,7 @@ menuMain.append(el("h2", "lm-menu-title", {}, T.mapStyle), styleGrid, el("h2", "
   ...(ROUTE && SAVE_ROUTE ? [saveRouteRow] : []),
   ...(FEEDBACK ? [fbRow] : []),
   forgetBtn, about,
-  poweredLink, privacyLink, licencesLink);
+  poweredLink, privacyLink, licencesLink, guidesLink);
 menu.append(menuHead, menuMain, fbView);
 root.append(backdrop, menu);
 fillFeedback(); // (after privacyHref)
@@ -7739,6 +7744,7 @@ function setLang(chosen) {
   fillFeedback();
   privacyLink.href = privacyHref();
   footLink.href = licencesLink.href = licencesHref();
+  footGuides.href = guidesLink.href = guidesHref();
   poweredLink.href = overpassHref();
   hints.splice(0, hints.length, ...(T.hints || []));
   if (!input.value) newHint();

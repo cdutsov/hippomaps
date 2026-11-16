@@ -1,0 +1,34 @@
+{{define "title"}}Find a train connection{{end}}
+{{define "desc"}}How to find a train, tram or bus connection in Europe with hippomaps: leave now or at a set time, platforms, changes, walks to the stops and live delays in Switzerland.{{end}}
+{{define "image"}}transit{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Guides</a></p>
+<h1>Find a train connection</h1>
+<p class="pg-lead">From Zurich main station to Lugano as the example. The same steps work for a tram across town or a bus in the mountains.</p>
+<ul class="pg-try"><li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "46.00548,8.94696" "tn" "Lugano" "mode" "transit"}}">Open this connection</a></li></ul>
+</section>
+<ol class="pg-steps">
+<li>Tap the blue arrow beside the search box and choose the destination.</li>
+<li>Choose Transit as the way to travel.</li>
+<li>Leave now is set. To travel later, tap it and choose Depart at or Arrive by, with a date and time.</li>
+<li>The connections appear with their times and changes. Tap one to see its legs.</li>
+<li>Earlier and Later show more connections.</li>
+</ol>
+<figure class="pg-shot"><img src="{{img "transit"}}" width="1280" height="800" alt="Connections from Zurich main station to Lugano with their times, changes and platforms" loading="lazy"></figure>
+<div class="pg-text">
+<h2>Read a connection</h2>
+<ul>
+<li>Each leg names its line, the direction, the stop where you get on and off, and the platform or stand.</li>
+<li>The number of stops tells you when to get off.</li>
+<li>The walks to the first stop and from the last follow the streets, with their time.</li>
+<li>The lines are drawn on the map in their colours.</li>
+</ul>
+<h2>Delays and disruptions</h2>
+<p>Where an operator publishes live data, the times include delays and a cancelled leg is marked. In Switzerland, messages about disruptions appear with the leg they concern.</p>
+<h2>Where it works</h2>
+<p>Timetables of 43 regions of Europe are loaded every night. Elsewhere hippomaps finds no connection. More on the page <a href="{{link "/features/public-transport"}}">Public transport</a>.</p>
+</div>
+</div>
+{{end}}

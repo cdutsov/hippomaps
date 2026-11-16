@@ -202,9 +202,11 @@ try:
         # the map credits OpenStreetMap; the side panel and the menu link the licences and spell out no credit
         check(js("!!document.querySelector('.maplibregl-ctrl-attrib a[href=\"https://www.openstreetmap.org/copyright\"]')"), "the map credits OpenStreetMap")
         check(js("(() => { const f = document.querySelector('.lm-foot'), a = f.querySelector('a.lm-licences'), m = document.querySelector('.lm-menu a.lm-licences');"
-                 " return f.textContent === 'Licences' && !!a && !!m && /\\/licences$/.test(new URL(a.href).pathname) && /\\/licences$/.test(new URL(m.href).pathname)"
+                 " return f.textContent === 'Guides · Licences' && !!a && !!m && /\\/licences$/.test(new URL(a.href).pathname) && /\\/licences$/.test(new URL(m.href).pathname)"
                  " && !/Piper|FEDRO|CC BY|OpenStreetMap|Wikimedia/.test(document.querySelector('.lm-side').textContent + document.querySelector('.lm-menu').textContent); })()"),
               "no credits spelled out in the side panel and the menu: a small link to the licences in each")
+        check(js("(() => { const g = [...document.querySelectorAll('a.lm-guides')]; return g.length === 2 && g.every(a => a.textContent === 'Guides' && new URL(a.href).pathname.endsWith('/guides')); })()"),
+              "the side panel and the menu link the guides")
         return near
     # (the tiles the map asks for until it first has nothing left to do: window.hmAsked)
     ask_hook = call("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(window, 'hmMap', { configurable: true, set(m) {"
@@ -499,6 +501,8 @@ try:
           "the menu links the privacy policy, in German for German")
     check(js("[...document.querySelectorAll('a.lm-licences')].length === 2 && [...document.querySelectorAll('a.lm-licences')].every(a => a.textContent === 'Lizenzen' && new URL(a.href).pathname.endsWith('/de/licences'))"),
           "the links to the licences in German for German")
+    check(js("[...document.querySelectorAll('a.lm-guides')].length === 2 && [...document.querySelectorAll('a.lm-guides')].every(a => a.textContent === 'Anleitungen' && new URL(a.href).pathname.endsWith('/de/guides'))"),
+          "the links to the guides in German for German")
     check(js("(() => { const p = document.querySelector('.lm-about-text'); return !!p && p.textContent.startsWith('HippoMaps ist freie Open-Source-Software,') && p.querySelectorAll('a').length === 1; })()"),
           "the free software text in German, with its link")
     check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/de/'"), "Powered by overpass.ch links overpass.ch, in German for German")

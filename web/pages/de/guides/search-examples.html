@@ -1,0 +1,75 @@
+{{define "title"}}Suchen zum Ausprobieren{{end}}
+{{define "desc"}}Beispiele für Suchen in hippomaps in Alltagssprache: Orte in einer Stadt, an einem Fluss oder einer Strasse, in der Nähe von etwas, nach Höhe oder Öffnungszeiten. Jede öffnet die Karte mit ihren Ergebnissen.{{end}}
+{{define "image"}}peaks{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Anleitungen</a></p>
+<h1>Suchen zum Ausprobieren</h1>
+<p class="pg-lead">Jede Suche unten öffnet hippomaps mit ihren Ergebnissen. Ändern Sie den Ort oder die Art von Ort, um sie zu Ihrer zu machen.</p>
+</section>
+<div class="pg-text">
+<h2>In einer Stadt oder Region</h2>
+<p>Eine Art von Ort und der Name einer Stadt, eines Kantons, Bundeslands, einer Insel oder eines Lands.</p>
+<ul class="pg-try">
+<li><a href="{{app "q" "Museen in Zürich"}}">Museen in Zürich</a></li>
+<li><a href="{{app "q" "vegane Restaurants in Berlin"}}">vegane Restaurants in Berlin</a></li>
+<li><a href="{{app "q" "Pizza in Neapel"}}">Pizza in Neapel</a></li>
+<li><a href="{{app "q" "Apotheken in Genf"}}">Apotheken in Genf</a></li>
+<li><a href="{{app "q" "öffentliche Toiletten in Paris"}}">öffentliche Toiletten in Paris</a></li>
+<li><a href="{{app "q" "Bibliotheken in Wien"}}">Bibliotheken in Wien</a></li>
+<li><a href="{{app "q" "Velogeschäfte in Amsterdam"}}">Velogeschäfte in Amsterdam</a></li>
+<li><a href="{{app "q" "Strände in Mallorca"}}">Strände in Mallorca</a></li>
+<li><a href="{{app "q" "Burgen in Bayern"}}">Burgen in Bayern</a></li>
+<li><a href="{{app "q" "Leuchttürme in der Bretagne"}}">Leuchttürme in der Bretagne</a></li>
+<li><a href="{{app "q" "Bancomaten in Sofia"}}">Bancomaten in Sofia</a></li>
+</ul>
+<h2>Draussen</h2>
+<ul class="pg-try">
+<li><a href="{{app "q" "Berghütten in Graubünden"}}">Berghütten in Graubünden</a></li>
+<li><a href="{{app "q" "Campingplätze im Tessin"}}">Campingplätze im Tessin</a></li>
+<li><a href="{{app "q" "Gletscher im Wallis"}}">Gletscher im Wallis</a></li>
+<li><a href="{{app "q" "Seen in Graubünden"}}">Seen in Graubünden</a></li>
+<li><a href="{{app "q" "Wasserfälle im Berner Oberland"}}">Wasserfälle im Berner Oberland</a></li>
+<li><a href="{{app "q" "Höhlen in Slowenien"}}">Höhlen in Slowenien</a></li>
+<li><a href="{{app "q" "Vulkane in Island"}}">Vulkane in Island</a></li>
+<li><a href="{{app "q" "Aussichtspunkte in Luzern"}}">Aussichtspunkte in Luzern</a></li>
+<li><a href="{{app "q" "Bergbahnen in Zermatt"}}">Bergbahnen in Zermatt</a></li>
+<li><a href="{{app "q" "Trinkwasser in Zürich"}}">Trinkwasser in Zürich</a></li>
+</ul>
+<h2>An einem Fluss, einer Strasse oder einem See</h2>
+<p>Der Fluss, die Strasse oder das Ufer ist auf der Karte gezeichnet, und die Ergebnisse sind die in der Nähe.</p>
+<ul class="pg-try">
+<li><a href="{{app "q" "Cafés in Zürich an der Limmat"}}">Cafés in Zürich an der Limmat</a></li>
+<li><a href="{{app "q" "Brücken über den Rhein in Basel"}}">Brücken über den Rhein in Basel</a></li>
+<li><a href="{{app "q" "Ladestationen entlang der A1 in der Schweiz"}}">Ladestationen entlang der A1 in der Schweiz</a></li>
+<li><a href="{{app "q" "Spielplätze in Zürich am Zürichsee"}}">Spielplätze in Zürich am Zürichsee</a></li>
+</ul>
+<h2>In der Nähe von etwas</h2>
+<ul class="pg-try">
+<li><a href="{{app "q" "Hotels beim Zürich HB"}}">Hotels beim Zürich HB</a></li>
+<li><a href="{{app "q" "Wanderwege von Grindelwald nach Wengen"}}">Wanderwege von Grindelwald nach Wengen</a></li>
+</ul>
+<p>Mit freigegebenem Standort sucht «Cafés in meiner Nähe» um Sie herum.</p>
+<h2>Mit Höhe, Öffnungszeiten oder einem Merkmal</h2>
+<ul class="pg-try">
+<li><a href="{{app "q" "Gipfel über 4000 m im Wallis"}}">Gipfel über 4000 m im Wallis</a></li>
+<li><a href="{{app "q" "Bäckereien am Sonntag offen in Zürich"}}">Bäckereien am Sonntag offen in Zürich</a></li>
+<li><a href="{{app "q" "Restaurants mit Terrasse in Luzern"}}">Restaurants mit Terrasse in Luzern</a></li>
+</ul>
+<h2>Eine Marke oder ein Name</h2>
+<ul class="pg-try">
+<li><a href="{{app "q" "Migros in Bern"}}">Migros in Bern</a></li>
+</ul>
+<h2>Wenn eine Suche nichts findet</h2>
+<ul>
+<li>Lesen Sie die Zeile über der Liste: Sie sagt, wie der Satz gelesen wurde. Wurde ein Wort als Ort genommen, schreiben Sie den Ort anders, etwa mit seinem amtlichen Namen.</li>
+<li>Versuchen Sie eine Lesart oder einen Ort aus den Knöpfen unter dieser Zeile.</li>
+<li>Nehmen Sie ein gängigeres Wort für die Art von Ort.</li>
+<li>Zoomen Sie hinaus oder verschieben Sie die Karte: Ohne Ort sucht die Suche im Bild.</li>
+</ul>
+<p>Eine Suche, die gehen sollte und nicht geht, können Sie uns mit Feedback im Menü schicken.</p>
+<p>Was ein Satz enthalten kann, steht auf der Seite <a href="{{link "/features/search"}}">Suche in Alltagssprache</a>.</p>
+</div>
+</div>
+{{end}}

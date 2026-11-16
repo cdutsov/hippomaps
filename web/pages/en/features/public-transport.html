@@ -1,0 +1,38 @@
+{{define "title"}}Public transport journeys in Europe{{end}}
+{{define "desc"}}Train, tram, bus, boat and cable car connections across Europe in hippomaps: leave now or at a chosen time, with platforms, walks to the stops and live delays in Switzerland.{{end}}
+{{define "image"}}transit{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>Public transport in Europe</h1>
+<p class="pg-lead">Choose the train as the way to travel in directions, and hippomaps finds connections by train, tram, metro, bus, boat and cable car, with the walks to and from the stops.</p>
+<ul class="pg-try">
+<li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "46.00548,8.94696" "tn" "Lugano" "mode" "transit"}}">From Zurich main station to Lugano</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "transit"}}" width="1280" height="800" alt="Connections by train from Zurich main station to Lugano: the times, the changes and the platforms, and the line on the map"></figure>
+<div class="pg-split">
+<div>
+<h2>A connection</h2>
+<ul>
+<li>leave now, or set a time to leave or to arrive</li>
+<li>each leg with its line, the direction, the stop where it starts and ends, the platform, and the number of stops</li>
+<li>the walks to the first stop and from the last, along the streets</li>
+<li>the line drawn on the map in its colour</li>
+<li>later and earlier connections</li>
+</ul>
+<h2>Delays</h2>
+<p>Where an operator publishes them, the times include delays, and messages about disruptions appear with the connection. In Switzerland this covers the trains, trams and buses of opentransportdata.swiss.</p>
+</div>
+<figure class="pg-shot pg-phone"><img src="{{img "phone-transit"}}" width="390" height="844" alt="Public transport from Zürich Triemli to Umiken on a phone: the tram, the train and the bus on the map, and the connection with its lines, times and platforms" loading="lazy"></figure>
+</div>
+<div class="pg-text">
+<h2>Where</h2>
+<p>The timetables cover 43 regions of Europe: the timetables that operators and authorities publish, collected by <a href="https://transitous.org">Transitous</a>. They are loaded again every night. The <a href="{{.Licences}}">licences page</a> lists the sources.</p>
+<p>Transit lines (metro, light rail and tram) can also be shown on the map in their colours: Transit in the menu.</p>
+<p>Steps to plan a trip are in the guide <a href="{{link "/guides/train"}}">Find a train connection</a>.</p>
+<p class="pg-note">Journeys are found by <a href="https://github.com/motis-project/motis">MOTIS</a>.</p>
+</div>
+</div>
+{{end}}

@@ -1,0 +1,24 @@
+{{define "title"}}Share a place, a search or a route{{end}}
+{{define "desc"}}Links to hippomaps open the same place, search or route for the person you send them to, in the browser or in the app for Android.{{end}}
+{{define "image"}}place{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Guides</a></p>
+<h1>Share a place, a search or a route</h1>
+<p class="pg-lead">Each Share button makes a link. On a phone it opens the share menu; on a computer it copies the link.</p>
+</section>
+<div class="pg-text">
+<h2>A place</h2>
+<p>Open the place and tap Share under its photo. A point on the map is shared the same way from What is here. The link opens the map at the place with its page.</p>
+<h2>A search</h2>
+<p>The address in the browser holds the search, such as <a href="{{app "q" "cafés in Zurich by the Limmat"}}">hippomaps.ch/?q=cafés in Zurich by the Limmat</a>. Copy it, or tap Share beside the place of the search. With a result open, the link opens that result.</p>
+<h2>A route</h2>
+<p>Tap Share under the route. The link holds the start, the stops, the destination and the way to travel. When the start is your location, it is left out of the link: the route opens from the location of the person who opens it.</p>
+<h2>A view of the map</h2>
+<p>The address of the page also holds the view, after <code>#map=</code>: the zoom, the place and, in 3D, the angle. Copy it to share what you see, such as <a href="{{view "13.4/45.97630/7.65860/-115/62"}}">the Matterhorn in 3D</a>.</p>
+<h2>In the app</h2>
+<p>On a phone with the app for Android, links to hippomaps.ch open in the app. Links from Google Maps, Apple Maps, OpenStreetMap and <code>geo:</code> links can be opened with hippomaps too.</p>
+</div>
+</div>
+{{end}}

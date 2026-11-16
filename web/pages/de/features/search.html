@@ -1,0 +1,44 @@
+{{define "title"}}Die Karte in Alltagssprache durchsuchen{{end}}
+{{define "desc"}}OpenStreetMap in ganzen Sätzen durchsuchen, etwa «Cafés in Zürich an der Limmat» oder «Gipfel über 4000 m im Wallis», in 16 Sprachen, mit Fotos, Öffnungszeiten und Downloads.{{end}}
+{{define "image"}}peaks{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Funktionen</a></p>
+<h1>Suche in Alltagssprache</h1>
+<p class="pg-lead">Schreiben Sie als Satz, was Sie finden wollen und wo. hippomaps liest ihn als Abfrage von OpenStreetMap und zeichnet jeden gefundenen Ort.</p>
+<ul class="pg-try">
+<li><a href="{{app "q" "Gipfel über 4000 m im Wallis"}}">Gipfel über 4000 m im Wallis</a></li>
+<li><a href="{{app "q" "Bäckereien am Sonntag offen in Zürich"}}">Bäckereien am Sonntag offen in Zürich</a></li>
+<li><a href="{{app "q" "Ladestationen entlang der A1 in der Schweiz"}}">Ladestationen entlang der A1 in der Schweiz</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "peaks"}}" width="1280" height="800" alt="Die Suche «Gipfel über 4000 m in der Schweiz»: die Liste der Gipfel mit ihren Fotos und die Gipfel auf der Karte"><figcaption>«Gipfel über 4000 m in der Schweiz»: jeder Gipfel mit seinem Foto von Wikimedia Commons.</figcaption></figure>
+<div class="pg-split">
+<div>
+<h2>Was ein Satz sagen kann</h2>
+<p>Eine Suche nennt eine Art von Ort und wo gesucht wird. Dazu kann sie mehr sagen:</p>
+<ul>
+<li>einen Ort: eine Stadt, einen Kanton oder ein Bundesland, ein Land, eine Strasse oder einen Bahnhof («Museen in Wien»)</li>
+<li>einen Fluss, einen See, eine Strasse oder eine Grenze («Cafés an der Limmat», «Ladestationen entlang der A1», «Brücken über den Rhein in Basel»)</li>
+<li>eine Entfernung zu etwas («Hotels beim Zürich HB», «Spielplätze am Zürichsee»)</li>
+<li>eine Höhe («Gipfel über 4000 m»), Öffnungszeiten («am Sonntag offen», «jetzt offen») oder ein Merkmal («mit Terrasse», «vegan»)</li>
+<li>einen Weg zwischen zwei Orten («Wanderwege von Grindelwald nach Wengen»)</li>
+<li>eine Marke oder einen Namen («Migros in Bern»)</li>
+</ul>
+<p>Ohne Ort sucht die Suche im sichtbaren Teil der Karte.</p>
+</div>
+<figure class="pg-shot pg-phone"><img src="{{img "phone-search"}}" width="390" height="844" alt="Die Suche «bakeries open on Sunday in Zurich» auf einem Handy: die Bäckereien auf der Karte und die Liste mit ihren Öffnungszeiten"></figure>
+</div>
+<div class="pg-text">
+<h2>Die Antwort</h2>
+<p>Die Zeile über der Liste sagt, wie der Satz gelesen wurde. Hat ein Wort mehr als eine Bedeutung, stehen andere Lesarten als Knöpfe darunter, ebenso Orte mit gleichem Namen. Der Fluss, die Strasse oder die Grenze der Suche ist auf der Karte gezeichnet.</p>
+<p>Jedes Ergebnis zeigt Art, Adresse, Foto oder Logo und ob es gerade offen ist. Sobald Sie die Karte zoomen oder verschieben, zeigt die Liste die Ergebnisse im Bild. Ein Tipp öffnet die <a href="{{link "/features/places"}}">Seite des Orts</a>.</p>
+<p>Die Ergebnisse lassen sich herunterladen: als CSV für eine Tabelle, GeoJSON für ein GIS oder GPX-Wegpunkte für ein GPS-Gerät (<a href="{{link "/guides/gpx"}}">wie</a>).</p>
+<h2>Sprachen</h2>
+<p>Die Suche liest Sätze auf Deutsch, Englisch, Französisch, Italienisch, Spanisch, Portugiesisch, Niederländisch, Polnisch, Tschechisch, Ungarisch, Schwedisch, Griechisch, Türkisch, Russisch, Ukrainisch und Bulgarisch. Ortsnamen versteht sie in ihrer eigenen Sprache und in Ihrer: «Genf», «Genève» und «Geneva» sind dieselbe Stadt.</p>
+<p>Die Suche ist <a href="https://gitlab.com/cdutsov/overpass-search">overpass-search</a>. Sie liest den Satz mit Wortlisten und Vorlagen, ohne Sprachmodell, und derselbe Satz ergibt immer dieselbe Abfrage.</p>
+<p>Mehr Suchen zum Ausprobieren stehen in der <a href="{{link "/guides/search-examples"}}">Liste der Beispiele</a>.</p>
+</div>
+</div>
+{{end}}

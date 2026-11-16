@@ -1,0 +1,35 @@
+{{define "title"}}Eine Velo-Route mit Höhenprofil planen{{end}}
+{{define "desc"}}So planen Sie eine Velo-Route in hippomaps: Start, Zwischenziele und Ziel, andere Routen, das Höhenprofil mit Auf- und Abstieg, Orte am Weg und die Route als GPX.{{end}}
+{{define "image"}}bike{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Anleitungen</a></p>
+<h1>Eine Velo-Route mit Höhenprofil planen</h1>
+<p class="pg-lead">Als Beispiel vom Zürich HB auf den Uetliberg: 10 km und etwa 500 m Aufstieg.</p>
+<ul class="pg-try"><li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "47.34936,8.49165" "tn" "Uetliberg" "mode" "bike"}}">Diese Route öffnen</a></li></ul>
+</section>
+<ol class="pg-steps">
+<li>Tippen Sie auf den blauen Pfeil neben dem Suchfeld. Die Route öffnet sich mit Ihrem Standort als Start.</li>
+<li>Tippen Sie das Ziel ein, etwa «Uetliberg», und wählen Sie es aus der Liste. Sie können auch einen Ort öffnen und auf Route tippen, oder mit der rechten Maustaste auf die Karte klicken (am Handy lange drücken) und Route hierher wählen.</li>
+<li>Für einen anderen Start tippen Sie auf den Start und geben einen anderen Ort ein.</li>
+<li>Wählen Sie Velo. Die Route erscheint mit Zeit, Distanz und Höhenprofil.</li>
+<li>Um unterwegs an einem Ort vorbeizukommen, fügen Sie ihn als Zwischenziel hinzu: bis zu 8.</li>
+</ol>
+<figure class="pg-shot"><img src="{{img "bike"}}" width="1280" height="800" alt="Die Velo-Route vom Zürich HB auf den Uetliberg mit ihrem Höhenprofil" loading="lazy"></figure>
+<div class="pg-text">
+<h2>Das Höhenprofil lesen</h2>
+<p>Das Profil zeigt die Höhen entlang der Route mit dem ganzen Auf- und Abstieg. Fahren Sie mit Maus oder Finger darüber: Ein Punkt auf der Karte zeigt, wo das ist. So finden Sie ein steiles Stück, bevor Sie es fahren.</p>
+<h2>Andere Routen</h2>
+<p>Gibt es andere gute Routen, erscheinen sie heller auf der Karte mit der Zeit, die sie länger dauern. Tippen Sie auf eine, um ihr Profil zu sehen.</p>
+<h2>Wasser, Essen und Velogeschäfte am Weg</h2>
+<p>Unter der Route listet Entlang der Route Trinkwasser, Essen, Cafés, Velogeschäfte und mehr in der Nähe der Route, mit der Distanz zu jedem.</p>
+<h2>Mitnehmen</h2>
+<ul>
+<li>Tippen Sie auf GPX, um die Route als Track mit ihren Höhen zu speichern, für einen Velocomputer oder eine Uhr (<a href="{{link "/guides/gpx"}}">mehr zu GPX</a>).</li>
+<li>Tippen Sie auf Start für die <a href="{{link "/features/navigation"}}">gesprochene Navigation</a>. Die Karte entlang der Route wird beim Start auf dem Handy gespeichert.</li>
+<li>Teilen Sie die Route als Link (<a href="{{link "/guides/share"}}">wie</a>).</li>
+</ul>
+</div>
+</div>
+{{end}}

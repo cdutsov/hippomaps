@@ -1,0 +1,76 @@
+{{define "title"}}Searches to try{{end}}
+{{define "desc"}}Example searches for hippomaps in plain English: places in a town, along a river or road, near something, by height or opening hours. Each one opens the map with its results.{{end}}
+{{define "image"}}peaks{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Guides</a></p>
+<h1>Searches to try</h1>
+<p class="pg-lead">Each search below opens hippomaps with its results. Change the place or the kind of place to make it your own.</p>
+</section>
+<div class="pg-text">
+<h2>In a town or region</h2>
+<p>A kind of place and the name of a town, canton, state, island or country.</p>
+<ul class="pg-try">
+<li><a href="{{app "q" "museums in Zurich"}}">museums in Zurich</a></li>
+<li><a href="{{app "q" "vegan restaurants in Berlin"}}">vegan restaurants in Berlin</a></li>
+<li><a href="{{app "q" "pizza in Naples"}}">pizza in Naples</a></li>
+<li><a href="{{app "q" "pharmacies in Geneva"}}">pharmacies in Geneva</a></li>
+<li><a href="{{app "q" "public toilets in Paris"}}">public toilets in Paris</a></li>
+<li><a href="{{app "q" "libraries in Vienna"}}">libraries in Vienna</a></li>
+<li><a href="{{app "q" "bike shops in Amsterdam"}}">bike shops in Amsterdam</a></li>
+<li><a href="{{app "q" "beaches in Mallorca"}}">beaches in Mallorca</a></li>
+<li><a href="{{app "q" "castles in Bavaria"}}">castles in Bavaria</a></li>
+<li><a href="{{app "q" "lighthouses in Brittany"}}">lighthouses in Brittany</a></li>
+<li><a href="{{app "q" "ATMs in Sofia"}}">ATMs in Sofia</a></li>
+</ul>
+<h2>Outdoors</h2>
+<ul class="pg-try">
+<li><a href="{{app "q" "mountain huts in Graubünden"}}">mountain huts in Graubünden</a></li>
+<li><a href="{{app "q" "campsites in Ticino"}}">campsites in Ticino</a></li>
+<li><a href="{{app "q" "glaciers in Valais"}}">glaciers in Valais</a></li>
+<li><a href="{{app "q" "lakes in Graubünden"}}">lakes in Graubünden</a></li>
+<li><a href="{{app "q" "caves in Slovenia"}}">caves in Slovenia</a></li>
+<li><a href="{{app "q" "volcanoes in Iceland"}}">volcanoes in Iceland</a></li>
+<li><a href="{{app "q" "viewpoints in Lucerne"}}">viewpoints in Lucerne</a></li>
+<li><a href="{{app "q" "ski lifts in Zermatt"}}">ski lifts in Zermatt</a></li>
+<li><a href="{{app "q" "drinking water in Zurich"}}">drinking water in Zurich</a></li>
+</ul>
+<h2>Along a river, a road or a lake</h2>
+<p>The river, road or shore is drawn on the map, and the results are those near it.</p>
+<ul class="pg-try">
+<li><a href="{{app "q" "cafés in Zurich by the Limmat"}}">cafés in Zurich by the Limmat</a></li>
+<li><a href="{{app "q" "bridges over the Rhine in Basel"}}">bridges over the Rhine in Basel</a></li>
+<li><a href="{{app "q" "charging stations along the A1 in Switzerland"}}">charging stations along the A1 in Switzerland</a></li>
+<li><a href="{{app "q" "playgrounds in Zurich near the lake"}}">playgrounds in Zurich near the lake</a></li>
+</ul>
+<h2>Near something</h2>
+<ul class="pg-try">
+<li><a href="{{app "q" "hotels near Zurich main station"}}">hotels near Zurich main station</a></li>
+<li><a href="{{app "q" "hiking trails from Grindelwald to Wengen"}}">hiking trails from Grindelwald to Wengen</a></li>
+</ul>
+<p>With your location allowed, “cafés near me” searches around you.</p>
+<h2>With a height, opening hours or a feature</h2>
+<ul class="pg-try">
+<li><a href="{{app "q" "peaks over 4000 m in Valais"}}">peaks over 4000 m in Valais</a></li>
+<li><a href="{{app "q" "bakeries open on Sunday in Zurich"}}">bakeries open on Sunday in Zurich</a></li>
+<li><a href="{{app "q" "cafés open now in Zurich"}}">cafés open now in Zurich</a></li>
+<li><a href="{{app "q" "restaurants with outdoor seating in Lucerne"}}">restaurants with outdoor seating in Lucerne</a></li>
+<li><a href="{{app "q" "cafés with wifi in Lisbon"}}">cafés with wifi in Lisbon</a></li>
+</ul>
+<h2>A brand or a name</h2>
+<ul class="pg-try">
+<li><a href="{{app "q" "Migros in Bern"}}">Migros in Bern</a></li>
+</ul>
+<h2>When a search finds nothing</h2>
+<ul>
+<li>Read the line above the list: it says how the sentence was read. If a word was taken for a place, write the place another way, such as its official name.</li>
+<li>Try a reading or a place from the buttons under that line.</li>
+<li>Use a more common word for the kind of place: “cafés” rather than “coffee bars”.</li>
+<li>Zoom out or move the map: without a place, the search looks in the view.</li>
+</ul>
+<p>A search that should work and does not can be sent to us with Feedback in the menu.</p>
+<p>What a sentence can contain is on the page <a href="{{link "/features/search"}}">Search in plain words</a>.</p>
+</div>
+</div>
+{{end}}

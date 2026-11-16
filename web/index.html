@@ -4,8 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 {{if .Public}}<link rel="canonical" href="{{.Public}}/">{{else}}<meta name="robots" content="noindex">{{end}}
-<title>hippomaps</title>
-<meta name="description" content="Search places on OpenStreetMap in plain words, with pictures and details beside the map.">
+<title>hippomaps – search the map in plain words</title>
+<meta name="description" content="A free map for the web and Android: search places in plain words, place pages with photos and opening hours, directions by car, bike and on foot, public transport in Europe and spoken navigation.">
+{{if .Public}}<meta property="og:type" content="website">
+<meta property="og:site_name" content="hippomaps">
+<meta property="og:title" content="hippomaps – search the map in plain words">
+<meta property="og:description" content="Search places in plain words, directions, public transport in Europe and spoken navigation, on OpenStreetMap data. Free, without an account.">
+<meta property="og:url" content="{{.Public}}/">
+<meta property="og:image" content="{{.Public}}{{asset "pages/img/en/search.webp"}}">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"hippomaps","url":"{{.Public}}/","applicationCategory":"TravelApplication","operatingSystem":"Web, Android","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"CHF"},"inLanguage":["en","de","fr","it"],"description":"Search places on OpenStreetMap in plain words, with place pages, directions by car, bike and on foot, public transport in Europe and spoken navigation."}</script>
+{{end}}
 <link rel="icon" href="{{asset "icon-32.png"}}" type="image/png" sizes="32x32">
 <link rel="icon" href="{{asset "icon-192.png"}}" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
@@ -21,7 +30,7 @@
   <aside class="lm-side" aria-label="Search and results"></aside>
   <main class="lm-map" aria-label="Map"></main>
 </div>
-<noscript><p class="lm-noscript">The map needs JavaScript.</p></noscript>
+<noscript><p class="lm-noscript">The map needs JavaScript. What hippomaps does: <a href="{{.Base}}/features">Features</a> · <a href="{{.Base}}/guides">Guides</a> · <a href="{{.Base}}/de/features">Funktionen</a> · <a href="{{.Base}}/de/guides">Anleitungen</a></p></noscript>
 <script type="module" src="{{asset "app.js"}}"></script>
 </body>
 </html>

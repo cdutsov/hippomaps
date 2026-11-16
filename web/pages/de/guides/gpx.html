@@ -1,0 +1,38 @@
+{{define "title"}}Eine Route aufs GPS-Gerät bringen{{end}}
+{{define "desc"}}Speichern Sie eine Route, eine gemessene Linie oder Suchergebnisse aus hippomaps als GPX für Garmin, Wahoo, Komoot oder eine andere App, und öffnen Sie GPX-, KML- und GeoJSON-Dateien auf der Karte.{{end}}
+{{define "image"}}measure{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Anleitungen</a></p>
+<h1>Eine Route aufs GPS-Gerät bringen</h1>
+<p class="pg-lead">GPX ist die Datei, die Velocomputer, Uhren und Outdoor-Apps lesen. hippomaps speichert drei Dinge als GPX und öffnet auch GPX-Dateien.</p>
+</section>
+<div class="pg-text">
+<h2>Eine Route</h2>
+<ol class="pg-steps">
+<li>Planen Sie die Route: mit Velo oder zu Fuss, damit die Höhen in der Datei sind (<a href="{{link "/guides/bike-route"}}">Anleitung zur Velo-Route</a>).</li>
+<li>Tippen Sie unter der Route auf GPX. Die Datei landet bei den Downloads Ihres Browsers.</li>
+<li>Kopieren Sie sie aufs Gerät oder importieren Sie sie in seine App (unten).</li>
+</ol>
+<h2>Eine selbst gezeichnete Linie</h2>
+<ol class="pg-steps">
+<li>Öffnen Sie Distanz messen im Menü, oder klicken Sie mit der rechten Maustaste auf die Karte und wählen Sie es dort.</li>
+<li>Klicken Sie Punkte entlang des gewünschten Wegs. Ziehen Sie den Punkt in der Mitte eines Teils, um ihn zu biegen.</li>
+<li>Speichern Sie die Linie als GPX, mit der Höhe jedes Punkts. KML (für Google Earth) und GeoJSON stehen daneben.</li>
+</ol>
+<h2>Orte einer Suche</h2>
+<p>Unter den Ergebnissen einer Suche speichert GPX sie als Wegpunkte mit ihren Namen, etwa alle <a href="{{app "q" "Berghütten in Graubünden"}}">Berghütten in Graubünden</a> oder das <a href="{{app "q" "Trinkwasser in Zürich"}}">Trinkwasser in Zürich</a>. CSV und GeoJSON stehen daneben.</p>
+<h2>Auf dem Gerät</h2>
+<ul>
+<li>Garmin: importieren Sie die Datei in Garmin Connect (Strecken, Importieren), oder kopieren Sie sie in den Ordner <code>Garmin/NewFiles</code> eines per USB verbundenen Geräts.</li>
+<li>Wahoo, Hammerhead, Komoot, Strava und die meisten Outdoor-Apps importieren GPX auf ihrer Seite für Routen oder Strecken.</li>
+<li>Am Handy öffnen Sie die Datei aus den Downloads und wählen die App.</li>
+</ul>
+<h2>Eine GPX-Datei öffnen</h2>
+<p>Um einen Track zu sehen, den Ihnen jemand geschickt hat, öffnen Sie Distanz messen, tippen auf Datei öffnen und wählen eine GPX-, KML- oder GeoJSON-Datei. Am Computer können Sie die Datei auch auf die Karte ziehen. Der Track erscheint mit Länge und Höhenprofil, und Sie können ihn ändern und wieder speichern.</p>
+<figure class="pg-shot"><img src="{{img "measure"}}" width="1280" height="800" alt="Eine mit Distanz messen gezeichnete Form, ihr Total und die Knöpfe, um sie als GPX, KML oder GeoJSON zu speichern" loading="lazy"></figure>
+<p class="pg-note">Dateien speichern und öffnen geht im Browser. Die App für Android kann keine Dateien speichern, die in der Seite entstehen: Nehmen Sie dafür hippomaps.ch im Browser des Handys.</p>
+</div>
+</div>
+{{end}}

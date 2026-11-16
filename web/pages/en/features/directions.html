@@ -1,0 +1,46 @@
+{{define "title"}}Directions by car, bike and on foot{{end}}
+{{define "desc"}}Free directions on OpenStreetMap: by car, bike and on foot, with up to 8 stops, other routes, live traffic in Switzerland, places along the route, a height profile and the route as GPX.{{end}}
+{{define "image"}}bike{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>Directions by car, bike and on foot</h1>
+<p class="pg-lead">Tap the blue arrow beside the search box, choose a start and a destination, and pick how you travel.</p>
+<ul class="pg-try">
+<li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "47.34936,8.49165" "tn" "Uetliberg" "mode" "bike"}}">By bike from Zurich main station to the Uetliberg</a></li>
+<li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "46.94898,7.43913" "tn" "Bern" "mode" "car"}}">By car from Zurich to Bern</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "bike"}}" width="1280" height="800" alt="A route by bike from Zurich main station to the Uetliberg, with its height profile under the steps"><figcaption>By bike to the Uetliberg: the climb in the height profile, and the route as a GPX file.</figcaption></figure>
+<div class="pg-text">
+<h2>Start, stops and destination</h2>
+<p>The start is your location unless you choose another. Type an address or a place, pick a place on the map, or use a result of a search. Add up to 8 stops on the way; a button swaps start and destination. A right click on the map (a long press on a phone) sets the point under it as the start or the destination.</p>
+<h2>What the route shows</h2>
+<ul>
+<li>the time and distance, and each turn with the name of the street</li>
+<li>by car, the lanes to take at a junction, the signs of motorway exits, and the speed limits</li>
+<li>by car, stop signs, speed bumps and, where a navigation app may show them, speed cameras</li>
+<li>by bike and on foot, a height profile with the climb and descent; move along it to see the point on the map</li>
+<li>a warning when the route takes a ferry or a car train</li>
+</ul>
+</div>
+<div class="pg-split">
+<figure class="pg-shot"><img src="{{img "car"}}" width="1280" height="800" alt="By car from Zurich to Bern: the fastest route and two other routes, each with how many minutes longer it takes" loading="lazy"></figure>
+<div>
+<h2>Other routes</h2>
+<p>For a route without stops, hippomaps offers up to two other routes. Each is drawn on the map with how much longer it takes, and a tap picks it.</p>
+<h2>Live traffic in Switzerland</h2>
+<p>In Switzerland the time of a route by car counts closures and queues reported by the Federal Roads Office. Turn on Traffic in the menu to see them on the map.</p>
+</div>
+</div>
+<div class="pg-text">
+<h2>Places along the route</h2>
+<p>Under the route, Along the route finds fuel, charging stations, rest areas, food, cafés, groceries, toilets, drinking water, hotels, bike shops and pharmacies near it, with how far each is from the start and how far off the route.</p>
+<h2>Take it with you</h2>
+<p>Share a route as a link: it opens with the same start, stops and destination. Save it as a GPX track with its heights for a bike computer or a watch (<a href="{{link "/guides/gpx"}}">how</a>). Or tap Start for <a href="{{link "/features/navigation"}}">spoken navigation</a>.</p>
+<p>For trains, trams and buses, choose <a href="{{link "/features/public-transport"}}">public transport</a> as the way to travel.</p>
+<p class="pg-note">Routes are calculated by <a href="https://github.com/valhalla/valhalla">Valhalla</a> on OpenStreetMap data of the whole world, updated every week.</p>
+</div>
+</div>
+{{end}}

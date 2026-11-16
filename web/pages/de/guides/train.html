@@ -1,0 +1,34 @@
+{{define "title"}}Eine Zugverbindung finden{{end}}
+{{define "desc"}}So finden Sie mit hippomaps eine Verbindung mit Zug, Tram oder Bus in Europa: jetzt oder zu einer bestimmten Zeit, mit Gleisen, Umstiegen, Fusswegen und Live-Verspätungen in der Schweiz.{{end}}
+{{define "image"}}transit{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Anleitungen</a></p>
+<h1>Eine Zugverbindung finden</h1>
+<p class="pg-lead">Als Beispiel vom Zürich HB nach Lugano. Dieselben Schritte gelten für ein Tram durch die Stadt oder ein Postauto in den Bergen.</p>
+<ul class="pg-try"><li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "46.00548,8.94696" "tn" "Lugano" "mode" "transit"}}">Diese Verbindung öffnen</a></li></ul>
+</section>
+<ol class="pg-steps">
+<li>Tippen Sie auf den blauen Pfeil neben dem Suchfeld und wählen Sie das Ziel.</li>
+<li>Wählen Sie ÖV als Verkehrsmittel.</li>
+<li>Jetzt abfahren ist eingestellt. Für später tippen Sie darauf und wählen Abfahrt um oder Ankunft bis, mit Datum und Zeit.</li>
+<li>Die Verbindungen erscheinen mit Zeiten und Umstiegen. Tippen Sie auf eine, um ihre Teilstrecken zu sehen.</li>
+<li>Früher und Später zeigen weitere Verbindungen.</li>
+</ol>
+<figure class="pg-shot"><img src="{{img "transit"}}" width="1280" height="800" alt="Verbindungen vom Zürich HB nach Lugano mit Zeiten, Halten und Fusswegen" loading="lazy"></figure>
+<div class="pg-text">
+<h2>Eine Verbindung lesen</h2>
+<ul>
+<li>Jede Teilstrecke nennt Linie, Richtung, die Haltestelle zum Ein- und Aussteigen und das Gleis oder die Kante.</li>
+<li>Die Zahl der Halte sagt Ihnen, wann Sie aussteigen.</li>
+<li>Die Fusswege zur ersten und von der letzten Haltestelle folgen den Strassen, mit ihrer Zeit.</li>
+<li>Die Linien sind auf der Karte in ihren Farben gezeichnet.</li>
+</ul>
+<h2>Verspätungen und Störungen</h2>
+<p>Wo ein Betreiber Live-Daten veröffentlicht, rechnen die Zeiten mit Verspätungen, und eine ausgefallene Teilstrecke ist markiert. In der Schweiz stehen Meldungen zu Störungen bei der Teilstrecke, die sie betreffen.</p>
+<h2>Wo es geht</h2>
+<p>Fahrpläne von 43 Regionen Europas werden jede Nacht geladen. Anderswo findet hippomaps keine Verbindung. Mehr auf der Seite <a href="{{link "/features/public-transport"}}">Öffentlicher Verkehr</a>.</p>
+</div>
+</div>
+{{end}}

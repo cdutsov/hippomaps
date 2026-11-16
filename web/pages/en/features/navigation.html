@@ -1,0 +1,35 @@
+{{define "title"}}Spoken turn-by-turn navigation{{end}}
+{{define "desc"}}Free turn-by-turn navigation in the browser and on Android: spoken in 18 languages, with lanes, speed limits, a 3D view, and the map of the route saved for places without a connection.{{end}}
+{{define "image"}}phone-navigation{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>Spoken navigation</h1>
+<p class="pg-lead">Tap Start under a route by car, bike or on foot. hippomaps follows your location, shows the next turn and speaks it.</p>
+</section>
+<div class="pg-split">
+<figure class="pg-shot pg-phone"><img src="{{img "phone-navigation"}}" width="390" height="844" alt="Navigation by car on a phone: the next turn at the top, the speed limit, and the car in 3D on the route"></figure>
+<div>
+<h2>While you travel</h2>
+<ul>
+<li>the next turn with its distance and the street, and an arrow on the map at the turn</li>
+<li>by car, the lanes to take and the speed limit</li>
+<li>the time of arrival and the distance left</li>
+<li>a 3D view that turns with you, and Whole route to see all of it</li>
+<li>a new route when you leave this one</li>
+</ul>
+<p>Preview drives along the route on the map at three times the speed, before you set off.</p>
+<h2>In your language</h2>
+<p>The directions are spoken in Bulgarian, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Norwegian, Polish, Portuguese, Romanian, Russian, Spanish, Swedish or Ukrainian. The language of directions and voice is set apart from the language of the page, under Directions and voice in the menu.</p>
+</div>
+</div>
+<div class="pg-text">
+<h2>Without a connection</h2>
+<p>At Start, hippomaps saves the map along the route on your device, about 15 MB for 25 km by car. When the connection drops in a valley or a tunnel, navigation goes on with its map and its spoken directions. A new route needs the connection again. The switch Autosave route for offline navigation in the menu turns this off. The guide <a href="{{link "/guides/offline"}}">Navigate without a connection</a> has the details.</p>
+<h2>In the browser or in the app</h2>
+<p>Navigation works in the browser of a phone while the page is open; hippomaps keeps the screen on. The app for Android goes on with the screen locked or another app in front. It is on the <a href="https://gitlab.com/cdutsov/hippomaps/-/releases">releases page</a> of the project.</p>
+<p class="pg-note">The voices are <a href="https://github.com/OHF-Voice/piper1-gpl">Piper</a> voices, run on the server of hippomaps.</p>
+</div>
+</div>
+{{end}}

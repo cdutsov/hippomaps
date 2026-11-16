@@ -1,0 +1,46 @@
+{{define "title"}}Routen mit Auto, Velo und zu Fuss{{end}}
+{{define "desc"}}Freie Routen auf OpenStreetMap: mit Auto, Velo und zu Fuss, bis zu 8 Zwischenzielen, anderen Routen, Live-Verkehr in der Schweiz, Orten entlang der Route, Höhenprofil und der Route als GPX.{{end}}
+{{define "image"}}bike{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Funktionen</a></p>
+<h1>Routen mit Auto, Velo und zu Fuss</h1>
+<p class="pg-lead">Tippen Sie auf den blauen Pfeil neben dem Suchfeld, wählen Sie Start und Ziel und wie Sie unterwegs sind.</p>
+<ul class="pg-try">
+<li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "47.34936,8.49165" "tn" "Uetliberg" "mode" "bike"}}">Mit dem Velo vom Zürich HB auf den Uetliberg</a></li>
+<li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "46.94898,7.43913" "tn" "Bern" "mode" "car"}}">Mit dem Auto von Zürich nach Bern</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "bike"}}" width="1280" height="800" alt="Eine Velo-Route vom Zürich HB auf den Uetliberg mit ihrem Höhenprofil unter den Schritten"><figcaption>Mit dem Velo auf den Uetliberg: der Aufstieg im Höhenprofil und die Route als GPX-Datei.</figcaption></figure>
+<div class="pg-text">
+<h2>Start, Zwischenziele und Ziel</h2>
+<p>Der Start ist Ihr Standort, ausser Sie wählen einen anderen. Tippen Sie eine Adresse oder einen Ort, wählen Sie einen Ort auf der Karte oder ein Ergebnis einer Suche. Bis zu 8 Zwischenziele sind möglich; ein Knopf tauscht Start und Ziel. Ein Rechtsklick auf die Karte (am Handy langes Drücken) setzt den Punkt darunter als Start oder Ziel.</p>
+<h2>Was die Route zeigt</h2>
+<ul>
+<li>Zeit und Distanz und jede Abbiegung mit dem Namen der Strasse</li>
+<li>mit dem Auto die Fahrspuren an einer Verzweigung, die Schilder der Autobahnausfahrten und die Tempolimits</li>
+<li>mit dem Auto Stoppschilder, Bodenschwellen und, wo eine Navigations-App sie zeigen darf, Radarkästen</li>
+<li>mit Velo und zu Fuss ein Höhenprofil mit Auf- und Abstieg; fahren Sie es entlang, um den Punkt auf der Karte zu sehen</li>
+<li>einen Hinweis, wenn die Route eine Fähre oder einen Autoverlad nimmt</li>
+</ul>
+</div>
+<div class="pg-split">
+<figure class="pg-shot"><img src="{{img "car"}}" width="1280" height="800" alt="Mit dem Auto von Zürich nach Bern: die schnellste Route und zwei andere, jede mit den Minuten, die sie länger dauert" loading="lazy"></figure>
+<div>
+<h2>Andere Routen</h2>
+<p>Für eine Route ohne Zwischenziele bietet hippomaps bis zu zwei andere Routen an. Jede steht auf der Karte mit der Zeit, die sie länger dauert, und ein Tipp wählt sie.</p>
+<h2>Live-Verkehr in der Schweiz</h2>
+<p>In der Schweiz rechnet die Zeit einer Route mit dem Auto mit Sperrungen und Stau, die das Bundesamt für Strassen meldet. Mit Verkehr im Menü sehen Sie sie auf der Karte.</p>
+</div>
+</div>
+<div class="pg-text">
+<h2>Orte entlang der Route</h2>
+<p>Unter der Route findet Entlang der Route Tankstellen, Ladestationen, Raststätten, Essen, Cafés, Lebensmittel, Toiletten, Trinkwasser, Hotels, Velogeschäfte und Apotheken in der Nähe, mit der Distanz ab Start und abseits der Route.</p>
+<h2>Mitnehmen</h2>
+<p>Teilen Sie eine Route als Link: Er öffnet sie mit demselben Start, denselben Zwischenzielen und demselben Ziel. Speichern Sie sie als GPX-Track mit den Höhen für einen Velocomputer oder eine Uhr (<a href="{{link "/guides/gpx"}}">wie</a>). Oder tippen Sie auf Start für die <a href="{{link "/features/navigation"}}">gesprochene Navigation</a>.</p>
+<p>Für Zug, Tram und Bus wählen Sie <a href="{{link "/features/public-transport"}}">ÖV</a> als Verkehrsmittel.</p>
+<p class="pg-note">Die Routen berechnet <a href="https://github.com/valhalla/valhalla">Valhalla</a> auf den Daten von OpenStreetMap der ganzen Welt, jede Woche neu.</p>
+</div>
+</div>
+{{end}}

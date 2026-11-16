@@ -1,0 +1,37 @@
+{{define "title"}}Place pages with photos and opening hours{{end}}
+{{define "desc"}}Each place in hippomaps has a page with its photo, opening hours and the next change, address, website, phone, wheelchair access, Wikipedia and the menu of a restaurant.{{end}}
+{{define "image"}}place{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>Place pages</h1>
+<p class="pg-lead">Tap a place on the map or in a list of results. Its page shows what you need before you go.</p>
+<ul class="pg-try">
+<li><a href="{{app "q" "museums in Zurich"}}">museums in Zurich</a></li>
+<li><a href="{{app "q" "restaurants with outdoor seating in Lucerne"}}">restaurants with outdoor seating in Lucerne</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "place"}}" width="1280" height="800" alt="The page of a museum in Zurich in hippomaps: its photo, whether it is open, its buttons and details"></figure>
+<div class="pg-text">
+<h2>On the page of a place</h2>
+<ul>
+<li>a photo or logo from Wikimedia Commons; without one, a photo taken there, the picture the website of the place shows when it is shared, or a street picture from Panoramax</li>
+<li>the opening hours, with whether it is open now and when that changes (“Open · closes 20:30”)</li>
+<li>the address, website, phone and e-mail</li>
+<li>wheelchair access, Wikipedia, and every tag of the place in OpenStreetMap</li>
+<li>for a restaurant, café or bar, a link to its menu on its website</li>
+</ul>
+<p>When OpenStreetMap has no opening hours for a place, hippomaps looks for them on its website. The server of hippomaps reads the website, so the business does not see your address.</p>
+<h2>Buttons</h2>
+<p>Under the photo: directions to the place, Save to keep it in your list, a link to share, its website, a call, and the place on OpenStreetMap.</p>
+<h2>What is here</h2>
+<p>A tap on the map, where there is no place, shows the address of the point and the named places around it. On a computer a right click, on a phone a long press, opens a menu with directions from or to the point, Measure distance, and its coordinates.</p>
+<figure class="pg-shot"><img src="{{img "ctxmenu"}}" width="1280" height="800" alt="The menu of a right click on the map: What is here, Directions from here, Directions to here, Measure distance and the coordinates of the point" loading="lazy"></figure>
+<h2>Popups</h2>
+<p>A place of the map that is tapped, or under the mouse on a computer, shows its name, kind and, when known, its opening hours and address, without opening its page.</p>
+<h2>A mistake on the map?</h2>
+<p>The data is from OpenStreetMap, which anyone can correct. Feedback in the menu of hippomaps has a link that opens a note on OpenStreetMap at the place you are looking at.</p>
+</div>
+</div>
+{{end}}
