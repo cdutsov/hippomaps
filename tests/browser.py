@@ -68,6 +68,79 @@ import urllib.request
 import websocket
 
 URL = sys.argv[1].rstrip("/")
+
+
+# The checks are in parts (the lines "# ===== part: ..." below), each in a browser of its own, BROWSER_WORKERS (2) at
+# a time on the ports from BROWSER_PORT up: a run takes as long as its longest part, not as all together. A part that
+# fails runs once more, two at a time (a slow tile or answer of a server once is no failure of the page); what
+# failed the first time is printed ("  first run of ...", "    failed: ...") and not counted. BROWSER_PARTS=1,3: those
+# parts only (from 0). HM_PART=all: all parts one after another in one browser.
+def run_parts():
+    src = open(__file__).read().split("\n")
+    marks = [i for i, l in enumerate(src) if l.startswith("    # ===== part: ")]
+    fin = next(i for i, l in enumerate(src) if l.startswith("    # ===== end"))
+    head, tail = src[:marks[0]], src[fin:]  # the tail: the check of the errors of the page, then the browser closed
+    names = [src[m].split("part: ", 1)[1] for m in marks]
+    tmp = tempfile.mkdtemp(prefix="hm-parts-")
+    paths = []
+    for k, (a, b) in enumerate(zip(marks, marks[1:] + [fin])):
+        paths.append(os.path.join(tmp, f"part{k}.py"))
+        with open(paths[-1], "w") as f:
+            f.write("\n".join(head + [f"    PART_NAME = {names[k]!r}"] + src[a:b] + tail))
+    base, workers = int(os.environ.get("BROWSER_PORT", "9341")), int(os.environ.get("BROWSER_WORKERS", "2"))
+    secs = int(os.environ.get("BROWSER_PART_SECS", "720"))
+
+    def run(ks, at_once):
+        out, todo, running = {}, list(ks), {}
+        while todo or running:
+            while todo and len(running) < at_once:
+                k = todo.pop(0)
+                f = tempfile.TemporaryFile(mode="w+")
+                env = dict(os.environ, HM_PART=str(k), BROWSER_PORT=str(base + k))
+                running[k] = (subprocess.Popen([sys.executable, "-u", paths[k], URL], stdout=f, stderr=subprocess.STDOUT, env=env), f, time.time())
+            for k, (pr, f, t0) in list(running.items()):
+                if pr.poll() is None and time.time() - t0 > secs:
+                    pr.kill()
+                    pr.wait()
+                    f.write(f"\nFAIL the part {names[k]!r} ran into its limit of {secs} s\n")
+                if pr.poll() is not None:
+                    f.seek(0)
+                    out[k] = (pr.returncode, f.read())
+                    took[k] = took.get(k, []) + [round(time.time() - t0)]
+                    f.close()
+                    del running[k]
+            time.sleep(0.5)
+        return out
+
+    t0, took = time.time(), {}
+    only = [int(k) for k in os.environ.get("BROWSER_PARTS", "").split(",") if k.strip()]
+    # the longest parts first (their lines as the measure): the last to start is short, the run ends sooner
+    size = {k: b - a for k, (a, b) in enumerate(zip(marks, marks[1:] + [fin]))}
+    out = run(sorted(only or range(len(paths)), key=lambda k: -size[k]), workers)
+    again = [k for k in sorted(out) if out[k][0] != 0]
+    for k in again:
+        print(f"  first run of the part {names[k]!r} (exit {out[k][0]}), run again:")
+        fl = [l[5:] for l in out[k][1].splitlines() if l.startswith("FAIL ")]
+        for l in fl or [f"the part stopped: {' '.join(out[k][1].splitlines()[-2:])}"]:
+            print(f"    failed: {l}")
+    if again:
+        out.update(run(again, min(2, workers)))
+    for k in sorted(out):
+        text = out[k][1]
+        print(text, end="" if text.endswith("\n") else "\n")
+        if out[k][0] != 0 and not any(l.startswith("FAIL ") for l in text.splitlines()):
+            print(f"FAIL the part {names[k]!r} stopped: {' '.join(text.splitlines()[-2:])}")
+    print(f"note: {len(paths)} parts, {workers} at a time, {time.time() - t0:.0f} s (each part, s: {[took[k] for k in sorted(took)]})", flush=True)
+    shutil.rmtree(tmp, ignore_errors=True)
+    sys.exit(1 if any(out[k][0] != 0 for k in out) else 0)
+
+
+if "HM_PART" not in os.environ:
+    run_parts()
+PART_NAME = "all parts"
+# the pixels per point of the phone: 2 in the first part (the page starts as on a phone, its icons @2x), 1 in the others
+# (drawn without a GPU, a quarter of the pixels; nothing there reads pixels, the map draws at min(devicePixelRatio, 2))
+DPR = float(os.environ.get("BROWSER_DPR", "2" if os.environ["HM_PART"] in ("0", "all") else "1"))
 PORT = int(os.environ.get("BROWSER_PORT", "9341"))
 # a Chromium of another run on the port (a deploy and the nightly run, two sessions): this run would drive its tab
 import socket
@@ -191,7 +264,7 @@ try:
 
     call("Runtime.enable")
     call("Page.enable")
-    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=DPR, mobile=True)
     call("Emulation.setTouchEmulationEnabled", enabled=True)
     # a first visit, the location not given: the map opens at the place of the IP address; without a place (no database,
     # or a private address) in Zurich; the map never credits DB-IP (the privacy policy does)
@@ -205,6 +278,46 @@ try:
         return js(f"(() => {{ for (let r = 0; r < 200; r += 10) for (const [dx, dy] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, r], [r, -r], [-r, -r]]) {{"
                   f" const e = document.elementFromPoint({x} + dx, {y} + dy); if (e?.classList.contains('maplibregl-canvas')) return [{x} + dx, {y} + dy]; }}"
                   " return null; })()") or [x, y]
+    # helpers of more than one part
+    app_has = lambda k: js(f"!!document.getElementById('app').dataset.{k}")
+    # the moves of the map from now, in window.hmMoves: start and end in ms, zoom at both ends and the
+    # lowest between; window.hmResized: when the page last changed its height (the keyboard)
+    def moves():
+        js("(() => { window.hmMoves = []; let m = null; window.hmResized = 0; addEventListener('resize', () => { hmResized = performance.now(); });"
+           " const at = () => JSON.stringify([hmMap.getCenter(), hmMap.getZoom()]);"
+           " hmMap.on('movestart', () => { const z = hmMap.getZoom(); m = { t0: performance.now(), z0: z, zmin: z, c0: at() }; hmMoves.push(m); });"
+           " hmMap.on('move', () => { if (m) m.zmin = Math.min(m.zmin, hmMap.getZoom()); });"
+           " hmMap.on('moveend', () => { if (m) { m.t1 = performance.now(); m.z1 = hmMap.getZoom(); m.same = at() === m.c0; m = null; } }); })()")
+    # a word that is two labels in one language and two words in the next: each label keeps its own (Tankstellen is a
+    # bubble and a kind along a route in German, Stations-service and Carburant in French; Cafés stays Cafés)
+    def page_lang(lang):
+        js(f"(() => {{ const s = document.querySelector('.lm-lang-select'); s.value = '{lang}'; s.dispatchEvent(new Event('change')) }})()")
+        wait(f"document.documentElement.lang === '{lang}'", 10)
+        return js("[...document.querySelectorAll('.lm-bubble')].map(b => b.textContent).join('|')") or ""
+    POP_LAYERS = "['pois', 'pois_more', 'lm-pois-near', 'lm-pois-more', 'lm-pois-late']"
+    # a named POI near the middle of the map, alone under a point of the page
+    poi_near_mid = ("(() => { const c = hmMap.getCanvas().getBoundingClientRect(), ls = %s.filter((l) => hmMap.getLayer(l));"
+                    " const fs = hmMap.queryRenderedFeatures({ layers: ls }).filter((f) => f.properties.name && f.geometry.type === 'Point')"
+                    "  .map((f) => { const p = hmMap.project(f.geometry.coordinates); return { name: f.properties.name, x: p.x, y: p.y }; })"
+                    "  .filter((f) => f.x > 80 && f.y > 160 && f.x < c.width - 80 && f.y < c.height - 80)"
+                    "  .filter((f) => hmMap.queryRenderedFeatures([[f.x - 3, f.y - 3], [f.x + 3, f.y + 3]], { layers: ls }).find((g) => g.properties.name)?.properties.name === f.name)"
+                    "  .sort((a, b) => Math.hypot(a.x - c.width / 2, a.y - c.height / 2) - Math.hypot(b.x - c.width / 2, b.y - c.height / 2));"
+                    " return fs[0] ? { name: fs[0].name, px: c.left + fs[0].x, py: c.top + fs[0].y } : null; })()") % POP_LAYERS
+    hover_pop, tap_pop = "document.querySelector('.lm-poi-popup.lm-poi-hover')", "document.querySelector('.lm-poi-popup:not(.lm-poi-hover)')"
+    pop_box = "(() => { const b = %s?.getBoundingClientRect(); return b ? [b.left, b.right, b.bottom] : null; })()"
+    def pointer(x, y, click=False):
+        call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y)
+        if click:
+            for t in ("mousePressed", "mouseReleased"):
+                call("Input.dispatchMouseEvent", type=t, x=x, y=y, button="left", clickCount=1)
+    def prelude():  # the start of a part after the first, in its own browser: what the parts before it left
+        call("Browser.grantPermissions", origin=URL.split("/labs")[0], permissions=["geolocation"])
+        call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
+        call("Page.addScriptToEvaluateOnNewDocument", source=SAID_HOOK)
+        call("Page.navigate", url=URL)
+        wait("window.hmMap?.loaded()", 40)
+
+    # ===== part: the first visit, the start of the page, directions, navigation, the menu, the search
     def first_visit(what):
         call("Page.navigate", url=URL)
         wait("window.hmMap?.loaded()", 30)
@@ -375,8 +488,11 @@ try:
     wait("!hmMap.isMoving() && hmMap.loaded()", 20)
     box = js("(() => { const r = document.querySelector('.lm-map').getBoundingClientRect(); return [r.left + r.width / 2, r.top + 150]; })()")
     z0 = js("+location.hash.split('/')[0].slice(5)")
-    call("Input.synthesizeTapGesture", x=box[0], y=box[1], tapCount=2, gestureSourceType="touch")  # (two touches 80 ms apart came too late on a busy page)
-    zoomed = wait(f"+location.hash.split('/')[0].slice(5) > {z0}", 8)  # a busy page (after a deploy) zooms late
+    for _ in range(3):  # a busy page (after a deploy, beside other tests) zooms late, or drops the gesture: once more
+        call("Input.synthesizeTapGesture", x=box[0], y=box[1], tapCount=2, gestureSourceType="touch")  # (two touches 80 ms apart came too late on a busy page)
+        zoomed = wait(f"+location.hash.split('/')[0].slice(5) > {z0}", 8)
+        if zoomed or not (js("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden")):
+            break
     time.sleep(1.0)  # what a tap would open has come by now
     dt = js("JSON.stringify([location.hash, document.querySelector('.lm-here').hidden, document.querySelector('.lm-detail').hidden])")
     check(zoomed and js("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden"),
@@ -540,7 +656,6 @@ try:
           "the privacy link in English again")
     check(js("document.querySelector('.lm-powered')?.href === 'https://overpass.ch/'"), "Powered by overpass.ch links overpass.ch in English again")
     rows = json.loads(js(rows_js))
-    app_has = lambda k: js(f"!!document.getElementById('app').dataset.{k}")
     check(rows.get("3D buildings") == "" and rows.get("Relief shading") == "" and rows.get("Language") == "Page and map"
           and rows.get("Directions and voice") == ""
           and (not app_has("traffic") or rows.get(traffic_label("en", "Traffic")) == "Closures, queues and roadworks"
@@ -966,6 +1081,8 @@ try:
     js("location.hash = '#map=14.3/47.3717/8.5390'")
     check(wait("performance.getEntriesByType('resource').some(e => /maps\\/vector\\/15\\//.test(e.name))", 30), "POIs at zoom 14 from the tiles of zoom 15")
 
+    # ===== part: shared links, arrival, stops and other routes, a ride by bike, the panel of a phone and its keyboard
+    prelude()
     # shared links: a place, a route
     call("Page.navigate", url=URL + "/?at=46.94797,7.44745&n=Zytglogge")
     # (the point opens; when a place of that name is there, its page follows)
@@ -978,7 +1095,6 @@ try:
     check(js("!!document.querySelector('.lm-nav-go .lm-share')"), "Share beside Start")
     # arrival by bike with Start: fixes stop 40 m short of the end of the route and 10 m beside it
     # (no fix within the reach of 30 m): "You have arrived" said once, then navigation ends by itself
-    call("Page.addScriptToEvaluateOnNewDocument", source=SAID_HOOK)
     a, b = (47.37000, 8.54000), (47.37300, 8.54300)
     line = json.load(urllib.request.urlopen(f"{URL}/api/route?from={a[0]},{a[1]}&to={b[0]},{b[1]}&mode=bike&lang=en", timeout=30))["line"]
 
@@ -1248,7 +1364,8 @@ try:
     js("(() => { const i = document.querySelector('.lm-input'); i.value = 'Migros'; document.querySelector('.lm-form').requestSubmit() })()")
     found = wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '')", 60)
     wait("!hmMap.isMoving()", 10)
-    time.sleep(1.5)
+    # the results drawn (a busy machine draws late)
+    wait("hmMap.queryRenderedFeatures({ layers: ['lm-point', 'lm-dot'].filter((l) => hmMap.getLayer(l)) }).length > 0", 10)
     got = js("JSON.stringify((() => { const b = hmMap.getBounds(), c = hmMap.getCenter(); return { zoom: +hmMap.getZoom().toFixed(1), km: Math.round((b.getNorth() - b.getSouth()) * 111), "
              "in: hmMap.queryRenderedFeatures({ layers: ['lm-point', 'lm-dot'].filter((l) => hmMap.getLayer(l)) }).length, count: document.querySelector('.lm-count').textContent, at: [+c.lat.toFixed(3), +c.lng.toFixed(3)] }; })())")
     g = json.loads(got)
@@ -1258,7 +1375,7 @@ try:
 
     # a tablet (wider than a phone, a keyboard on the screen): a place picked in a field of directions gives up the
     # focus, so the keyboard goes
-    call("Emulation.setDeviceMetricsOverride", width=1024, height=768, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=1024, height=768, deviceScaleFactor=DPR, mobile=True)
     call("Page.navigate", url="about:blank")  # (a new page: an address that differs in its hash alone would not load again)
     call("Page.navigate", url=URL + "/#map=15/47.3779/8.5403")
     wait("!window.hmOld && window.hmMap?.loaded()", 40)
@@ -1277,12 +1394,12 @@ try:
             check(False, "suggestions in directions on a tablet")
     else:
         check(False, "a tablet in the test: a coarse pointer, wider than a phone")
-    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=DPR, mobile=True)
 
     # a route found on a phone, small and large: car, bike and walk stay in view above start and destination (the
     # panel not scrolled), the time and Start in view under them: the sheet as high as they need
     for w, h in ((360, 640), (390, 844)):
-        call("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=2, mobile=True)
+        call("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=DPR, mobile=True)
         call("Page.navigate", url=URL + "/?to=47.36690,8.54500&tn=Bellevue&mode=car")
         wait("document.querySelector('.lm-nav-start') && document.querySelector('.lm-route-sum')?.textContent.includes('min')", 40)
         time.sleep(1.2)  # the sheet at its height
@@ -1293,7 +1410,7 @@ try:
         g = json.loads(got)
         check(g["sheet"] == "half" and g["scroll"] == 0 and g["modes"] >= 0 and g["start"] >= 0 and g["map"] >= 0.28 * h,
               f"a route on a phone of {w} by {h}: car, bike and walk in view, the panel not scrolled, Start in view, the map above ({got})")
-    call("Emulation.setDeviceMetricsOverride", width=390, height=480, deviceScaleFactor=2, mobile=True)  # the keyboard up
+    call("Emulation.setDeviceMetricsOverride", width=390, height=480, deviceScaleFactor=DPR, mobile=True)  # the keyboard up
     js("document.querySelector('.lm-end-to input').focus()")
     time.sleep(0.4)
     js("document.querySelector('.lm-end-to input').scrollIntoView({block: 'start'})")  # (the field at the top of the full panel: scrolled to the top of it)
@@ -1302,7 +1419,7 @@ try:
     before = js(panel_at)
     scrolled = js("document.querySelector('.lm-body').scrollTop > 20")
     js("document.querySelector('.lm-end-to input').blur()")
-    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)  # the keyboard down
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=DPR, mobile=True)  # the keyboard down
     check(scrolled and wait("document.querySelector('.lm-body').scrollTop === 0 && document.querySelector('.lm-modes').getBoundingClientRect().top >= document.querySelector('.lm-body').getBoundingClientRect().top", 5),
           f"the keyboard gone: directions back at their top, car, bike and walk in view (before: {before}, after: {js(panel_at)})")
 
@@ -1314,7 +1431,7 @@ try:
            f" (function f() {{ hmTops.push(Math.round(s.getBoundingClientRect().top)); if (performance.now() - t0 < {ms}) requestAnimationFrame(f); }})(); }})()")
 
     def keyboard(up):
-        call("Emulation.setDeviceMetricsOverride", width=390, height=544 if up else 844, deviceScaleFactor=2, mobile=True)
+        call("Emulation.setDeviceMetricsOverride", width=390, height=544 if up else 844, deviceScaleFactor=DPR, mobile=True)
 
     def keyboard_goes(field):  # once the field lost the focus
         wait(f"document.activeElement !== document.querySelector({json.dumps(field)})", 2)
@@ -1337,14 +1454,6 @@ try:
                            " && (want == null ? s.height <= H * 0.4 + 1 : Math.abs(s.height - want) <= 2); })()")
     panel = lambda: js("(() => { const s = document.querySelector('.lm-side').getBoundingClientRect(); return [document.getElementById('app').dataset.sheet, Math.round(s.top), Math.round(s.height), innerHeight]; })()")
 
-    # the moves of the map from now, in window.hmMoves: start and end in ms, zoom at both ends and the
-    # lowest between; window.hmResized: when the page last changed its height (the keyboard)
-    def moves():
-        js("(() => { window.hmMoves = []; let m = null; window.hmResized = 0; addEventListener('resize', () => { hmResized = performance.now(); });"
-           " const at = () => JSON.stringify([hmMap.getCenter(), hmMap.getZoom()]);"
-           " hmMap.on('movestart', () => { const z = hmMap.getZoom(); m = { t0: performance.now(), z0: z, zmin: z, c0: at() }; hmMoves.push(m); });"
-           " hmMap.on('move', () => { if (m) m.zmin = Math.min(m.zmin, hmMap.getZoom()); });"
-           " hmMap.on('moveend', () => { if (m) { m.t1 = performance.now(); m.z1 = hmMap.getZoom(); m.same = at() === m.c0; m = null; } }); })()")
 
     call("Page.navigate", url=URL)
     wait("window.hmMap?.loaded() && document.getElementById('app').dataset.sheet === 'peek'", 30)
@@ -1435,12 +1544,14 @@ try:
     time.sleep(1)
     js("document.activeElement.blur()")
     time.sleep(0.05)
-    call("Emulation.setDeviceMetricsOverride", width=390, height=700, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=700, deviceScaleFactor=DPR, mobile=True)
     time.sleep(0.05)
     keyboard(False)
     time.sleep(1.5)
     check(sheet() == "half" and at_height(), f"the keyboard going in two steps: the panel at half of the whole page ({panel()})")
 
+    # ===== part: without a connection, languages, signs along routes, navigation on a long route, a computer
+    prelude()
     # no connection: the note at the top of the map in place of the bubbles, a search says why it failed, the note goes
     # when the connection is back. Online for the device but the server out of reach: the same, the server asked again
     # every 5 s. In navigation the note under the banner; off the route no new route is asked: the banner says why,
@@ -1575,12 +1686,6 @@ try:
     js("(() => { const s = document.querySelector('.lm-lang-select'); s.value = 'de'; s.dispatchEvent(new Event('change')) })()")
     time.sleep(1)
     check(wait("document.documentElement.lang === 'de' && /suchen/.test(document.querySelector('.lm-input').getAttribute('aria-label'))", 30), "the page in German")
-    # a word that is two labels in one language and two words in the next: each label keeps its own (Tankstellen is a
-    # bubble and a kind along a route in German, Stations-service and Carburant in French; Cafés stays Cafés)
-    def page_lang(lang):
-        js(f"(() => {{ const s = document.querySelector('.lm-lang-select'); s.value = '{lang}'; s.dispatchEvent(new Event('change')) }})()")
-        wait(f"document.documentElement.lang === '{lang}'", 10)
-        return js("[...document.querySelectorAll('.lm-bubble')].map(b => b.textContent).join('|')") or ""
     fr_bubbles, en_bubbles, de_bubbles = page_lang("fr"), page_lang("en"), page_lang("de")
     check("Stations-service" in fr_bubbles and "Carburant" not in fr_bubbles and "Fuel" in en_bubbles and "Cafés" in en_bubbles
           and "Tankstellen" in de_bubbles and "Cafés" in de_bubbles and "Bancomaten" in de_bubbles,
@@ -1768,22 +1873,6 @@ try:
     # (directions closed first: there a click on the map sets the start or the destination)
     js("document.querySelector('.lm-route:not([hidden]) > .lm-back')?.click()")
     wait("document.querySelector('.lm-route').hidden", 5)
-    POP_LAYERS = "['pois', 'pois_more', 'lm-pois-near', 'lm-pois-more', 'lm-pois-late']"
-    # a named POI near the middle of the map, alone under a point of the page
-    poi_near_mid = ("(() => { const c = hmMap.getCanvas().getBoundingClientRect(), ls = %s.filter((l) => hmMap.getLayer(l));"
-                    " const fs = hmMap.queryRenderedFeatures({ layers: ls }).filter((f) => f.properties.name && f.geometry.type === 'Point')"
-                    "  .map((f) => { const p = hmMap.project(f.geometry.coordinates); return { name: f.properties.name, x: p.x, y: p.y }; })"
-                    "  .filter((f) => f.x > 80 && f.y > 160 && f.x < c.width - 80 && f.y < c.height - 80)"
-                    "  .filter((f) => hmMap.queryRenderedFeatures([[f.x - 3, f.y - 3], [f.x + 3, f.y + 3]], { layers: ls }).find((g) => g.properties.name)?.properties.name === f.name)"
-                    "  .sort((a, b) => Math.hypot(a.x - c.width / 2, a.y - c.height / 2) - Math.hypot(b.x - c.width / 2, b.y - c.height / 2));"
-                    " return fs[0] ? { name: fs[0].name, px: c.left + fs[0].x, py: c.top + fs[0].y } : null; })()") % POP_LAYERS
-    hover_pop, tap_pop = "document.querySelector('.lm-poi-popup.lm-poi-hover')", "document.querySelector('.lm-poi-popup:not(.lm-poi-hover)')"
-    pop_box = "(() => { const b = %s?.getBoundingClientRect(); return b ? [b.left, b.right, b.bottom] : null; })()"
-    def pointer(x, y, click=False):
-        call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y)
-        if click:
-            for t in ("mousePressed", "mouseReleased"):
-                call("Input.dispatchMouseEvent", type=t, x=x, y=y, button="left", clickCount=1)
     js("hmMap.jumpTo({ center: [8.54235, 47.37185], zoom: 18, pitch: 0, bearing: 0 })")
     time.sleep(1)
     wait("hmMap.loaded() && !hmMap.isMoving() && hmMap.areTilesLoaded()", 20)
@@ -1812,8 +1901,10 @@ try:
     js("document.querySelector('.lm-style[data-style=auto]').click()")
     js("localStorage.removeItem('hm-recent')")
     call("Page.removeScriptToEvaluateOnNewDocument", identifier=mouse.get("identifier", ""))
+    # ===== part: more journeys of a visitor on a phone: the location, the compass, Preview, transit, feedback, Measure
+    prelude()
     # more journeys of a visitor on a phone, each on a new page
-    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=DPR, mobile=True)
     call("Emulation.setTouchEmulationEnabled", enabled=True)
     origin = URL.split("/labs")[0]
     def fresh(url, ready="window.hmMap?.loaded()", secs=40):  # a new page, not the one before
@@ -2079,10 +2170,10 @@ try:
     # landscape, turned counterclockwise: the right side of the phone is the top of the screen; flat with its top to north
     pose([0, 0, 0, 1])
     upright = wait(cone_at(decl), 5)
-    call("Emulation.setDeviceMetricsOverride", width=844, height=390, deviceScaleFactor=2, mobile=True, screenOrientation={"type": "landscapePrimary", "angle": 90})
+    call("Emulation.setDeviceMetricsOverride", width=844, height=390, deviceScaleFactor=DPR, mobile=True, screenOrientation={"type": "landscapePrimary", "angle": 90})
     check(upright and wait(cone_at(90 + decl), 5),
           f"the screen turned to landscape, the phone still with its top to north: the cone to east at once, where the top of the screen points ({js(cone_h)}, {js('screen.orientation.angle')})")
-    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=DPR, mobile=True)
     call("Emulation.setSensorOverrideEnabled", enabled=False, type="absolute-orientation")
 
     # Safari: no deviceorientationabsolute, its compass heading in deviceorientation, once allowed from a tap
@@ -2126,7 +2217,7 @@ try:
     time.sleep(0.5)
     check(wait("navigator.maxTouchPoints === 0 && !document.querySelector('.lm-heading')", 3) and js(label) == ["Show my location", None],
           f"a computer: no compass ({js(label)}, touch points {js('navigator.maxTouchPoints')}, cone {js('!!document.querySelector(\'.lm-heading\')')})")
-    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=DPR, mobile=True)
     call("Emulation.setTouchEmulationEnabled", enabled=True)
 
     # a shared route with more stops than a route takes (9): the first 8, numbered, a route through them, no stop more
@@ -2162,7 +2253,7 @@ try:
     js("localStorage.removeItem('hm-mute')")
     js("localStorage.removeItem('hm-recent')")
     # a route by car with a ferry on a small phone: the warning above Start, and Start still in view
-    call("Emulation.setDeviceMetricsOverride", width=360, height=640, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=360, height=640, deviceScaleFactor=DPR, mobile=True)
     fresh(URL + "/?from=47.25970,8.59770&fn=Horgen&to=47.27000,8.64300&tn=Meilen&mode=car")
     if wait("document.querySelector('.lm-route-sum')?.textContent.includes('min') && !!document.querySelector('.lm-ferries .lm-ferry-ferry')", 40):
         time.sleep(1.0)
@@ -2172,7 +2263,7 @@ try:
               f"a route with a ferry on 360 by 640: car, bike and walk, the warning and Start in view ({g})")
     else:
         check(False, "a route by car with a ferry on a small phone")
-    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
+    call("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=DPR, mobile=True)
 
     # a shared place on a phone: its pin in the part of the map above the panel, clear of the credits at its edge
     fresh(URL + "/?at=47.36690,8.54500&n=Bellevue#map=17/47.36690/8.54500")
@@ -2407,18 +2498,22 @@ try:
         call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": p[0], "y": p[1]}])
         time.sleep(secs)
         call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
-    def ctx_pick(p, row):  # a long press at p, then the row of its menu; pressed once more when no menu with the row came
+    def ctx_pick(p, row):  # a long press at p, then the row of its menu; pressed once more when no menu with the row came.
+        # Returns what the menu showed and the place of the map pressed, from the row of its coordinates
         has = (f"!document.querySelector('.lm-ctx').hidden && [...document.querySelectorAll('.lm-ctx-item')].some(b => b.textContent === {json.dumps(row)})")
-        for _ in range(2):
-            press(p)
+        for k in range(2):
+            q = p if k == 0 else map_spot(*p)  # once more beside what lay over the map there (a popup, a note)
+            press(q)
             if wait(has, 5):
                 break
             time.sleep(0.5)
         time.sleep(0.8)  # (a tap right after the press counts as its end)
         seen = js("JSON.stringify({ menu: !document.querySelector('.lm-ctx').hidden, rows: [...document.querySelectorAll('.lm-ctx-item')].map(b => b.textContent),"
                   f" top: document.elementFromPoint({p[0]}, {p[1]})?.className }})")
+        # the place pressed as the page took it: the row of its coordinates ("47.37690, 8.54170")
+        ll = next(([float(m.group(2)), float(m.group(1))] for r in json.loads(seen)["rows"] for m in [re.match(r"^(-?\d+\.\d+), (-?\d+\.\d+)$", r)] if m), None)
         js(f"[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === {json.dumps(row)})?.click()")
-        return seen
+        return seen, ll
     def touch_at(p):
         press(p, 0.05)
         time.sleep(0.45)
@@ -2554,8 +2649,9 @@ try:
         js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 14 })")
         wait("!hmMap.isMoving()", 5)
         time.sleep(0.5)
-        pressed = ll_of(at(0.5, 0.5))
-        menu = ctx_pick(at(0.5, 0.5), "Reachable from here")
+        # pressed at the screen point of that place, read now (the box of the map taken for Measure can be off by then)
+        mid_pt = js("(() => { const b = hmMap.getCanvas().getBoundingClientRect(), q = hmMap.project([8.5417, 47.3769]); return [b.left + q.x, b.top + q.y]; })()")
+        menu, pressed = ctx_pick(mid_pt, "Reachable from here")
         check(wait("!document.querySelector('.lm-reach').hidden && document.querySelectorAll('.lm-reach-legend li').length > 0", 20),
               f"Reachable from here: the panel and its legend ({js('document.querySelector(`.lm-reach-status`)?.textContent')}; {menu})")
         check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "Reachable area: no search bar above the panel")
@@ -2571,8 +2667,10 @@ try:
         pin = js("(() => { const m = document.querySelector('.lm-reach-pin'); if (!m) return null; const r = m.getBoundingClientRect(), b = hmMap.getCanvas().getBoundingClientRect(),"
                  " l = hmMap.unproject([r.left + r.width / 2 - b.left, r.top + r.height / 2 - b.top]); return [l.lng, l.lat]; })()")
         check(ok_walk and len(set(cols)) == 3 and rows[0].startswith("Within 5 min") and areas == sorted(areas) and areas[0] > 0 and holes
-              and pin and km_of([pin, pressed]) < 0.08,
-              f"on foot up to 15 min: three bands in three colours, 10 min with a hole for 5, areas growing, the pin at the point ({rows})")
+              and pin and pressed and km_of([pin, pressed]) < 0.08,
+              f"on foot up to 15 min: three bands in three colours, 10 min with a hole for 5, areas growing, the pin at the point ({rows}"
+              + ("" if ok_walk and len(set(cols)) == 3 and holes and pin and pressed and km_of([pin, pressed]) < 0.08 else
+                 f"; colours {cols}, hole {holes}, pin {pin} at {km_of([pin, pressed]) * 1000 if pin and pressed else 0:.0f} m from {pressed}") + ")")
         before = js("document.querySelector('.lm-reach-from').textContent")
         touch_at(at(0.3, 0.35))
         check(wait(f"document.querySelector('.lm-reach-from').textContent !== {json.dumps(before)} && document.querySelectorAll('.lm-reach-legend li').length === 3", 20),
@@ -2610,12 +2708,12 @@ try:
         js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")
         wait("!hmMap.isMoving()", 5)
         time.sleep(0.5)
-        menu_from = ctx_pick(at(0.3, 0.3), "Directions from here")
+        menu_from, _ = ctx_pick(at(0.3, 0.3), "Directions from here")
         wait("!document.querySelector('.lm-route').hidden", 5)
         js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")
         wait("!hmMap.isMoving()", 5)
         time.sleep(0.5)
-        menu_to = ctx_pick(at(0.7, 0.35), "Directions to here")
+        menu_to, _ = ctx_pick(at(0.7, 0.35), "Directions to here")
         ok_route = wait("!!document.querySelector('.lm-route .lm-route-gpx')", 30)
         rg = ok_route and js("(async () => { let f = null, b = null; const c0 = HTMLAnchorElement.prototype.click, u0 = URL.createObjectURL;"
                              " URL.createObjectURL = (x) => { b = x; return u0(x); };"
@@ -2626,8 +2724,9 @@ try:
               and (rg.get("name") or "").endswith(".gpx") and rg.get("from") not in ("", "Your location"),
               f"Directions from here, then to here: a route between the two points, as GPX ({rg.get('name')}, from {rg.get('from')!r}"
               + ("" if ok_route else f"; menus {menu_from} {menu_to}; {js('document.querySelector(`.lm-route-status, .lm-status`)?.textContent')}") + ")")
+    # ===== end
     real = [e for e in errors if "Map cannot fit" not in e]
-    check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
+    check(not real, f"no errors of the page{': ' + real[0] if real else ''} ({PART_NAME})")
 finally:
     chrome.terminate()
     shutil.rmtree(prof, ignore_errors=True)

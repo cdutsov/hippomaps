@@ -410,24 +410,16 @@ for (const [l, b] of [["en", en], ...["de", "fr", "it"].map((l) => [l, all[l].bu
 		ok "cafés far from highways: highways are roads" || ko "cafés far from highways: $(jq -c .understood "$TMP/b" 2>/dev/null)"
 fi
 
-# the page in a browser (headless Chromium): BROWSER=1, as the nightly run does; about nine minutes. BROWSER_SECS is
-# the time one run may take (900: a busy server takes half as long again). Once more when it fails: a slow tile or
-# answer of a server once is no failure of the page; what failed the first time is printed (not counted), so a check
-# that fails now and then is seen.
+# the page in a browser (headless Chromium): BROWSER=1, as the nightly run does. browser.py runs its parts side by side
+# (BROWSER_WORKERS) and a part that failed once more; what failed the first time is printed (not counted), so a check
+# that fails now and then is seen. BROWSER_SECS: the time the whole run may take.
 if [[ ${BROWSER:-0} == 1 ]]; then
 	echo "Browser"
-	secs=${BROWSER_SECS:-900}
-	run() { out=$(timeout "$secs" python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1); }
-	stopped() { [[ $1 == 124 ]] && echo "the browser test ran into its limit of $secs s after: $(grep -c '^ok ' <<<"$out") checks" || echo "the browser test stopped: $(tail -n 2 <<<"$out" | tr '\n' ' ')"; }
-	run
+	secs=${BROWSER_SECS:-1500}
+	out=$(timeout "$secs" python3 -W ignore "$HERE/browser.py" "$PAGE" 2>&1)
 	rc=$?
-	if ((rc != 0)); then
-		echo "  first run (exit $rc), run again:"
-		grep "^FAIL " <<<"$out" | cut -c6- | sed 's/^/    failed: /'
-		grep -q "^FAIL " <<<"$out" || echo "    $(stopped $rc)"
-		run
-		rc=$?
-	fi
+	stopped() { [[ $1 == 124 ]] && echo "the browser test ran into its limit of $secs s after: $(grep -c '^ok ' <<<"$out") checks" || echo "the browser test stopped: $(tail -n 2 <<<"$out" | tr '\n' ' ')"; }
+	grep -E '^  first run|^    failed: ' <<<"$out" || true
 	while read -r line; do ok "$line"; done < <(grep "^ok " <<<"$out" | cut -c4-)
 	if ((rc != 0)); then
 		while read -r line; do ko "$line"; done < <(grep "^FAIL " <<<"$out" | cut -c6-)
