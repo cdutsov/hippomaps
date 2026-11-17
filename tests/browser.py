@@ -928,9 +928,12 @@ try:
     time.sleep(1.5)
     call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 200, "y": 200}])
     call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    # the search bar goes with the tap, while the point is still looked up (not when its page arrives)
     wait("!document.querySelector('.lm-here').hidden || !document.querySelector('.lm-detail').hidden", 10)
+    check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "a tap on the map: the search bar goes with the card at once")
     js("document.querySelector('.lm-here:not([hidden]) .lm-card-x, .lm-detail:not([hidden]) .lm-card-x')?.click()")
     check(wait("document.querySelector('.lm-here').hidden && document.querySelector('.lm-detail').hidden", 5), "the X closes the card of a point")
+    check(js("getComputedStyle(document.querySelector('.lm-form')).display !== 'none'"), "the X of the card of a point: the search bar is back")
     # day and night follow the visitor, not the map: the style stays when the map goes to New York
     theme0 = js("document.documentElement.dataset.theme")
     js("location.hash = '#map=12/40.7128/-74.0060'")

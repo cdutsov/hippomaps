@@ -49,7 +49,7 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Changed
 
-- No search bar above the page of a place, Measure and Reachable area (as in directions); it comes back with their back
+- No search bar above the page of a place or a point tapped, Measure and Reachable area (as in directions); it comes back with their back
   button or X.
 - The menu: no line under 3D buildings, Relief shading and Directions and voice; the switch of the traffic reads
   "Traffic (Switzerland only)"; shorter lines under Transit and Language.

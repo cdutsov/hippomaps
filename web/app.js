@@ -903,8 +903,9 @@ const showView = (v) => {
   reachView.hidden = v !== reachView;
   if (v !== reachView) reachDone();
   root.classList.toggle("lm-planning", v === routeView); // directions have their own fields: no search bar above them
-  // the page of a place, Measure and Reachable area: no search bar either (each has its back or X)
-  root.classList.toggle("lm-nosearch", v === detailView || v === measureView || v === reachView);
+  // the page of a place, what is here (a place tapped on the map shows it at once, its page follows), Measure and
+  // Reachable area: no search bar either (each has its back or X)
+  root.classList.toggle("lm-nosearch", v === detailView || v === hereView || v === measureView || v === reachView);
   showDirBtn();
   body.scrollTop = 0;
   if (v === listView) setTimeout(foldIfEmpty); // after the caller has filled or cleared the list
