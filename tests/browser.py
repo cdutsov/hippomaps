@@ -2693,6 +2693,17 @@ try:
               and mins == sorted(mins, reverse=True) and len(mins) == n_rows and all(f["properties"].get("fill") for f in gj["features"] if "minutes" in f["properties"])
               and any(f["properties"].get("start") for f in gj["features"]) and f2[1].count("<Placemark>") == n_rows + 1 and "<PolyStyle>" in f2[1],
               f"the areas as GeoJSON (minutes, colours, the start) and KML ({saved['names']})")
+        # by public transport (MOTIS, where the page has data-journey): the mode, its note, 30 minutes in three bands
+        if js("!!document.getElementById('app')?.dataset.journey"):
+            js("document.querySelector('.lm-reach-modes [data-mode=transit]')?.click()")
+            wait("document.querySelector('.lm-reach-modes [data-mode=transit]')?.getAttribute('aria-checked') === 'true'", 3)
+            js("document.querySelector('.lm-reach-times [data-min=\"30\"]')?.click()")
+            check(wait("/timetables/.test(document.querySelector('.lm-reach-hint').textContent) && !document.querySelector('.lm-reach-status').textContent"
+                       f" && {reach_src}.filter(f => !f.properties.edge).map(f => f.properties.min).join() === '10,20,30'"
+                       " && document.querySelectorAll('.lm-reach-legend li').length === 3", 45),
+                  f"by public transport: 10, 20 and 30 minutes, the note of the timetables ({js('document.querySelector(`.lm-reach-status`)?.textContent')}; "
+                  f"{js(legend)})")
+            js("document.querySelector('.lm-reach-modes [data-mode=walk]').click()")  # the next start on foot again
         js("document.querySelector('.lm-reach .lm-card-x').click()")
         check(wait(f"document.querySelector('.lm-reach').hidden && {reach_src}.length === 0 && !document.querySelector('.lm-reach-pin')", 3),
               "the X of Reachable area: the panel, the bands and the pin go")

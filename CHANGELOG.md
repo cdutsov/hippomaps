@@ -12,6 +12,9 @@ version numbers are the releases of the Android app (`android/`), which shows th
   (up to two hours). The steps of time are bands from green near the start to red, each with its area; a click on the
   map or the pin dragged moves the start. The areas as GeoJSON (with their colours, minutes, area and the start) or
   KML. Not in the Android app: saving the files.
+- Reachable area by public transport (up to an hour, where directions have timetables): leaving now, the walk to the
+  first stop timed to a departure (3 minutes of wait), the fastest of up to 8 departures from each of the nearest stops,
+  and from each stop reached on foot for the rest of the time (up to 15 minutes).
 - Measure says Measure area while the shape is closed.
 - Pages about the app on hippomaps.ch, in English and German: Features (search, place pages, directions, public
   transport, navigation, measuring and GPS files, the map) and Guides (searches to try, a bike route with its height

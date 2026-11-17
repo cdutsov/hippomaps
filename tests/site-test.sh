@@ -239,6 +239,16 @@ if grep -q "data-route=" "$TMP/page"; then
 	fi
 	code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=car&min=15")
 	[[ $code == 200 ]] && jq -e '.features[0].properties.mode == "car"' "$TMP/b" >/dev/null && ok "Zurich by car in 15 min" || ko "reachable by car: HTTP $code $(head -c 200 "$TMP/b")"
+	# by public transport (with MOTIS): Zurich main station in 15 and 30 minutes, the longer reaching past 8 km (by train)
+	if grep -q 'data-journey="[^"]' "$TMP/page"; then
+		code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=transit&min=15,30")
+		if [[ $code == 200 ]] && jq -e '(.features | length) == 2 and .features[1].properties.mode == "transit"
+			and ([.features[1].geometry.coordinates | flatten | . as $c | range(0; length; 2) | $c[.]] | (max - min) > 0.2)' "$TMP/b" >/dev/null; then
+			ok "Zurich by public transport in 15 and 30 min"
+		else
+			ko "reachable by public transport: HTTP $code $(head -c 200 "$TMP/b")"
+		fi
+	fi
 	code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=car&min=90")
 	[[ $code == 400 ]] && ok "reachable by car in 90 min: refused (400)" || ko "reachable by car in 90 min: HTTP $code"
 else

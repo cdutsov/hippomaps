@@ -17,18 +17,20 @@ import (
 // How far one gets from a point in some minutes (isochrones of Valhalla, RoutingURL); the tool Reachable area of
 // the page:
 //
-//	GET {base}/api/reach?at=47.37,8.54&mode=car|bike|walk&min=15,30,45,60
+//	GET {base}/api/reach?at=47.37,8.54&mode=car|bike|walk|transit&min=15,30,45,60
 //
 // min: 1 to reachMaxContours times in minutes, rising, each at most the longest of the mode (reachMaxMin). By car
 // leaving now: live traffic and closures count. The answer is GeoJSON: a FeatureCollection of one MultiPolygon per
 // time, the shortest first, with the properties min and mode; coordinates to 5 decimals (about 1 m). Errors as those
 // of /api/route: 400 bad_request, 404 no_road (none near the point) and no_route, 429 too_many, 503 busy, 502 failed.
+// mode=transit: by public transport leaving now (reachtransit.go), up to an hour, only with MOTIS (JourneyURL); 404
+// no_stops where the timetables have no stop near.
 // A visitor gets as many as directions (RoutesPerIP), counted apart (reachPerIP); a call takes a place among the calls to
 // Valhalla (routeCalls).
 
 // reachMaxMin is the longest time of each mode, in minutes: an hour by car takes Valhalla about 2.5 s of a thread
 // (90 minutes 6 s, two hours 9 s), two hours on foot or by bike under 1 s
-var reachMaxMin = map[string]int{"car": 60, "bike": 120, "walk": 120}
+var reachMaxMin = map[string]int{"car": 60, "bike": 120, "walk": 120, "transit": 60}
 
 // reachMaxContours is the most times at once (max_contours of Valhalla)
 const reachMaxContours = 4
@@ -75,10 +77,13 @@ func (s *Server) reach(w http.ResponseWriter, r *http.Request) {
 	lat, lon, ok := latLon(q.Get("at"))
 	name := q.Get("mode")
 	mode, okm := modes[name]
+	if name == "transit" { // MOTIS, not Valhalla (reachtransit.go)
+		okm = s.cfg.JourneyURL != ""
+	}
 	most := reachMaxMin[name]
 	mins, okt := readMinutes(q.Get("min"), most)
 	if !ok || !okm || most == 0 || !okt {
-		routeError(w, http.StatusBadRequest, "bad_request", "at as lat,lon, mode car, bike or walk, and min as 1 to 4 rising minutes (car up to 60, bike and walk up to 120)")
+		routeError(w, http.StatusBadRequest, "bad_request", "at as lat,lon, mode car, bike, walk or transit, and min as 1 to 4 rising minutes (car and transit up to 60, bike and walk up to 120)")
 		return
 	}
 	if !s.reachPerIP.allow(visitor(r), time.Now()) {
@@ -94,6 +99,22 @@ func (s *Server) reach(w http.ResponseWriter, r *http.Request) {
 		routeError(w, http.StatusServiceUnavailable, "busy", "Directions are busy. Please try again.")
 		return
 	case <-ctx.Done():
+		return
+	}
+	if name == "transit" {
+		b, status, code := s.reachTransit(ctx, lat, lon, mins)
+		switch status {
+		case http.StatusOK:
+			w.Header().Set("Content-Type", "application/geo+json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.Write(b)
+		case http.StatusNotFound:
+			routeError(w, status, code, "No stop of the timetables near this point.")
+		default:
+			if r.Context().Err() == nil {
+				routeError(w, status, code, "The area could not be found. Please try again.")
+			}
+		}
 		return
 	}
 	contours := make([]map[string]int, len(mins))

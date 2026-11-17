@@ -12,7 +12,7 @@ const body = (name) => {
   return src.slice(a, b + 2);
 };
 const colours = /const REACH_COLOURS = (\[[^\]]*\]);/.exec(src)[1];
-const names = ["ringArea", "xmlText", "reachSteps", "reachColours", "inRing", "reachBands", "reachArea", "dataReachGeoJSON", "dataReachKML"];
+const names = ["ringArea", "xmlText", "reachSteps", "reachColours", "inRing", "reachBands", "reachArea", "reachCredit", "dataReachGeoJSON", "dataReachKML"];
 const F = new Function(`const REACH_COLOURS = ${colours};\n${names.map(body).join("\n")}\nreturn { REACH_COLOURS, ${names.join(", ")} };`)();
 const close = (got, want, tol, what) => assert.ok(Math.abs(got - want) <= tol, `${what}: ${got}, not ${want} ± ${tol}`);
 
@@ -110,4 +110,22 @@ test("KML: a style per time in the colours of KML, polygons with their holes, th
   assert.ok(k.indexOf("15 min (bike)") < k.indexOf("5 min (bike)"), "the largest first");
   assert.match(k, /<Point><coordinates>8.5,47.4<\/coordinates><\/Point>/);
   assert.match(k, /OpenStreetMap contributors/);
+});
+
+test("by public transport: the files credit the timetables, the other modes not", () => {
+  const fc = answer(), at = [8.5, 47.4];
+  for (const f of fc.features) f.properties.mode = "transit";
+  const g = JSON.parse(F.dataReachGeoJSON({ fc, at, mode: "transit" }));
+  assert.match(g.attribution, /Valhalla.*timetables of transitous\.org by MOTIS/);
+  assert.ok(g.features.every((f) => f.properties.mode === "transit"));
+  assert.match(F.dataReachKML({ fc, at, mode: "transit" }), /<description>[^<]*transitous\.org[^<]*<\/description>/);
+  assert.doesNotMatch(JSON.parse(F.dataReachGeoJSON({ fc: answer(), at, mode: "walk" })).attribution, /MOTIS/);
+});
+test("by public transport: up to an hour, the times the server takes", () => {
+  const times = /const REACH_TIMES = \{[^\n]*transit: (\[[^\]]*\])/.exec(src);
+  assert.ok(times, "transit in REACH_TIMES");
+  for (const m of JSON.parse(times[1])) {
+    assert.ok(m <= 60, `${m} min: the server takes up to 60 by public transport`);
+    assert.ok(F.reachSteps(m).length <= 4);
+  }
 });

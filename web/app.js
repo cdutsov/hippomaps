@@ -284,6 +284,7 @@ const EN = {
   reachHintTouch: "Tap the map or drag the pin to move the start.",
   reachMax: "Up to",
   reachCar: "Leaving now, with live traffic where there is.",
+  reachTransit: "Leaving now by the timetables. The walk to the first stop ends 3 minutes before a departure.",
   reachLegend: (t) => `Within ${t}`,
   reachNoRoad: "No road or path near this point.",
   reachNoWay: "No way leads from this point.",
@@ -7665,13 +7666,18 @@ measureRow.addEventListener("click", () => { openMenu(false); measureStart([]); 
 menuMain.insertBefore(measureRow, FEEDBACK ? fbRow : forgetBtn);
 
 // ------------------------------------------------------------------ reach
-// Reachable area: how far one gets from a point by car, by bike or on foot in some minutes (isochrones of Valhalla,
-// server/reach.go), a band of colour for each step of time, from green (near) to red (far), with the area of each; as
+// Reachable area: how far one gets from a point by car, by bike, on foot or by public transport in some minutes
+// (isochrones of Valhalla, server/reach.go; by public transport from the timetables of MOTIS, server/reachtransit.go,
+// where the page has data-journey), a band of colour for each step of time, from green (near) to red (far), with the area of each; as
 // GeoJSON (with the colours of simplestyle, as geojson.io and QGIS read them) and KML. Started from the menu (at the
 // location of the visitor, else the middle of the map) or the menu of a right click; a click on the map or the pin
 // dragged moves the start.
 const REACH = ROUTE ? ROUTE.replace(/\/route$/, "/reach") : "";
-const REACH_TIMES = { car: [10, 15, 30, 45, 60], bike: [15, 30, 60, 120], walk: [15, 30, 60, 120] };
+const REACH_TIMES = { car: [10, 15, 30, 45, 60], bike: [15, 30, 60, 120], walk: [15, 30, 60, 120], ...(JOURNEY ? { transit: [15, 30, 45, 60] } : {}) };
+// reachCredit: who the areas of a mode come from, for the files
+function reachCredit(mode) {
+  return `© OpenStreetMap contributors (ODbL), routing by Valhalla${mode === "transit" ? ", timetables of transitous.org by MOTIS" : ""}`;
+}
 const REACH_COLOURS = ["#0f9f7a", "#8cc63f", "#f2b134", "#e4572e"];
 // reachSteps: the times of the bands up to max minutes: steps of 5 minutes up to 15, of 10 up to 30, of 15 up to an
 // hour, else of 30
@@ -7728,14 +7734,14 @@ function dataReachGeoJSON({ fc, at, name = "", mode }) {
   const fs = fc.features.map((f, i) => ({ type: "Feature", geometry: f.geometry, properties: { minutes: f.properties.min, mode,
     area_m2: Math.round(reachArea(f.geometry)), fill: cs[i], "fill-opacity": 0.3, stroke: cs[i], "stroke-width": 2 } }));
   fs.unshift({ type: "Feature", geometry: { type: "Point", coordinates: at }, properties: { ...(name ? { name } : {}), start: true, mode } });
-  return JSON.stringify({ type: "FeatureCollection", attribution: "© OpenStreetMap contributors (ODbL), routing by Valhalla", features: fs.reverse() }, null, 1);
+  return JSON.stringify({ type: "FeatureCollection", attribution: reachCredit(mode), features: fs.reverse() }, null, 1);
 }
 // dataReachKML: the areas as KML, the largest first, each in its colour (KML: alpha, blue, green, red), and the start
 function dataReachKML({ fc, at, name = "", mode }) {
   const cs = reachColours(fc.features.length), kc = (hex, a) => a + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);
   const ring = (r) => r.map((p) => `${p[0]},${p[1]}`).join(" ");
   const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>',
-    `<name>${xmlText(name || "hippomaps")}</name><description>© OpenStreetMap contributors (ODbL), routing by Valhalla</description>`];
+    `<name>${xmlText(name || "hippomaps")}</name><description>${xmlText(reachCredit(mode))}</description>`];
   cs.forEach((c, i) => out.push(`<Style id="t${i}"><LineStyle><color>${kc(c, "ff")}</color><width>2</width></LineStyle><PolyStyle><color>${kc(c, "4d")}</color></PolyStyle></Style>`));
   for (let i = fc.features.length - 1; i >= 0; i--) {
     const f = fc.features[i];
@@ -7800,7 +7806,7 @@ function reachRender() {
     return b;
   }));
   reachHint.dataset.t = mouse.matches ? "reachHintMouse" : "reachHintTouch";
-  reachHint.textContent = T[reachHint.dataset.t] + (reach.mode === "car" ? ` ${T.reachCar}` : "");
+  reachHint.textContent = T[reachHint.dataset.t] + (reach.mode === "car" ? ` ${T.reachCar}` : reach.mode === "transit" ? ` ${T.reachTransit}` : "");
   const fs = reach.data?.features || [], cs = reachColours(fs.length);
   reachLegend.replaceChildren(...fs.map((f, i) => {
     const li = el("li", "", { "data-min": f.properties.min });
@@ -7832,7 +7838,8 @@ async function reachAsk() {
       reach.data = null;
       setSource("reach", empty);
       reachRender();
-      reachStatus.textContent = code === "no_road" ? T.reachNoRoad : code === "no_route" ? T.reachNoWay : T.routeErrors[code] || failText(T.reachFailed);
+      reachStatus.textContent = code === "no_road" ? T.reachNoRoad : code === "no_route" ? T.reachNoWay : code === "no_stops" ? T.noStops(true, regionNames())
+        : T.routeErrors[code] || failText(T.reachFailed);
       reachStatus.classList.add("lm-measure-err");
       return;
     }
