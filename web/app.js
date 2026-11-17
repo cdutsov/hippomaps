@@ -254,7 +254,6 @@ const EN = {
   speedLimit: (v) => `Speed limit ${v}`,
   speedNow: (v) => `Speed ${v} km/h`,
   traffic: "Traffic",
-  trafficMenu: "Traffic (Switzerland only)",
   trafficNote: "Closures, queues and roadworks",
   trafficKinds: { closure: "Closed", jam: "Queue", works: "Roadworks", accident: "Accident", obstruction: "Obstruction", weather: "Weather", event: "Event", slow: "Slow traffic" },
   atNight: "at night",
@@ -1607,11 +1606,23 @@ const viewBox = () => {
 };
 
 // ------------------------------------------------------------------ traffic
-// Closures, queues, roadworks and slow traffic in Switzerland (data-traffic: the Traffic Data
-// Platform of FEDRO, through Valhalla's traffic service), refreshed every two minutes while the
-// switch of the menu is on (hm-traffic). Routes take them into account in any case.
+// Closures, queues, roadworks and slow traffic in the countries of data-traffic-countries ("CH,FR,NL":
+// the open traffic data of each, through Valhalla's traffic service), refreshed every two minutes while
+// the switch of the menu is on (hm-traffic). Routes take them into account in any case. Each message
+// names its source and the time of its data (the credit the providers ask for).
 const TRAFFIC = root.dataset.traffic || "";
-let trafficTimer = 0, trafficById = new Map();
+let trafficTimer = 0, trafficById = new Map(), trafficSources = {};
+// the label of the switch: Traffic (and the countries, in the language of the page, by name)
+function trafficLabel() {
+  const codes = (root.dataset.trafficCountries || "").split(",").filter(Boolean);
+  if (!codes.length) return T.traffic;
+  let names = codes;
+  try {
+    const dn = new Intl.DisplayNames([UI], { type: "region" });
+    names = codes.map((c) => dn.of(c) || c);
+  } catch {}
+  return `${T.traffic} (${names.sort((a, b) => a.localeCompare(b, UI)).join(", ")})`;
+}
 async function loadTraffic() {
   clearTimeout(trafficTimer);
   if (!TRAFFIC || !look.traffic) return setSource("traffic", empty);
@@ -1619,6 +1630,7 @@ async function loadTraffic() {
     const d = await (await fetch(TRAFFIC)).json();
     const fs = [];
     trafficById = new Map();
+    trafficSources = d.sources || {};
     for (const it of d.items || []) {
       const t = it.kind === "closure" ? (it.closed ? "closed" : "closure") : it.kind;
       trafficById.set(it.id, it);
@@ -1626,7 +1638,7 @@ async function loadTraffic() {
       if (it.at) fs.push({ type: "Feature", geometry: { type: "Point", coordinates: it.at }, properties: { t, id: it.id } });
     }
     for (const f of d.flow || []) {
-      fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: f.line }, properties: { t: f.level === "jam" ? "jam" : "slow", kph: f.kph } });
+      fs.push({ type: "Feature", geometry: { type: "LineString", coordinates: f.line }, properties: { t: f.level === "jam" ? "jam" : "slow", kph: f.kph, src: f.src || "" } });
     }
     if (look.traffic) setSource("traffic", { type: "FeatureCollection", features: fs });
   } catch {}
@@ -1662,10 +1674,18 @@ function trafficAt(e) {
   box2.append(head);
   if (it?.when) head.append(` · ${it.when === "duringTheNight" ? T.atNight : T.byDay}`);
   if (it) {
-    const tx = it.text?.[UI] || it.text?.de || it.text?.fr || it.text?.it || "";
-    box2.append(el("p", "", {}, tx.replace(/^(Freigegeben|Libéré|Approvato|Released):\s*/, "")));
+    // the text in the language of the page, else in English, else as the provider wrote it
+    const tx = it.text?.[UI] || it.text?.en || Object.values(it.text || {})[0] || "";
+    if (tx) box2.append(el("p", "", {}, tx.replace(/^(Freigegeben|Libéré|Approvato|Released):\s*/, "")));
+    const facts = [it.road, it.length ? fmtDist(it.length / 1000) : "", it.delay >= 60 ? T.delay(Math.round(it.delay / 60)) : ""].filter(Boolean);
+    if (facts.length) box2.append(el("p", "", {}, facts.join(" · ")));
   } else if (f.properties.kph != null) {
     box2.append(el("p", "", {}, `${f.properties.kph} km/h`));
+  }
+  const src = trafficSources[it?.src || f.properties.src];
+  if (src?.credit) {
+    const when = src.updated ? new Date(src.updated).toLocaleTimeString(UI, { hour: "2-digit", minute: "2-digit" }) : "";
+    box2.append(el("small", "lm-traffic-src", {}, when ? `${src.credit}, ${when}` : src.credit));
   }
   new maplibregl.Popup({ maxWidth: "320px" }).setLngLat(e.lngLat).setDOMContent(box2).addTo(map);
   return true;
@@ -2091,7 +2111,7 @@ fbForm.addEventListener("submit", async (e) => {
     fbSend.disabled = false;
   }
 });
-const trafficRow = toggle(T.trafficMenu, T.trafficNote, look.traffic, setTraffic);
+const trafficRow = toggle(trafficLabel(), T.trafficNote, look.traffic, setTraffic);
 const transitRow = toggle(T.transit, T.transitNote, look.transit, setTransit);
 transitBox = transitRow.querySelector("input");
 trafficBox = trafficRow.querySelector("input");
@@ -7754,6 +7774,7 @@ function setLang(chosen) {
   for (const c of document.querySelectorAll(".lm-along-cats [data-cat]")) c.textContent = T.alongCats[c.dataset.cat];
   fillAbout();
   fillFeedback();
+  if (TRAFFIC) trafficRow.querySelector(".lm-toggle-text > span").textContent = trafficLabel(); // the countries by name, in the new language
   privacyLink.href = privacyHref();
   footLink.href = licencesLink.href = licencesHref();
   footGuides.href = guidesLink.href = guidesHref();

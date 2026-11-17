@@ -8,6 +8,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -289,6 +290,9 @@ func New(cfg Config) *Server {
 		})
 	}
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
+	if s.cfg.TrafficURL != "" {
+		go s.trafficBody(context.Background()) // the countries of traffic for the first page
+	}
 	return s
 }
 
@@ -404,7 +408,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	s.stats.record(r, own)
 	var buf bytes.Buffer
 	data := map[string]any{"Base": strings.TrimRight(s.cfg.Base, "/"), "SearchAPI": s.cfg.SearchAPI, "Tiles": s.cfg.TilesURL,
-		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Place": s.placeExtras(), "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Heights": s.cfg.ElevationKey != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Feedback": s.feedbackOn(), "Scope": s.home(), "SW": s.cfg.ServiceWorker, "Worker": s.worker}
+		"Key": s.cfg.MapsKey, "Pictures": s.cfg.Pictures, "Place": s.placeExtras(), "Routes": s.cfg.RoutingURL != "", "Journey": s.cfg.JourneyURL != "", "JourneyRegions": strings.Join(s.cfg.JourneyRegions, ","), "Say": s.cfg.TTSURL != "", "Voices": voiceList(), "Traffic": s.cfg.TrafficURL != "", "TrafficCountries": s.trafficCountries(), "Transit": s.overpass(), "Along": s.overpass() && s.cfg.RoutingURL != "", "Heights": s.cfg.ElevationKey != "", "Public": strings.TrimRight(s.cfg.PublicURL, "/"), "Donate": s.donations(), "Feedback": s.feedbackOn(), "Scope": s.home(), "SW": s.cfg.ServiceWorker, "Worker": s.worker}
 	// a connection ahead to the tiles API on another site; on the site of the page there is one already, and one
 	// without cookies (crossorigin) would be a second that nothing uses
 	if u, err := url.Parse(s.cfg.TilesURL); err == nil && u.Host != "" && !strings.EqualFold(u.Host, r.Host) {

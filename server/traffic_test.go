@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestTraffic(t *testing.T) {
@@ -94,5 +95,26 @@ func TestTrafficVisitorLeaves(t *testing.T) {
 	s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/labs/maps/api/traffic", nil).WithContext(ctx))
 	if w := get(s, "/labs/maps/api/traffic"); w.Code != 200 || calls.Load() != 1 {
 		t.Errorf("traffic after a visitor who left: %d, %d calls", w.Code, calls.Load())
+	}
+}
+
+// the countries of the traffic go into the page for the switch of the menu: asked when the server starts (in the
+// background: a page never waits for them), in the page once known
+func TestTrafficCountries(t *testing.T) {
+	var calls atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		io.WriteString(w, `{"countries":["CH","FR","NL"],"sources":{"nl":{"country":"NL","credit":"NDW"}},"items":[],"flow":[]}`)
+	}))
+	t.Cleanup(up.Close)
+	s := testServer(t, nil, func(c *Config) { c.TrafficURL = up.URL })
+	for i := 0; i < 100 && !strings.Contains(get(s, "/labs/maps").Body.String(), `data-traffic-countries="CH,FR,NL"`); i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if b := get(s, "/labs/maps").Body.String(); !strings.Contains(b, `data-traffic-countries="CH,FR,NL"`) {
+		t.Fatalf("no countries in the page")
+	}
+	if w := get(s, "/labs/maps/api/traffic"); w.Code != 200 || calls.Load() != 1 {
+		t.Errorf("traffic: %d after %d calls, want one call for the page and the API", w.Code, calls.Load())
 	}
 }

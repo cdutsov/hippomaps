@@ -74,11 +74,12 @@ code=$(get "$PAGE/sitemap.xml")
 grep -qF "<loc>$PAGE/de/privacy</loc>" "$TMP/b" && ok "the privacy policy in the sitemap" || ko "the sitemap does not list the privacy policy"
 grep -qF "<loc>$PAGE/de/licences</loc>" "$TMP/b" && ok "the licences in the sitemap" || ko "the sitemap does not list the licences"
 # the licences and sources (the page links them small and spells out no credit itself): the voices under CC BY, the
-# traffic data in the wording of FEDRO, OpenStreetMap, DB-IP; English and German
+# traffic data (FEDRO in its wording, NDW, Bison Futé with its licence), OpenStreetMap, DB-IP; English and German
 for pr in "licences|Licences and sources" "de/licences|Lizenzen und Quellen"; do
 	code=$(get "$PAGE/${pr%%|*}")
 	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -qF 'serena-synthetic-it-27h (Marco Baccarani)' "$TMP/b" && grep -qF 'Data source: Federal Roads Office (FEDRO) Traffic Data Platform (TDP).' "$TMP/b" &&
-		grep -qF 'OpenStreetMap' "$TMP/b" && grep -qF 'IP Geolocation by DB-IP' "$TMP/b" && ok "the licences /${pr%%|*}: voices, traffic, map data, DB-IP" || ko "/${pr%%|*}: HTTP $code"
+		grep -qF 'NDW</a> (Nationaal Dataportaal Wegverkeer)' "$TMP/b" && grep -qF 'Bison Futé</a>, Ministère de la Transition écologique' "$TMP/b" && grep -qF 'Licence Ouverte 2.0' "$TMP/b" &&
+		grep -qF 'OpenStreetMap' "$TMP/b" && grep -qF 'IP Geolocation by DB-IP' "$TMP/b" && ok "the licences /${pr%%|*}: voices, traffic (FEDRO, NDW, Bison Futé), map data, DB-IP" || ko "/${pr%%|*}: HTTP $code"
 	# the timetables of public transport with their sources (opentransportdata.swiss asks to be cited as the source)
 	grep -qF '<a href="https://opentransportdata.swiss">opentransportdata.swiss</a>' "$TMP/b" && grep -qF 'https://transitous.org/sources/' "$TMP/b" && grep -qF 'sofia.bg' "$TMP/b" &&
 		ok "the licences /${pr%%|*}: the sources of the timetables" || ko "/${pr%%|*}: no sources of the timetables"
@@ -333,8 +334,13 @@ fi
 echo "Traffic"
 if grep -q "data-traffic=" "$TMP/page"; then
 	code=$(get "$PAGE/api/traffic")
-	if [[ $code == 200 ]] && jq -e '.items and .flow and (.source | test("FEDRO"))' "$TMP/b" >/dev/null 2>&1; then
-		ok "traffic in Switzerland: $(jq ".items | length" "$TMP/b") events, $(jq "[.items[] | select(.closed)] | length" "$TMP/b") closed now"
+	# each country of the service with its credit and messages; the page names the countries for the menu
+	if [[ $code == 200 ]] && jq -e '.sources as $s | .items and .flow and (.source | test("FEDRO")) and (.countries | length > 0)
+		and all(.countries[]; . as $c | any($s[]; .country == $c and (.credit | length > 0)))' "$TMP/b" >/dev/null 2>&1; then
+		ok "traffic: $(jq -r '[.items | group_by(.src)[] | "\(.[0].src) \(length)"] | join(", ")' "$TMP/b") events, $(jq "[.items[] | select(.closed)] | length" "$TMP/b") closed now, countries $(jq -r '.countries | join(",")' "$TMP/b")"
+		cs=$(jq -r '.countries | join(",")' "$TMP/b")
+		get "$PAGE/" >/dev/null
+		grep -qF "data-traffic-countries=\"$cs\"" "$TMP/b" && ok "the page names the countries of traffic ($cs)" || ko "the page has no data-traffic-countries=\"$cs\""
 	else
 		ko "traffic: HTTP $code $(head -c 200 "$TMP/b")"
 	fi

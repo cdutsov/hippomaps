@@ -39,16 +39,18 @@ test("free software and the donation in each language", () => {
 });
 
 // the rows of the menu: 3D buildings, Relief shading and Directions and voice say it all, with no line under them;
-// Traffic says in its label that it is Switzerland only (the button on the map stays Traffic)
+// Traffic names its countries in its label, from the page (data-traffic-countries), not from the texts (the button on
+// the map stays Traffic)
 test("the rows of the menu: no line under a label that says it all", () => {
   for (const [lang, t] of [["en", EN], ...["de", "fr", "it"].map((l) => [l, all[l]])]) {
     for (const k of ["buildings3DNote", "shadingNote", "navLanguageNote"]) assert.ok(!(k in t), `${lang} ${k}`);
-    assert.match(t.trafficMenu, new RegExp(`^${t.traffic} \\(.*(Switzerland|Schweiz|Suisse|Svizzera).*\\)$`), `${lang} trafficMenu`);
+    assert.ok(!("trafficMenu" in t), `${lang} trafficMenu: the countries come from the page`);
     assert.ok(!/Switzerland|Schweiz|Suisse|Svizzera/.test(t.trafficNote), `${lang} trafficNote`);
     assert.ok(!/colou?rs|Farben|couleurs|colori/.test(t.transitNote), `${lang} transitNote`);
     assert.ok(!/names|noms|nomi|beschriftung/i.test(t.languageNote), `${lang} languageNote: ${t.languageNote}`);
   }
-  assert.equal(EN.trafficMenu, "Traffic (Switzerland only)");
+  assert.match(src, /const trafficRow = toggle\(trafficLabel\(\), T\.trafficNote/, "the label of Traffic names the countries");
+  assert.match(src, /new Intl\.DisplayNames\(\[UI\], \{ type: "region" \}\)/, "the countries by name in the language of the page");
   assert.equal(EN.trafficNote, "Closures, queues and roadworks");
   assert.equal(EN.transitNote, "Metro, light rail and tram lines");
   assert.equal(EN.languageNote, "Page and map");
