@@ -2433,11 +2433,13 @@ try:
     area = js("hmMap.getStyle().sources['lm-measure'].data.features.some(f => f.geometry.type === 'Polygon')")
     sub = js("document.querySelector('.lm-measure-sub')?.textContent || ''")
     check(len(pts) == 4 and area and re.match(r"^[\d.]+ (ha|m²|km²)$", js(big) or "") and sub.startswith("Perimeter ")
-          and js("document.querySelector('.lm-measure-shape').textContent") == "Open the shape",
-          f"the first point tapped: the shape closed, its area and perimeter ({js(big)}, {sub})")
+          and js("document.querySelector('.lm-measure-shape').textContent") == "Open the shape"
+          and js("document.querySelector('.lm-measure .lm-dname').textContent") == "Measure area",
+          f"the first point tapped: the shape closed, its area and perimeter, the title Measure area ({js(big)}, {sub})")
     js("document.querySelector('.lm-measure-undo').click()")
-    check(wait("!hmMap.getStyle().sources['lm-measure'].data.features.some(f => f.geometry.type === 'Polygon')", 3) and js(f"{meas_pts}.length") == 4,
-          "Undo: the shape open again, its four points")
+    check(wait("!hmMap.getStyle().sources['lm-measure'].data.features.some(f => f.geometry.type === 'Polygon')", 3) and js(f"{meas_pts}.length") == 4
+          and js("document.querySelector('.lm-measure .lm-dname').textContent") == "Measure distance",
+          "Undo: the shape open again, its four points, the title Measure distance")
     # a point dragged: it moves, the map does not
     c0 = js("hmMap.getCenter().toArray()")
     q = js(f"(() => {{ const b = hmMap.getCanvas().getBoundingClientRect(), p = hmMap.project({meas_pts}[1]); return [b.left + p.x, b.top + p.y]; }})()")
@@ -2505,6 +2507,67 @@ try:
     check(wait("document.querySelector('.lm-menu').hidden && !document.querySelector('.lm-measure').hidden", 3) and js(f"{meas_pts}.length") == 0,
           "Measure distance of the menu: the panel, no point yet")
     js("document.querySelector('.lm-measure .lm-card-x').click()")
+    # Reachable area: from a long press; on foot up to 15 minutes three bands (5, 10, 15) from green to red, each without
+    # the one inside it, their areas growing; a tap on the map moves the start; by car the note of traffic; the areas as
+    # GeoJSON (minutes, colours, the start) and KML; the X clears the map; the row of the menu
+    if app_has("route"):
+        reach_src = "hmMap.getStyle().sources['lm-reach'].data.features"
+        legend = "[...document.querySelectorAll('.lm-reach-legend li')].map(l => l.textContent)"
+        js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 14 })")
+        wait("!hmMap.isMoving()", 5)
+        time.sleep(0.5)
+        press(at(0.5, 0.5))
+        pressed = ll_of(at(0.5, 0.5))
+        wait("!document.querySelector('.lm-ctx').hidden", 5)
+        time.sleep(0.8)
+        js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Reachable from here').click()")
+        check(wait("!document.querySelector('.lm-reach').hidden && document.querySelectorAll('.lm-reach-legend li').length > 0", 20),
+              f"Reachable from here: the panel and its legend ({js('document.querySelector(`.lm-reach-status`)?.textContent')})")
+        js("document.querySelector('.lm-reach-modes [data-mode=walk]').click()")
+        wait("document.querySelector('.lm-reach-modes [data-mode=walk]').getAttribute('aria-checked') === 'true'", 3)
+        js("document.querySelector('.lm-reach-times [data-min=\"15\"]')?.click()")
+        ok_walk = wait(f"{reach_src}.filter(f => !f.properties.edge).map(f => f.properties.min).join() === '5,10,15' && document.querySelectorAll('.lm-reach-legend li').length === 3", 20)
+        rows = js(legend) or []
+        cols = js(f"{reach_src}.filter(f => !f.properties.edge).map(f => f.properties.c)") or []
+        areas = [float(re.sub(r"[^\d.]", "", r.split("min")[-1]) or 0) * (1 if "km²" in r else 0.01) for r in rows]
+        holes = js(f"{reach_src}.filter(f => !f.properties.edge)[1].geometry.coordinates.some(p => p.length > 1)")
+        # the pin where the finger was (or on the place of the map there), after the map moved to the bands
+        pin = js("(() => { const m = document.querySelector('.lm-reach-pin'); if (!m) return null; const r = m.getBoundingClientRect(), b = hmMap.getCanvas().getBoundingClientRect(),"
+                 " l = hmMap.unproject([r.left + r.width / 2 - b.left, r.top + r.height / 2 - b.top]); return [l.lng, l.lat]; })()")
+        check(ok_walk and len(set(cols)) == 3 and rows[0].startswith("Within 5 min") and areas == sorted(areas) and areas[0] > 0 and holes
+              and pin and km_of([pin, pressed]) < 0.08,
+              f"on foot up to 15 min: three bands in three colours, 10 min with a hole for 5, areas growing, the pin at the point ({rows})")
+        before = js("document.querySelector('.lm-reach-from').textContent")
+        touch_at(at(0.3, 0.35))
+        check(wait(f"document.querySelector('.lm-reach-from').textContent !== {json.dumps(before)} && document.querySelectorAll('.lm-reach-legend li').length === 3", 20),
+              f"a tap on the map: the start moves there, new bands ({js('document.querySelector(`.lm-reach-from`).textContent')})")
+        js("document.querySelector('.lm-reach-modes [data-mode=car]').click()")
+        check(wait("document.querySelector('.lm-reach-modes [data-mode=car]').getAttribute('aria-checked') === 'true' && /traffic/.test(document.querySelector('.lm-reach-hint').textContent)"
+                   f" && {reach_src}.length > 0 && !document.querySelector('.lm-reach-status').textContent", 30),
+              "by car: an answer, the note of live traffic")
+        saved = js("(async () => { const files = [], blobs = {}, c0 = HTMLAnchorElement.prototype.click, u0 = URL.createObjectURL;"
+                   " URL.createObjectURL = (b) => { const u = u0(b); blobs[u] = b; return u; };"
+                   " HTMLAnchorElement.prototype.click = function () { if (this.download) files.push(this); else c0.call(this); };"
+                   " try { for (const b of document.querySelectorAll('.lm-reach-files button')) b.click(); } finally { HTMLAnchorElement.prototype.click = c0; URL.createObjectURL = u0; }"
+                   " const t = await Promise.all(files.map((a) => blobs[a.href].text()));"
+                   " return { names: files.map((a) => a.download), files: t }; })()") or {"names": [], "files": []}
+        f2 = saved["files"] + ["", ""]
+        gj = json.loads(f2[0] or "{}")
+        mins = [f["properties"].get("minutes") for f in gj.get("features", []) if "minutes" in f.get("properties", {})]
+        n_rows = len(js(legend) or [])
+        check(len(saved["names"]) == 2 and saved["names"][0].endswith(".geojson") and saved["names"][1].endswith(".kml") and "reach-car" in saved["names"][0]
+              and mins == sorted(mins, reverse=True) and len(mins) == n_rows and all(f["properties"].get("fill") for f in gj["features"] if "minutes" in f["properties"])
+              and any(f["properties"].get("start") for f in gj["features"]) and f2[1].count("<Placemark>") == n_rows + 1 and "<PolyStyle>" in f2[1],
+              f"the areas as GeoJSON (minutes, colours, the start) and KML ({saved['names']})")
+        js("document.querySelector('.lm-reach .lm-card-x').click()")
+        check(wait(f"document.querySelector('.lm-reach').hidden && {reach_src}.length === 0 && !document.querySelector('.lm-reach-pin')", 3),
+              "the X of Reachable area: the panel, the bands and the pin go")
+        js("document.querySelector('.lm-map-burger').click()")
+        wait("!document.querySelector('.lm-menu').hidden", 3)
+        check(js("document.querySelector('.lm-reach-row')?.textContent.startsWith('Reachable area')"), "the menu has Reachable area")
+        js("document.querySelector('.lm-reach-row').click()")
+        check(wait("document.querySelector('.lm-menu').hidden && !document.querySelector('.lm-reach').hidden", 3), "Reachable area of the menu: the panel")
+        js("document.querySelector('.lm-reach .lm-card-x').click()")
     # directions from one point and to another with the menu; the route as GPX
     if app_has("route"):
         js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")

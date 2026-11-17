@@ -140,6 +140,7 @@ type Server struct {
 
 	routeClient *http.Client
 	routesPerIP *window
+	reachPerIP  *window // reachable areas (reach.go): apart from directions, so a pin dragged about leaves them
 	routeCalls  chan struct{} // calls to Valhalla at once
 	saysPerIP   *window
 	sayCalls    chan struct{} // calls to the text-to-speech server at once
@@ -177,6 +178,7 @@ func New(cfg Config) *Server {
 		client: &http.Client{Timeout: 10 * time.Second}, cache: newMemo(cfg.CacheMB<<20, 24*time.Hour),
 		perIP: newWindow(cfg.PicturesPerIP, cfg.PictureWindow), calls: make(chan struct{}, 4),
 		routeClient: &http.Client{Timeout: 30 * time.Second}, routesPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
+		reachPerIP: newWindow(cfg.RoutesPerIP, cfg.RouteWindow),
 		routeCalls: make(chan struct{}, 4), saysPerIP: newWindow(cfg.SaysPerIP, cfg.RouteWindow), sayCalls: make(chan struct{}, 4),
 		transitPerIP: newWindow(300, 10*time.Minute), transitCalls: make(chan struct{}, 2),
 		searchesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), queriesPerIP: newWindow(cfg.SearchesPerIP, cfg.RouteWindow), herePerIP: newWindow(3*cfg.SearchesPerIP, cfg.RouteWindow),
@@ -247,6 +249,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET "+base+"/api/kinds", s.kinds)
 	if s.cfg.RoutingURL != "" {
 		s.mux.HandleFunc("GET "+base+"/api/route", s.route)
+		s.mux.HandleFunc("GET "+base+"/api/reach", s.reach) // how far in some minutes (reach.go)
 	}
 	if s.cfg.JourneyURL != "" {
 		s.mux.HandleFunc("GET "+base+"/api/journey", s.journey)

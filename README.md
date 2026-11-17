@@ -45,7 +45,7 @@ navigation, on OpenStreetMap data.**
   under the mouse on a computer
 - **What is here**: a tap on the map shows the address and the named places around it
 - **A right click on the map** (a long press on a phone): what is here, directions from or to the point, Measure
-  distance from it, its coordinates copied
+  distance from it, Reachable from here, its coordinates copied
 
 ### Directions and navigation
 
@@ -77,7 +77,13 @@ navigation, on OpenStreetMap data.**
 - **Measure distance** (the menu, or a right click): points set on the map give the length of the line; the first point
   clicked again closes the shape and gives its area and perimeter. Points are dragged, removed with a click, added on
   the middle of a part; Undo. The height profile of the line, and the line as GPX (with its heights), KML or GeoJSON. A
-  GPX, KML or GeoJSON file opened or dropped on the map shows its track as such a line (5000 points at most)
+  GPX, KML or GeoJSON file opened or dropped on the map shows its track as such a line (5000 points at most). The title
+  says Measure area while the shape is closed
+- **Reachable area** (the menu, from the location of the visitor or the middle of the map; or a right click): how far one
+  gets by car (up to an hour, with live traffic), by bike or on foot (up to two hours), in up to four steps of time, each
+  a band of its own colour from green to red (the shorter time cut out of it, so colours do not mix) with its area. A
+  click on the map or the pin dragged moves the start. The areas as GeoJSON (simplestyle colours, minutes, area, the
+  start) or KML (a style per step)
 - **Files for a GPS device**: the results of a search as GPX waypoints (beside CSV and GeoJSON), a route as a GPX track
   (with its heights by bike and on foot). Not in the Android app, whose WebView cannot save a file made in the page
 - The page in English, German, French and Italian
@@ -173,6 +179,7 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | `GET journey?from=lat,lon&to=…&time=2026-11-13T08:00:00Z&arrive=1&page=&lang=` | connections by public transport around a time (now without `time`; `arrive=1`: there by then): legs with line, direction, tracks, stops, delays and their way; `earlier` and `later` are the `page` of the connections before and after; the way on foot when the ends are near |
 | `POST along` `{"line","cat","mode","lang"}` | places of a kind near a route, in route order |
 | `POST heights` `{"line":[[lon,lat],…]}` | the height profile of a line (Measure): `up`, `down`, `min`, `max`, `pts` as [km, m], as that of a route; 2 to 5000 points, 2000 km at most (400 `too_long`); counted as directions of the visitor. Only with `ELEVATION_KEY` (the page then has `data-heights`) |
+| `GET reach?at=lat,lon&mode=car\|bike\|walk&min=15,30,45,60` | how far one gets in those minutes (isochrones of Valhalla): GeoJSON, a MultiPolygon per time with `min` and `mode`, the shortest first, coordinates to 5 decimals; 1 to 4 rising times, by car up to 60 (leaving now, with traffic), by bike and on foot up to 120; errors as `route` (`no_road`, `no_route`); as many for a visitor as directions (`ROUTES_PER_IP`), counted apart |
 | `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |
 | `GET say?lang=&text=` | spoken sentence (audio/mpeg) |
 | `GET traffic` | traffic incidents |

@@ -1,5 +1,5 @@
 {{define "title"}}Measure distance and area, GPX, KML and GeoJSON{{end}}
-{{define "desc"}}Measure a distance or an area on the map with hippomaps, get its height profile, and save lines, routes and places as GPX, KML or GeoJSON. Open GPX, KML and GeoJSON files to see a track.{{end}}
+{{define "desc"}}Measure a distance or an area on the map with hippomaps, get its height profile, see how far you get in some minutes, and save lines, routes and places as GPX, KML or GeoJSON. Open GPX, KML and GeoJSON files to see a track.{{end}}
 {{define "image"}}measure{{end}}
 {{define "body"}}
 <div class="pg-wrap">
@@ -22,11 +22,14 @@
 <p>Lengths and areas are calculated on the sphere of the Earth, so they hold for long lines too.</p>
 <h2>Height profile</h2>
 <p>Height profile shows the heights along the line with the climb and the descent. Move along it to see each point on the map. The heights come from a 2 m grid in Switzerland and a 30 m grid elsewhere.</p>
+<h2>Reachable area</h2>
+<p>Reachable area shows how far you get from a point by car (up to an hour), by bike or on foot (up to two hours). Each step of time has its own colour, from green near the start to red, and its area. Open it from the menu, where it starts at your location, or right-click the map and choose Reachable from here. Click the map or drag the pin to move the start. By car it counts the traffic of the moment where hippomaps has traffic data.</p>
 <h2>Files</h2>
 <p>A measured line can be saved as GPX (with its heights), KML for Google Earth, or GeoJSON for a GIS. The same goes for other things in hippomaps:</p>
 <ul>
 <li>a route, as a GPX track with its heights by bike and on foot</li>
 <li>the results of a search, as GPX waypoints, CSV or GeoJSON</li>
+<li>a reachable area, as GeoJSON with its colours (geojson.io and QGIS show them) or KML</li>
 </ul>
 <p>Open a GPX, KML or GeoJSON file in Measure, or drop it on the map, to see its track with its length and heights. The guide <a href="{{link "/guides/gpx"}}">Put a route on a GPS device</a> goes through it step by step.</p>
 <p class="pg-note">Files are saved and opened in the browser. On Android, use hippomaps.ch in the browser for them.</p>

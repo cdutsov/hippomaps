@@ -228,6 +228,19 @@ if grep -q "data-route=" "$TMP/page"; then
 			ko "the heights on foot: HTTP $code, up ${up:-none}"
 		fi
 	fi
+	# reachable area (isochrones): Zurich on foot in 5 and 10 minutes, two rising MultiPolygons, 10 min larger; by car
+	# 15 min; a time over the limit of the mode refused
+	code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=walk&min=5,10")
+	if [[ $code == 200 ]] && jq -e '(.features | length) == 2 and ([.features[].properties.min] == [5, 10]) and all(.features[]; .geometry.type == "MultiPolygon")
+		and (.features[1].geometry.coordinates | flatten | length) > 20' "$TMP/b" >/dev/null; then
+		ok "Zurich on foot in 5 and 10 min: $(jq -r '[.features[].geometry.coordinates | flatten | length / 2] | map(tostring) | join(" and ")' "$TMP/b") points"
+	else
+		ko "reachable on foot: HTTP $code $(head -c 200 "$TMP/b")"
+	fi
+	code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=car&min=15")
+	[[ $code == 200 ]] && jq -e '.features[0].properties.mode == "car"' "$TMP/b" >/dev/null && ok "Zurich by car in 15 min" || ko "reachable by car: HTTP $code $(head -c 200 "$TMP/b")"
+	code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=car&min=90")
+	[[ $code == 400 ]] && ok "reachable by car in 90 min: refused (400)" || ko "reachable by car in 90 min: HTTP $code"
 else
 	echo "  SKIP  no directions (ROUTING_URL not set)"
 fi

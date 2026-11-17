@@ -7,6 +7,12 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Added
 
+- Reachable area, from the menu (at the location of the device, else the middle of the map) or the menu of a right
+  click (Reachable from here): how far one gets by car (up to an hour, leaving now with live traffic), by bike or on foot
+  (up to two hours). The steps of time are bands from green near the start to red, each with its area; a click on the
+  map or the pin dragged moves the start. The areas as GeoJSON (with their colours, minutes, area and the start) or
+  KML. Not in the Android app: saving the files.
+- Measure says Measure area while the shape is closed.
 - Pages about the app on hippomaps.ch, in English and German: Features (search, place pages, directions, public
   transport, navigation, measuring and GPS files, the map) and Guides (searches to try, a bike route with its height
   profile, a train connection, GPX for a GPS device, navigation without a connection, sharing), with pictures and links

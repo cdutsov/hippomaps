@@ -276,6 +276,19 @@ const EN = {
   measureHintTouch: "Tap the map to add points. Drag a point to move it, tap it to remove it. Tap the first point to close the shape and measure its area.",
   measurePerimeter: "Perimeter",
   measureAdd: "Add a point here",
+  measureArea: "Measure area",
+  reach: "Reachable area",
+  reachNote: "How far you get in some minutes",
+  reachFrom: "Reachable from here",
+  reachHintMouse: "Click the map or drag the pin to move the start.",
+  reachHintTouch: "Tap the map or drag the pin to move the start.",
+  reachMax: "Up to",
+  reachCar: "Leaving now, with live traffic where there is.",
+  reachLegend: (t) => `Within ${t}`,
+  reachNoRoad: "No road or path near this point.",
+  reachNoWay: "No way leads from this point.",
+  reachFailed: "The area could not be found. Please try again.",
+  reachLooking: "Finding the area…",
   undo: "Undo",
   clear: "Clear",
   closeShape: "Close the shape",
@@ -381,6 +394,7 @@ const ICON = {
   swap: "M7 4v16M7 4 4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3",
   plus: "M12 5v14M5 12h14",
   ruler: "M3 16.5 16.5 3 21 7.5 7.5 21zM7 12.5l2 2M10 9.5l2.5 2.5M13 6.5l2 2",
+  reach: "M12 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM12 17a5 5 0 1 0-4.6-3M12 21a9 9 0 1 0-8.3-5.5",
   undo: "M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
   shape: "M5 6l13-2 3 11-9 6-8-6zM5 6h0",
   mountain: "M3 20 9.5 8l4 7 2.5-4L21 20z",
@@ -867,7 +881,11 @@ routeView.hidden = true;
 const measureView = el("section", "lm-measure");
 measureView.hidden = true;
 const meas = { on: false, pts: [], closed: false, name: "", undo: [], elev: null, profile: false, drag: null, dragEnd: 0, timer: 0, ctl: null, dbl: true };
-body.append(listView, hereView, detailView, routeView, measureView);
+// Reachable area (the section reach, below)
+const reachView = el("section", "lm-reach");
+reachView.hidden = true;
+const reach = { on: false, at: null, name: "", mode: "walk", max: 15, data: null, ctl: null, timer: 0, fit: false, marker: null };
+body.append(listView, hereView, detailView, routeView, measureView, reachView);
 // show one of the views of the side bar: the list, what is here, the page of a place, directions
 // the popups of places on the map (made when first shown, showPop): of the place tapped (tap) and of that under the mouse
 // (hover); key: the name and place of what they show
@@ -882,6 +900,8 @@ const showView = (v) => {
   routeView.hidden = v !== routeView;
   measureView.hidden = v !== measureView;
   if (v !== measureView) measureDone();
+  reachView.hidden = v !== reachView;
+  if (v !== reachView) reachDone();
   root.classList.toggle("lm-planning", v === routeView); // directions have their own fields: no search bar above them
   showDirBtn();
   body.scrollTop = 0;
@@ -992,7 +1012,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, routealt: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty, measure: empty };
+const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, routealt: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty, measure: empty, reach: empty };
 const ACCENT = "#e8590c"; // the warm complement of the hippo blue (--warm)
 const STOP_COLOUR = "#e8590c"; // stops on a route, and the places along it
 // POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
@@ -1559,6 +1579,11 @@ map.on("style.load", () => {
     layout: { "text-field": ["get", "n"], "text-font": font, "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true },
     paint: { "text-color": "#fff" } });
   add({ id: "lm-route-alt-label", type: "symbol", source: "lm-routealt", filter: ["has", "text"], layout: altPillLayout(), paint: altPillPaint() });
+  // the reachable area (Reachable area): a band of colour for each time, from green (near) to red (far), each without the
+  // bands inside it (reachBands), so the colours do not mix; the outline of each time
+  add({ id: "lm-reach-fill", type: "fill", source: "lm-reach", filter: ["!", ["has", "edge"]], paint: { "fill-color": ["get", "c"], "fill-opacity": 0.3 } });
+  add({ id: "lm-reach-line", type: "line", source: "lm-reach", filter: ["has", "edge"], layout: { "line-join": "round" },
+    paint: { "line-color": ["get", "c"], "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1, 14, 2], "line-opacity": 0.9 } });
   // the line measured (Measure): violet, a white line under it; the area lightly filled; its points and the handles
   // in the middle of its parts; the length (or the area) at its end
   const MEASURE = "#7048e8";
@@ -4230,6 +4255,7 @@ map.on("click", (e) => {
   if (e.defaultPrevented || Date.now() < ghostUntil) return;
   if (meas.on && !nav.on) return measureClick(e); // at once: no double tap to wait for in measuring
   clearTimeout(tapTimer);
+  if (reach.on && !nav.on) return void (tapTimer = setTimeout(() => reachFrom([e.lngLat.lng, e.lngLat.lat]), 280)); // the start moves there
   tapTimer = setTimeout(() => onTap(e), 280);
 });
 function onTap(e) {
@@ -7415,6 +7441,8 @@ function measureDraw() {
   const p = meas.pts, closed = meas.closed && p.length > 2;
   setSource("measure", measureData());
   const len = measureKm(p, closed);
+  measureTitle.dataset.t = closed ? "measureArea" : "measure"; // a closed shape: its area
+  measureTitle.textContent = T[measureTitle.dataset.t];
   measureTotal.replaceChildren();
   if (closed) {
     measureTotal.append(el("span", "lm-measure-big", {}, fmtArea(ringArea(p))),
@@ -7624,6 +7652,249 @@ measureRow.insertAdjacentHTML("beforeend", svg(ICON.next, 18));
 measureRow.addEventListener("click", () => { openMenu(false); measureStart([]); });
 menuMain.insertBefore(measureRow, FEEDBACK ? fbRow : forgetBtn);
 
+// ------------------------------------------------------------------ reach
+// Reachable area: how far one gets from a point by car, by bike or on foot in some minutes (isochrones of Valhalla,
+// server/reach.go), a band of colour for each step of time, from green (near) to red (far), with the area of each; as
+// GeoJSON (with the colours of simplestyle, as geojson.io and QGIS read them) and KML. Started from the menu (at the
+// location of the visitor, else the middle of the map) or the menu of a right click; a click on the map or the pin
+// dragged moves the start.
+const REACH = ROUTE ? ROUTE.replace(/\/route$/, "/reach") : "";
+const REACH_TIMES = { car: [10, 15, 30, 45, 60], bike: [15, 30, 60, 120], walk: [15, 30, 60, 120] };
+const REACH_COLOURS = ["#0f9f7a", "#8cc63f", "#f2b134", "#e4572e"];
+// reachSteps: the times of the bands up to max minutes: steps of 5 minutes up to 15, of 10 up to 30, of 15 up to an
+// hour, else of 30
+function reachSteps(max) {
+  const step = max <= 15 ? 5 : max <= 30 ? 10 : max <= 60 ? 15 : 30, out = [];
+  for (let m = step; m <= max; m += step) out.push(m);
+  return out;
+}
+// reachColours: the colours of n bands, spread over the four from near to far (two: green and red)
+function reachColours(n) {
+  return Array.from({ length: n }, (_, i) => REACH_COLOURS[n < 2 ? 0 : Math.round((i * 3) / (n - 1))]);
+}
+// inRing: is the point [lon, lat] in the ring (even-odd)?
+function inRing(p, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if (a[1] > p[1] !== b[1] > p[1] && p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+// reachBands: the bands of the map from the areas of the answer (the shortest time first, each a MultiPolygon that
+// holds the shorter ones): each area with the outer rings of the one before as holes (in the polygon that holds most of
+// their points), so no colour lies over another; the holes of the one before (places not reached in the shorter time) a
+// band of this time; and each area once more as its outline (edge)
+function reachBands(fc, colours = reachColours(fc?.features?.length || 0)) {
+  const fs = fc?.features || [], out = [];
+  fs.forEach((f, i) => {
+    const own = f.geometry.coordinates, polys = own.map((p) => [...p]), extra = [], props = { min: f.properties.min, c: colours[i] };
+    for (const p of i ? fs[i - 1].geometry.coordinates : []) {
+      const o = p[0], step = Math.max(1, Math.floor(o.length / 24)), probe = o.filter((_, k) => k % step === 0);
+      let host = null, best = 0;
+      for (const q of polys) {
+        const n = probe.filter((pt) => inRing(pt, q[0])).length;
+        if (n > best) { best = n; host = q; }
+      }
+      if (host && best * 3 >= probe.length * 2) host.push(o);
+      // a hole of the time before inside an area of this time, not in one of its own holes (a lake is a hole of both)
+      for (const h of p.slice(1)) if (own.some((q) => inRing(h[0], q[0]) && !q.slice(1).some((r) => inRing(h[0], r)))) extra.push([h]);
+    }
+    out.push({ type: "Feature", geometry: { type: "MultiPolygon", coordinates: [...polys, ...extra] }, properties: props });
+    out.push({ type: "Feature", geometry: f.geometry, properties: { ...props, edge: 1 } });
+  });
+  return { type: "FeatureCollection", features: out };
+}
+// reachArea: the area of a MultiPolygon in m² (its holes taken off)
+function reachArea(g) {
+  return g.coordinates.reduce((s, p) => s + ringArea(p[0]) - p.slice(1).reduce((h, r) => h + ringArea(r), 0), 0);
+}
+// dataReachGeoJSON: the areas of an answer as GeoJSON, each with its time, mode, area and the colours of simplestyle,
+// and the start as a point
+function dataReachGeoJSON({ fc, at, name = "", mode }) {
+  const cs = reachColours(fc.features.length);
+  const fs = fc.features.map((f, i) => ({ type: "Feature", geometry: f.geometry, properties: { minutes: f.properties.min, mode,
+    area_m2: Math.round(reachArea(f.geometry)), fill: cs[i], "fill-opacity": 0.3, stroke: cs[i], "stroke-width": 2 } }));
+  fs.unshift({ type: "Feature", geometry: { type: "Point", coordinates: at }, properties: { ...(name ? { name } : {}), start: true, mode } });
+  return JSON.stringify({ type: "FeatureCollection", attribution: "© OpenStreetMap contributors (ODbL), routing by Valhalla", features: fs.reverse() }, null, 1);
+}
+// dataReachKML: the areas as KML, the largest first, each in its colour (KML: alpha, blue, green, red), and the start
+function dataReachKML({ fc, at, name = "", mode }) {
+  const cs = reachColours(fc.features.length), kc = (hex, a) => a + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);
+  const ring = (r) => r.map((p) => `${p[0]},${p[1]}`).join(" ");
+  const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>',
+    `<name>${xmlText(name || "hippomaps")}</name><description>© OpenStreetMap contributors (ODbL), routing by Valhalla</description>`];
+  cs.forEach((c, i) => out.push(`<Style id="t${i}"><LineStyle><color>${kc(c, "ff")}</color><width>2</width></LineStyle><PolyStyle><color>${kc(c, "4d")}</color></PolyStyle></Style>`));
+  for (let i = fc.features.length - 1; i >= 0; i--) {
+    const f = fc.features[i];
+    out.push(`<Placemark><name>${f.properties.min} min (${mode})</name><styleUrl>#t${i}</styleUrl><MultiGeometry>` +
+      f.geometry.coordinates.map((p) => `<Polygon><outerBoundaryIs><LinearRing><coordinates>${ring(p[0])}</coordinates></LinearRing></outerBoundaryIs>` +
+        p.slice(1).map((h) => `<innerBoundaryIs><LinearRing><coordinates>${ring(h)}</coordinates></LinearRing></innerBoundaryIs>`).join("") + "</Polygon>").join("") +
+      "</MultiGeometry></Placemark>");
+  }
+  out.push(`<Placemark>${name ? `<name>${xmlText(name)}</name>` : ""}<Point><coordinates>${at[0]},${at[1]}</coordinates></Point></Placemark>`, "</Document></kml>");
+  return out.join("\n") + "\n";
+}
+const reachTitle = el("h2", "lm-dname", { "data-t": "reach" }, T.reach);
+const reachX = el("button", "lm-icon-btn lm-card-x", { type: "button", title: T.close, "aria-label": T.close });
+reachX.innerHTML = svg(ICON.close, 18);
+reachX.addEventListener("click", closeCard);
+const reachWhere = el("p", "lm-reach-from");
+const reachModes = el("div", "lm-modes lm-reach-modes", { role: "radiogroup" });
+const reachTimes = el("div", "lm-chips lm-reach-times", { role: "radiogroup" });
+const reachHint = el("p", "lm-notes lm-reach-hint");
+const reachStatus = el("p", "lm-notes lm-reach-status", { role: "status", "aria-live": "polite" });
+const reachLegend = el("ul", "lm-reach-legend");
+const reachFiles = el("div", "lm-dl lm-reach-files");
+for (const [label, fn] of [["GeoJSON", () => reach.data && saveFile(dataReachGeoJSON(reachExport()), "application/geo+json", "geojson", reachFileName())],
+  ["KML", () => reach.data && saveFile(dataReachKML(reachExport()), "application/vnd.google-earth.kml+xml", "kml", reachFileName())]]) {
+  const b = el("button", "lm-copy", { type: "button", "data-fmt": label.toLowerCase() }, label);
+  b.addEventListener("click", fn);
+  reachFiles.append(b);
+}
+reachFiles.prepend(el("span", "", { "data-t": "download" }, T.download));
+reachView.append(reachX, reachTitle, reachWhere, reachModes, reachTimes, reachHint, reachStatus, reachLegend, reachFiles);
+const reachExport = () => ({ fc: reach.data, at: reach.at, name: reach.name, mode: reach.mode });
+const reachFileName = () => `reach-${reach.mode}-${reach.max}min${reach.name ? `-${reach.name}` : ""}`;
+const reachTimeText = (m) => T.duration(m * 60);
+// the panel: the start, the modes and times (the chosen pressed), the legend of the answer
+function reachRender() {
+  reachWhere.textContent = `${T.from}: ${reach.name || `${reach.at[1].toFixed(5)}, ${reach.at[0].toFixed(5)}`}`;
+  reachModes.setAttribute("aria-label", T.reach);
+  reachModes.replaceChildren(...T.modes.filter(([m]) => REACH_TIMES[m]).map(([m, label]) => {
+    const b = el("button", "lm-mode", { type: "button", role: "radio", "aria-checked": String(m === reach.mode), title: label, "data-mode": m });
+    b.innerHTML = svg(MODE_ICON[m], 18);
+    b.append(el("span", "", {}, label));
+    b.addEventListener("click", () => {
+      if (reach.mode === m) return;
+      reach.mode = m;
+      store.set("hm-reach-mode", m);
+      reach.max = reachMaxOf(m);
+      reach.fit = true;
+      reachAsk();
+    });
+    return b;
+  }));
+  reachTimes.setAttribute("aria-label", T.reachMax);
+  reachTimes.replaceChildren(el("span", "lm-reach-upto", { "data-t": "reachMax" }, T.reachMax), ...REACH_TIMES[reach.mode].map((m) => {
+    const b = el("button", "lm-chip", { type: "button", role: "radio", "aria-checked": String(m === reach.max), "aria-pressed": String(m === reach.max), "data-min": m }, reachTimeText(m));
+    b.addEventListener("click", () => {
+      if (reach.max === m) return;
+      reach.max = m;
+      store.set(`hm-reach-${reach.mode}`, String(m));
+      reach.fit = true;
+      reachAsk();
+    });
+    return b;
+  }));
+  reachHint.dataset.t = mouse.matches ? "reachHintMouse" : "reachHintTouch";
+  reachHint.textContent = T[reachHint.dataset.t] + (reach.mode === "car" ? ` ${T.reachCar}` : "");
+  const fs = reach.data?.features || [], cs = reachColours(fs.length);
+  reachLegend.replaceChildren(...fs.map((f, i) => {
+    const li = el("li", "", { "data-min": f.properties.min });
+    const sw = el("span", "lm-reach-sw");
+    sw.style.background = cs[i];
+    li.append(sw, el("span", "lm-reach-t", {}, T.reachLegend(reachTimeText(f.properties.min))), el("span", "lm-reach-a", {}, fmtArea(reachArea(f.geometry))));
+    return li;
+  }));
+  reachFiles.hidden = IN_APP || !fs.length;
+}
+const reachMaxOf = (m) => {
+  const v = +store.get(`hm-reach-${m}`);
+  return REACH_TIMES[m].includes(v) ? v : m === "walk" ? 15 : 30;
+};
+// reachAsk: the areas for the start, the mode and the time; the map on them when asked (reach.fit)
+async function reachAsk() {
+  reach.ctl?.abort();
+  const ctl = reach.ctl = new AbortController(), at = reach.at;
+  reachRender();
+  reachStatus.textContent = T.reachLooking;
+  reachStatus.classList.remove("lm-measure-err");
+  try {
+    const q = new URLSearchParams({ at: `${at[1]},${at[0]}`, mode: reach.mode, min: reachSteps(reach.max).join(",") });
+    const r = await fetch(`${REACH}?${q}`, { signal: ctl.signal });
+    const d = await r.json().catch(() => ({}));
+    if (ctl.signal.aborted || !reach.on) return;
+    if (!r.ok || !d.features?.length) {
+      const code = d.error?.code;
+      reach.data = null;
+      setSource("reach", empty);
+      reachRender();
+      reachStatus.textContent = code === "no_road" ? T.reachNoRoad : code === "no_route" ? T.reachNoWay : T.routeErrors[code] || failText(T.reachFailed);
+      reachStatus.classList.add("lm-measure-err");
+      return;
+    }
+    reach.data = d;
+    setSource("reach", reachBands(d));
+    reachStatus.textContent = "";
+    reachRender();
+    if (reach.fit) {
+      reach.fit = false;
+      const b = extent(d.features[d.features.length - 1].geometry);
+      if (b) map.fitBounds([[Math.min(b[0], at[0]), Math.min(b[1], at[1])], [Math.max(b[2], at[0]), Math.max(b[3], at[1])]], { padding: pad(), maxZoom: 16, duration: 600 });
+    }
+  } catch (err) {
+    if (err.name !== "AbortError" && reach.on) {
+      reachStatus.textContent = failText(T.reachFailed);
+      reachStatus.classList.add("lm-measure-err");
+    }
+  }
+}
+// reachFrom: the start at ll ([lon, lat]), its name when it is a place of the map
+function reachFrom(ll, name = "") {
+  if (!reach.on) return;
+  reach.at = [+(+ll[0]).toFixed(5), +(+ll[1]).toFixed(5)];
+  reach.name = name;
+  if (!reach.marker) {
+    reach.marker = new maplibregl.Marker({ element: el("div", "lm-reach-pin"), draggable: true });
+    reach.marker.on("dragend", () => { const p = reach.marker.getLngLat(); reachFrom([p.lng, p.lat]); });
+  }
+  reach.marker.setLngLat(reach.at).addTo(map);
+  reachAsk();
+}
+// reachStart: the panel open, the areas from ll ([lon, lat])
+function reachStart(ll, name = "") {
+  if (nav.on || !REACH) return;
+  hereDone();
+  setSource("selected", empty);
+  showView(reachView);
+  reach.on = true;
+  root.classList.add("lm-reaching");
+  const last = store.get("hm-reach-mode") || (REACH_TIMES[route.mode] ? route.mode : "walk");
+  reach.mode = REACH_TIMES[last] ? last : "walk";
+  reach.max = reachMaxOf(reach.mode);
+  reach.data = null;
+  reach.fit = true;
+  setSource("reach", empty);
+  reachLegend.replaceChildren();
+  reachFrom(ll, name);
+  setSheet("half");
+}
+function reachDone() {
+  if (!reach.on) return;
+  reach.on = false;
+  root.classList.remove("lm-reaching");
+  reach.ctl?.abort();
+  reach.data = null;
+  reach.marker?.remove();
+  setSource("reach", empty);
+}
+// the row of the menu: from the location of the visitor when it is fresh, else from the middle of the map
+const reachRow = el("button", "lm-toggle lm-measure-row lm-reach-row", { type: "button" });
+reachRow.innerHTML = svg(ICON.reach, 20);
+const reachRowText = el("span", "lm-toggle-text");
+reachRowText.append(el("span", "", { "data-t": "reach" }, T.reach), el("span", "lm-toggle-note", { "data-t": "reachNote" }, T.reachNote));
+reachRow.append(reachRowText);
+reachRow.insertAdjacentHTML("beforeend", svg(ICON.next, 18));
+reachRow.addEventListener("click", () => {
+  openMenu(false);
+  const fresh = state.me && Date.now() - state.me.at < 10 * 60e3;
+  if (fresh) reachStart(state.me.at2, T.myPlace);
+  else { const c = map.getCenter(); reachStart([c.lng, c.lat]); }
+});
+reachRow.hidden = !REACH;
+menuMain.insertBefore(reachRow, FEEDBACK ? fbRow : forgetBtn);
+
 // ------------------------------------------------------------------ the menu of a right click
 // A right click on the map, or a long press on a phone (outside navigation): what is here, directions from or to the
 // point, measuring from it (or a point of the line measured), its coordinates copied.
@@ -7649,11 +7920,13 @@ function ctxOpen(pt, ll) {
     // with directions open, the point as their start or destination; else new directions
     items.push(item(ICON.navigate, T.ctxFrom, () => {
       if (meas.on) measureDone();
+      if (reach.on) showView(listView);
       if (routeView.hidden) directions(null);
       setFrom(at);
     }));
     items.push(item(ICON.flag, T.ctxTo, () => {
       if (meas.on) measureDone();
+      if (reach.on) showView(listView);
       if (routeView.hidden) return void directions(at);
       route.to = at;
       renderRoute();
@@ -7661,6 +7934,7 @@ function ctxOpen(pt, ll) {
     }));
   }
   if (!meas.on) items.push(item(ICON.ruler, T.measure, () => measureStart([[lon, lat]])));
+  if (ROUTE) items.push(item(ICON.reach, T.reachFrom, () => (reach.on ? reachFrom(at.ll, sym?.name || "") : reachStart(at.ll, sym?.name || ""))));
   const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
   items.push(item(ICON.copy, coords, (b) => {
     navigator.clipboard?.writeText(coords).then(() => {
@@ -7774,6 +8048,7 @@ function setLang(chosen) {
   for (const c of document.querySelectorAll(".lm-along-cats [data-cat]")) c.textContent = T.alongCats[c.dataset.cat];
   fillAbout();
   fillFeedback();
+  if (reach.on && reach.at) reachRender(); // the start, the times and the legend in the new language
   if (TRAFFIC) trafficRow.querySelector(".lm-toggle-text > span").textContent = trafficLabel(); // the countries by name, in the new language
   privacyLink.href = privacyHref();
   footLink.href = licencesLink.href = licencesHref();
