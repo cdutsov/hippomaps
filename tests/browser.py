@@ -2424,8 +2424,8 @@ try:
     js("document.querySelector('.lm-sheet-btn').click()")
     check(wait("document.getElementById('app').dataset.sheet === 'peek'", 3) and wait("(() => { const s = document.querySelector('.lm-side').getBoundingClientRect(),"
                " t = document.querySelector('.lm-measure .lm-dname').getBoundingClientRect(), x = document.querySelector('.lm-measure .lm-card-x').getBoundingClientRect();"
-               " return t.bottom <= innerHeight + 1 && t.top >= s.top && x.bottom <= innerHeight + 1 && s.height < innerHeight * 0.4; })()", 3),
-          "Measure, the sheet down: its title and X in view")
+               " return t.bottom <= innerHeight + 1 && t.top >= s.top + 24 && x.bottom <= innerHeight + 1 && s.height < innerHeight * 0.4; })()", 3),
+          "Measure, the sheet down: its title (clear of the handle) and X in view")
     js("document.querySelector('.lm-sheet-btn').click()")
     wait("document.getElementById('app').dataset.sheet === 'half'", 3)
     js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")  # the sheet may have moved the map
