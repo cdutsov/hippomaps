@@ -68,7 +68,12 @@ import urllib.request
 import websocket
 
 URL = sys.argv[1].rstrip("/")
-PORT = 9341
+PORT = int(os.environ.get("BROWSER_PORT", "9341"))
+# a Chromium of another run on the port (a deploy and the nightly run, two sessions): this run would drive its tab
+import socket
+with socket.socket() as _s:
+    if _s.connect_ex(("127.0.0.1", PORT)) == 0:
+        sys.exit(f"port {PORT} is taken (another browser test running?): set BROWSER_PORT")
 ZURICH = (47.3779, 8.5403)
 fails = []
 # the sentences spoken (window.hmSaid): the sounds of the server played, the texts of the browser voice
@@ -776,11 +781,15 @@ try:
         wait("!document.querySelector('.lm-listview').hidden", 5)
         check(js("getComputedStyle(document.querySelector('.lm-form')).display !== 'none'"), "the page of a place closed: the search bar is back")
         check((count_text(), listed()) == before, "a result picked and closed: the list as it was (the map flew to the result)")
-    for _ in range(8):
-        call("Input.dispatchMouseEvent", type="mouseWheel", x=190, y=220, deltaX=0, deltaY=240)
-        time.sleep(0.08)
-    check(wait("!hmMap.isMoving() && document.querySelector('.lm-count').textContent === " + json.dumps(first), 10),
-          f"zoomed out over all results: all of them again ({count_text()})")
+    all_again = False
+    for _ in range(3):  # from the result the map flew to (zoom 16 or more): out until all are in view
+        for _ in range(8):
+            call("Input.dispatchMouseEvent", type="mouseWheel", x=190, y=220, deltaX=0, deltaY=240)
+            time.sleep(0.08)
+        if wait("!hmMap.isMoving() && document.querySelector('.lm-count').textContent === " + json.dumps(first), 5):
+            all_again = True
+            break
+    check(all_again, f"zoomed out over all results: all of them again ({count_text()})")
     # the results as a file under the query: CSV and GeoJSON, a row and a feature per result on the map
     got = js("(async () => { const row = document.querySelector('.lm-dl'), files = [], blobs = {}, c0 = HTMLAnchorElement.prototype.click, u0 = URL.createObjectURL;"
              " URL.createObjectURL = (b) => { const u = u0(b); blobs[u] = b; return u; };"
@@ -2398,6 +2407,18 @@ try:
         call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": p[0], "y": p[1]}])
         time.sleep(secs)
         call("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+    def ctx_pick(p, row):  # a long press at p, then the row of its menu; pressed once more when no menu with the row came
+        has = (f"!document.querySelector('.lm-ctx').hidden && [...document.querySelectorAll('.lm-ctx-item')].some(b => b.textContent === {json.dumps(row)})")
+        for _ in range(2):
+            press(p)
+            if wait(has, 5):
+                break
+            time.sleep(0.5)
+        time.sleep(0.8)  # (a tap right after the press counts as its end)
+        seen = js("JSON.stringify({ menu: !document.querySelector('.lm-ctx').hidden, rows: [...document.querySelectorAll('.lm-ctx-item')].map(b => b.textContent),"
+                  f" top: document.elementFromPoint({p[0]}, {p[1]})?.className }})")
+        js(f"[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === {json.dumps(row)})?.click()")
+        return seen
     def touch_at(p):
         press(p, 0.05)
         time.sleep(0.45)
@@ -2533,17 +2554,8 @@ try:
         js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 14 })")
         wait("!hmMap.isMoving()", 5)
         time.sleep(0.5)
-        has_row = "!document.querySelector('.lm-ctx').hidden && [...document.querySelectorAll('.lm-ctx-item')].some(b => b.textContent === 'Reachable from here')"
-        for _ in range(2):  # a press the page took for something else (a drag, a note over the map): once more
-            press(at(0.5, 0.5))
-            if wait(has_row, 5):
-                break
-            time.sleep(0.5)
         pressed = ll_of(at(0.5, 0.5))
-        time.sleep(0.8)
-        menu = js("JSON.stringify({ menu: !document.querySelector('.lm-ctx').hidden, rows: [...document.querySelectorAll('.lm-ctx-item')].map(b => b.textContent),"
-                  " top: document.elementFromPoint(" + str(at(0.5, 0.5)[0]) + ", " + str(at(0.5, 0.5)[1]) + ")?.className })")
-        js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Reachable from here')?.click()")
+        menu = ctx_pick(at(0.5, 0.5), "Reachable from here")
         check(wait("!document.querySelector('.lm-reach').hidden && document.querySelectorAll('.lm-reach-legend li').length > 0", 20),
               f"Reachable from here: the panel and its legend ({js('document.querySelector(`.lm-reach-status`)?.textContent')}; {menu})")
         check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "Reachable area: no search bar above the panel")
@@ -2598,18 +2610,12 @@ try:
         js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")
         wait("!hmMap.isMoving()", 5)
         time.sleep(0.5)
-        press(at(0.3, 0.3))
-        wait("!document.querySelector('.lm-ctx').hidden", 5)
-        time.sleep(0.8)
-        js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Directions from here').click()")
+        menu_from = ctx_pick(at(0.3, 0.3), "Directions from here")
         wait("!document.querySelector('.lm-route').hidden", 5)
         js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")
         wait("!hmMap.isMoving()", 5)
         time.sleep(0.5)
-        press(at(0.7, 0.35))
-        wait("!document.querySelector('.lm-ctx').hidden", 5)
-        time.sleep(0.8)
-        js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Directions to here').click()")
+        menu_to = ctx_pick(at(0.7, 0.35), "Directions to here")
         ok_route = wait("!!document.querySelector('.lm-route .lm-route-gpx')", 30)
         rg = ok_route and js("(async () => { let f = null, b = null; const c0 = HTMLAnchorElement.prototype.click, u0 = URL.createObjectURL;"
                              " URL.createObjectURL = (x) => { b = x; return u0(x); };"
@@ -2618,7 +2624,8 @@ try:
                              " return { name: f?.download, text: await b?.text(), from: document.querySelector('.lm-end-from input')?.value }; })()") or {}
         check(ok_route and (rg.get("text") or "").count("<trkpt ") > 2 and "OpenStreetMap contributors" in (rg.get("text") or "")
               and (rg.get("name") or "").endswith(".gpx") and rg.get("from") not in ("", "Your location"),
-              f"Directions from here, then to here: a route between the two points, as GPX ({rg.get('name')}, from {rg.get('from')!r})")
+              f"Directions from here, then to here: a route between the two points, as GPX ({rg.get('name')}, from {rg.get('from')!r}"
+              + ("" if ok_route else f"; menus {menu_from} {menu_to}; {js('document.querySelector(`.lm-route-status, .lm-status`)?.textContent')}") + ")")
     real = [e for e in errors if "Map cannot fit" not in e]
     check(not real, f"no errors of the page{': ' + real[0] if real else ''}")
 finally:
