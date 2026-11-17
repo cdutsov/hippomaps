@@ -554,8 +554,9 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-lane + .lm-lane { border-left: 2px dashed rgba(255, 255, 255, .35); border-radius: 0; }
 .lm-lane-arrow { display: grid; margin: 0 -5px; }
 .lm-lane-arrow.lm-lane-on { color: #fff; }
-/* directions have their own fields: no search bar above them; their back button stays at the top */
-.lm-planning .lm-form { display: none; }
+/* directions have their own fields: no search bar above them; their back button stays at the top. Neither above the
+   page of a place, Measure and Reachable area (lm-nosearch) */
+.lm-planning .lm-form, .lm-nosearch .lm-form { display: none; }
 .lm-route > .lm-back { position: sticky; top: 0; z-index: 2; width: 100%; background: var(--bg); padding-top: .55rem; padding-bottom: .45rem; }
 .lm-navigating .lm-dim { display: none; } /* in navigation the map follows tilted */
 /* the photo of a town or region found, under its name and Directions */

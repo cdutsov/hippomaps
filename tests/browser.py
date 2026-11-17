@@ -765,12 +765,16 @@ try:
     check(all_drawn and on_map() == all_drawn, f"moved by a finger: the map keeps all results ({all_drawn})")
     if ids:
         before = (now, ids)
+        js("document.querySelector('.lm-listview .lm-results .lm-card').scrollIntoView({ block: 'nearest' })")  # (below the sheet at half)
+        time.sleep(0.3)
         tap(".lm-listview .lm-results .lm-card")
         wait("!document.querySelector('.lm-detail').hidden", 5)
+        check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "the page of a place: no search bar above it")
         wait("!hmMap.isMoving()", 10)
         time.sleep(0.5)
         js("document.querySelector('.lm-detail .lm-card-x').click()")
         wait("!document.querySelector('.lm-listview').hidden", 5)
+        check(js("getComputedStyle(document.querySelector('.lm-form')).display !== 'none'"), "the page of a place closed: the search bar is back")
         check((count_text(), listed()) == before, "a result picked and closed: the list as it was (the map flew to the result)")
     for _ in range(8):
         call("Input.dispatchMouseEvent", type="mouseWheel", x=190, y=220, deltaX=0, deltaY=240)
@@ -2415,6 +2419,15 @@ try:
     check(wait("!document.querySelector('.lm-measure').hidden", 5) and js("document.querySelector('.lm-ctx').hidden") and js(f"{meas_pts}.length") == 1
           and js("!hmMap.doubleClickZoom.isEnabled()"),
           "Measure distance: the panel, a first point where the finger was, no zoom on a double tap")
+    check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "Measure: no search bar above the panel")
+    # the sheet down: without the search bar the top of the panel stays in view, its title and its X
+    js("document.querySelector('.lm-sheet-btn').click()")
+    check(wait("document.getElementById('app').dataset.sheet === 'peek'", 3) and wait("(() => { const s = document.querySelector('.lm-side').getBoundingClientRect(),"
+               " t = document.querySelector('.lm-measure .lm-dname').getBoundingClientRect(), x = document.querySelector('.lm-measure .lm-card-x').getBoundingClientRect();"
+               " return t.bottom <= innerHeight + 1 && t.top >= s.top && x.bottom <= innerHeight + 1 && s.height < innerHeight * 0.4; })()", 3),
+          "Measure, the sheet down: its title and X in view")
+    js("document.querySelector('.lm-sheet-btn').click()")
+    wait("document.getElementById('app').dataset.sheet === 'half'", 3)
     js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 15 })")  # the sheet may have moved the map
     time.sleep(0.5)
     # the first point again where p0 is now: start over with taps alone
@@ -2499,6 +2512,7 @@ try:
     js("document.querySelector('.lm-measure .lm-card-x').click()")
     check(wait("document.querySelector('.lm-measure').hidden", 3) and js("hmMap.getStyle().sources['lm-measure'].data.features.length") == 0
           and js("hmMap.doubleClickZoom.isEnabled()"), "the X of Measure: the panel and the line go, a double tap zooms again")
+    check(js("getComputedStyle(document.querySelector('.lm-form')).display !== 'none'"), "the X of Measure: the search bar is back")
     # the row of the menu
     js("document.querySelector('.lm-map-burger').click()")
     wait("!document.querySelector('.lm-menu').hidden", 3)
@@ -2523,6 +2537,7 @@ try:
         js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Reachable from here').click()")
         check(wait("!document.querySelector('.lm-reach').hidden && document.querySelectorAll('.lm-reach-legend li').length > 0", 20),
               f"Reachable from here: the panel and its legend ({js('document.querySelector(`.lm-reach-status`)?.textContent')})")
+        check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "Reachable area: no search bar above the panel")
         js("document.querySelector('.lm-reach-modes [data-mode=walk]').click()")
         wait("document.querySelector('.lm-reach-modes [data-mode=walk]').getAttribute('aria-checked') === 'true'", 3)
         js("document.querySelector('.lm-reach-times [data-min=\"15\"]')?.click()")
@@ -2562,6 +2577,7 @@ try:
         js("document.querySelector('.lm-reach .lm-card-x').click()")
         check(wait(f"document.querySelector('.lm-reach').hidden && {reach_src}.length === 0 && !document.querySelector('.lm-reach-pin')", 3),
               "the X of Reachable area: the panel, the bands and the pin go")
+        check(js("getComputedStyle(document.querySelector('.lm-form')).display !== 'none'"), "the X of Reachable area: the search bar is back")
         js("document.querySelector('.lm-map-burger').click()")
         wait("!document.querySelector('.lm-menu').hidden", 3)
         check(js("document.querySelector('.lm-reach-row')?.textContent.startsWith('Reachable area')"), "the menu has Reachable area")

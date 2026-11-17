@@ -903,6 +903,8 @@ const showView = (v) => {
   reachView.hidden = v !== reachView;
   if (v !== reachView) reachDone();
   root.classList.toggle("lm-planning", v === routeView); // directions have their own fields: no search bar above them
+  // the page of a place, Measure and Reachable area: no search bar either (each has its back or X)
+  root.classList.toggle("lm-nosearch", v === detailView || v === measureView || v === reachView);
   showDirBtn();
   body.scrollTop = 0;
   if (v === listView) setTimeout(foldIfEmpty); // after the caller has filled or cleared the list
@@ -2374,7 +2376,7 @@ const sheet = { state: "half" };
 const pageHeight = () => root.clientHeight || innerHeight;
 const sheetHeights = (H = pageHeight()) => ({
   // peek: the search box and the title under it, with the buttons of a place found; the search box alone while nothing is under it
-  peek: Math.min(form.offsetTop + form.offsetHeight + (title.textContent || notes.textContent ? 64 : ideaRow() || 14) + (root.querySelector(".lm-place-acts:not(:empty)") ? 44 : 0), H * 0.4),
+  peek: Math.min(noSearchPeek() || form.offsetTop + form.offsetHeight + (title.textContent || notes.textContent ? 64 : ideaRow() || 14) + (root.querySelector(".lm-place-acts:not(:empty)") ? 44 : 0), H * 0.4),
   half: Math.max(Math.round(H * 0.48), Math.min(Math.round(H * 0.85), routeNeed())),
   full: H - 56,
 });
@@ -2384,6 +2386,15 @@ function routeNeed() {
   try {
     const go = routeView.hidden ? null : routeView.querySelector(".lm-nav-go") || routeView.querySelector(".lm-trip-row"); // or the first connection
     return go ? Math.ceil(go.getBoundingClientRect().bottom + body.scrollTop - side.getBoundingClientRect().top + 12) : 0;
+  } catch { return 0; } // the sheet set while the page is still built
+}
+// without the search bar (the page of a place, Measure, Reachable area: lm-nosearch) the peek shows the top of the
+// panel down to its title, its back button or X with it; 0 otherwise
+function noSearchPeek() {
+  try {
+    if (!root.classList.contains("lm-nosearch")) return 0;
+    const t = body.querySelector(":scope > section:not([hidden]) .lm-dname");
+    return t ? Math.ceil(t.getBoundingClientRect().bottom + body.scrollTop - side.getBoundingClientRect().top + 10) : 0;
   } catch { return 0; } // the sheet set while the page is still built
 }
 // the height of the row of ideas under the search box at the start (ideas at the start), 0 without
