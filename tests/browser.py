@@ -2533,13 +2533,19 @@ try:
         js("hmMap.jumpTo({ center: [8.5417, 47.3769], zoom: 14 })")
         wait("!hmMap.isMoving()", 5)
         time.sleep(0.5)
-        press(at(0.5, 0.5))
+        has_row = "!document.querySelector('.lm-ctx').hidden && [...document.querySelectorAll('.lm-ctx-item')].some(b => b.textContent === 'Reachable from here')"
+        for _ in range(2):  # a press the page took for something else (a drag, a note over the map): once more
+            press(at(0.5, 0.5))
+            if wait(has_row, 5):
+                break
+            time.sleep(0.5)
         pressed = ll_of(at(0.5, 0.5))
-        wait("!document.querySelector('.lm-ctx').hidden", 5)
         time.sleep(0.8)
-        js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Reachable from here').click()")
+        menu = js("JSON.stringify({ menu: !document.querySelector('.lm-ctx').hidden, rows: [...document.querySelectorAll('.lm-ctx-item')].map(b => b.textContent),"
+                  " top: document.elementFromPoint(" + str(at(0.5, 0.5)[0]) + ", " + str(at(0.5, 0.5)[1]) + ")?.className })")
+        js("[...document.querySelectorAll('.lm-ctx-item')].find(b => b.textContent === 'Reachable from here')?.click()")
         check(wait("!document.querySelector('.lm-reach').hidden && document.querySelectorAll('.lm-reach-legend li').length > 0", 20),
-              f"Reachable from here: the panel and its legend ({js('document.querySelector(`.lm-reach-status`)?.textContent')})")
+              f"Reachable from here: the panel and its legend ({js('document.querySelector(`.lm-reach-status`)?.textContent')}; {menu})")
         check(js("getComputedStyle(document.querySelector('.lm-form')).display === 'none'"), "Reachable area: no search bar above the panel")
         js("document.querySelector('.lm-reach-modes [data-mode=walk]').click()")
         wait("document.querySelector('.lm-reach-modes [data-mode=walk]').getAttribute('aria-checked') === 'true'", 3)
