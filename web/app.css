@@ -187,14 +187,20 @@ button { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: .65rem; width: max-content; max-width: min(420px, calc(100% - 24px)); padding: .5rem .9rem;
   border-radius: 14px; background: #2b2f33; color: #fff; box-shadow: 0 2px 12px rgba(0, 0, 0, .3); font-size: .85rem; line-height: 1.3;
   animation: lm-in .18s ease-out; }
+.lm-offline-btn { display: flex; align-items: center; gap: .65rem; width: 100%; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer; }
 .lm-offline svg { flex: none; color: #ffc078; }
+.lm-offline.lm-offline-small { width: max-content; padding: .5rem; border-radius: 50%; }
+.lm-offline-small .lm-offline-text { display: none; }
 .lm-offline-text { display: flex; flex-direction: column; min-width: 0; }
 .lm-offline-text span { color: #d0d5da; }
 .lm-offline-on .lm-area, .lm-offline-on .lm-bubbles { display: none !important; }
 .lm-nav-head .lm-offline { position: static; transform: none; width: auto; max-width: none; margin-top: 6px; animation: none; }
+.lm-nav-head .lm-offline.lm-offline-small { width: max-content; }
 @media (max-width: 760px) {
   .lm-map > .lm-offline { left: 68px; right: 12px; width: auto; max-width: none; transform: none; animation: none; }
   .lm[data-sheet=full] .lm-map > .lm-offline .lm-offline-text span { display: none; }
+  .lm-map > .lm-offline.lm-offline-small { right: auto; width: max-content; }
 }
 @keyframes lm-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (max-width: 760px) {

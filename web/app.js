@@ -498,7 +498,7 @@ const fmtKm = (d) => (d < 1 ? `${Math.round(d * 100) * 10} m` : `${d.toFixed(d <
 // and the page is offline. Then it asks every 5 s, and at once after an answer to another request (it may have
 // come from the cache of the browser); its answer brings the page back: the note goes, the tiles that failed load
 // again, and in navigation a new route can come.
-const net = { down: false, timer: 0, asking: null, failed: new Map() };
+const net = { down: false, timer: 0, asking: null, failed: new Map(), small: false, shrink: 0, said: null };
 const HEALTH = `${location.origin}/healthz`;
 // fetch of this page: as the browser has it, and an answer or none tells about the connection
 const fetch = (...args) => window.fetch(...args).then((r) => {
@@ -518,14 +518,36 @@ function netAsk() {
 }
 const offlineBox = el("div", "lm-offline", { role: "status" });
 offlineBox.hidden = true;
+// the note opens with its text, after 5 s only its sign is left; a tap on the sign opens it again, a tap on the
+// open note closes it (net.small: closed); a new text (navigation starts or ends) opens it for 5 s again
+const offlineBtn = el("button", "lm-offline-btn", { type: "button", "aria-expanded": "true" });
+offlineBox.append(offlineBtn);
+function offlineSmall(small) {
+  clearTimeout(net.shrink);
+  net.small = small;
+  offlineBox.classList.toggle("lm-offline-small", small);
+  offlineBtn.setAttribute("aria-expanded", String(!small));
+  offlineBtn.title = small ? T.offline : "";
+}
+offlineBtn.addEventListener("click", () => offlineSmall(!net.small));
 // the note, in the place and with the text for now (called again when navigation starts or ends)
 function offlineNote() {
-  if (!net.down) return void (offlineBox.hidden = true);
-  offlineBox.innerHTML = svg(ICON.offline, 20);
-  const t = el("div", "lm-offline-text");
-  t.append(el("strong", "", {}, T.offline), el("span", "", {}, nav.on ? (routeCache.saved ? T.offlineNavMap : T.offlineNav) : T.offlineMap));
-  offlineBox.append(t);
+  if (!net.down) {
+    net.said = null;
+    offlineSmall(false);
+    return void (offlineBox.hidden = true);
+  }
+  const said = nav.on ? (routeCache.saved ? T.offlineNavMap : T.offlineNav) : T.offlineMap;
+  offlineBtn.innerHTML = svg(ICON.offline, 20);
+  const t = el("span", "lm-offline-text");
+  t.append(el("strong", "", {}, T.offline), el("span", "", {}, said));
+  offlineBtn.append(t);
   offlineBox.hidden = false;
+  if (said !== net.said) {
+    net.said = said;
+    offlineSmall(false);
+    net.shrink = setTimeout(() => offlineSmall(true), 5000);
+  }
   const at = nav.on ? navHead : mapEl;
   if (offlineBox.parentNode !== at) at.append(offlineBox);
 }
@@ -1502,6 +1524,7 @@ map.on("style.load", () => {
   add({ id: "lm-me-area", type: "fill", source: "lm-me", filter: polys, paint: { "fill-color": "#1a73e8", "fill-opacity": 0.12 } });
   add({ id: "lm-me", type: "circle", source: "lm-me", filter: pts,
     paint: { "circle-radius": 7, "circle-color": "#1a73e8", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
+  meShown();
   // the area of a tap: its outline dashed in the blue of overpass.ch
   add({ id: "lm-area-line", type: "line", source: "lm-area", layout: { "line-join": "round", "line-cap": "butt" },
     paint: { "line-color": "#0284c7", "line-width": 2.5, "line-opacity": 0.95, "line-dasharray": [3, 2] } }, below);
@@ -2861,6 +2884,11 @@ const locate = () => {
 // visitor blocks the location
 let keptMe = null;
 const forgetMe = () => { keptMe = null; try { localStorage.removeItem("hm-last-me"); } catch {} };
+// the dot of the location and its circle: none in navigation, where the traveller (car, bike, walker) is the place
+function meShown() {
+  const v = nav.on ? "none" : "visible";
+  for (const id of ["lm-me", "lm-me-area"]) if (map.getLayer(id) && map.getLayoutProperty(id, "visibility") !== v) map.setLayoutProperty(id, "visibility", v);
+}
 // meAt keeps a position of the visitor and draws it: a dot, and the circle of its accuracy
 function meAt(pos) {
   meForSun = [pos.coords.longitude, pos.coords.latitude];
@@ -6919,6 +6947,7 @@ function navStart(sim) {
   nav.lastFix = null;
   navLoad(route.answer);
   root.classList.add("lm-navigating");
+  meShown();
   nav.offlineSaid = false;
   offlineNote();
   navBox.hidden = false;
@@ -7015,6 +7044,7 @@ function navStop() {
   navElev.hidden = true;
   navBox.hidden = true;
   root.classList.remove("lm-navigating", "lm-nav-elev-on");
+  meShown();
   offlineNote();
   followMe();
   setTimeout(() => {

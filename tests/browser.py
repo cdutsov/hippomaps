@@ -13,7 +13,7 @@ style in our colours before the page adds its layers, the style of the map with 
 dark and light); a new visit
 at the last location of the device (kept on it to about 100 m), a location far from it jumped to; the
 Directions button opens start and destination, a typed destination gives a route by car with its
-time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D, the spoken
+time; Preview navigates: the banner, the speed now, the speed limit, the traveller in 3D (no dot of the location in navigation), the spoken
 sentences of the server; the language changed while navigating (no new page); the language of directions and voice apart from
 that of the page (Bulgarian); a long press while
 navigating (the point and the places around, the point as a stop); the destination of a route dragged with a finger; the traffic button; the map drawn at 2 pixels per point at most, our sources with tiles to zoom 14 only, the
@@ -25,7 +25,7 @@ directions at their top when the keyboard goes; up and down in one movement when
 directions takes it to the top); a place searched in navigation as the destination; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
 enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
 twice (the voice answered with silence in the test); German texts after the language of the menu, also the words of
-the search; the search box on one or two lines, Enter searching; the list of results after a move of the map: those in view, the map keeps all; the results as CSV and GeoJSON; without a connection the note over the map, a search, navigation off the route (no new route asked), the
+the search; the search box on one or two lines, Enter searching; the list of results after a move of the map: those in view, the map keeps all; the results as CSV and GeoJSON; without a connection the note over the map (after 5 s only its sign, a tap opens and closes it), a search, navigation off the route (no new route asked), the
 map of a route saved at Start and shown from the device, the page opening (the service worker); the suggestions of
 directions in their field, the panel at the height of its state when the keyboard goes; the signs along a route by car
 (speed cameras in the Netherlands, none in Switzerland, stop signs in Berkeley) drawn beside it; the search box without the
@@ -1263,6 +1263,8 @@ try:
             carry = x - seg
         js("document.querySelector('.lm-nav-start').click()")
         check(wait("document.getElementById('app').classList.contains('lm-navigating')", 5), "by bike: Start navigates")
+        check(js("hmMap.getLayoutProperty('lm-me', 'visibility') === 'none' && hmMap.getLayoutProperty('lm-me-area', 'visibility') === 'none'"),
+              "by bike: the bike, no dot of the location")
         rnd = random.Random(1)
         for lat, lon, h in pts:
             call("Emulation.setGeolocationOverride", latitude=lat + rnd.gauss(0, 2) / 111320, longitude=lon + rnd.gauss(0, 2) / 111320 / math.cos(math.radians(lat)),
@@ -1568,6 +1570,17 @@ try:
     offline(True)
     check(wait(f"/^lm-map.*No internet connection/.test({note})", 5) and js("getComputedStyle(document.querySelector('.lm-bubbles')).display === 'none'"),
           "offline: the note at the top of the map, in place of the bubbles")
+    # after 5 s only the sign of the note; a tap on the sign opens it, a tap on the open note closes it
+    shown = "(document.querySelector('.lm-offline .lm-offline-text')?.offsetParent ? 'open' : document.querySelector('.lm-offline')?.offsetParent ? 'sign' : 'none')"
+    check(js(f"{shown} === 'open'") and not wait(f"{shown} === 'sign'", 3.5) and wait(f"{shown} === 'sign'", 4),
+          f"offline: the note open for 5 s, then only its sign ({js(shown)})")
+    js("document.querySelector('.lm-offline-btn').click()")
+    opened = wait(f"{shown} === 'open'", 2)
+    time.sleep(6)
+    stays = js(f"{shown} === 'open'")
+    js("document.querySelector('.lm-offline-btn').click()")
+    check(opened and stays and wait(f"{shown} === 'sign' && document.querySelector('.lm-offline-btn').getAttribute('aria-expanded') === 'false'", 2),
+          f"offline: a tap on the sign opens the note (it stays), a tap on it closes it ({opened}, {stays}, {js(shown)})")
     js("(() => { document.querySelector('.lm-input').value = 'museums'; document.querySelector('.lm-form').requestSubmit(); })()")
     check(wait("document.querySelector('.lm-status').textContent === 'No internet connection'", 10),
           f"offline: a search says there is no connection ({js('document.querySelector(\'.lm-status\').textContent')})")
@@ -1586,6 +1599,8 @@ try:
         js("document.querySelector('.lm-nav-start').click()")
         wait("document.getElementById('app').classList.contains('lm-navigating') && /\\d/.test(document.querySelector('.lm-nav-dist')?.textContent || '')", 20)
         time.sleep(2)
+        me_vis = "[hmMap.getLayoutProperty('lm-me', 'visibility'), hmMap.getLayoutProperty('lm-me-area', 'visibility')].join()"
+        check(js(f"{me_vis} === 'none,none'"), f"navigation by car: the car, no dot of the location ({js(me_vis)})")
         offline(True)
         check(wait(f"/^lm-nav-head.*Navigation goes on/.test({note})", 5), "offline in navigation: the note under the banner")
         for i in range(6):  # 400 m off the route
@@ -1603,6 +1618,7 @@ try:
               "the connection back in navigation: the note goes, a new route")
         js("document.querySelector('.lm-nav-x')?.click()")
         wait("!document.getElementById('app').classList.contains('lm-navigating')", 5)
+        check(js(f"{me_vis} !== 'none,none' && !/none/.test({me_vis})"), f"navigation ended: the dot of the location again ({js(me_vis)})")
     else:
         check(False, "a route for navigation without a connection")
     call("Emulation.setGeolocationOverride", latitude=ZURICH[0], longitude=ZURICH[1], accuracy=20)
