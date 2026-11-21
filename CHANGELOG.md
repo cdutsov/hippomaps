@@ -52,6 +52,7 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Changed
 
+- The other readings of a search ("Or search for") are under the list of results, above the query.
 - Navigation shows the traveller only, no dot of the location.
 - The note of no internet connection shows its text for 5 seconds, then only its sign; a tap on the sign opens it,
   a tap on the open note closes it.

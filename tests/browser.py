@@ -1721,6 +1721,11 @@ try:
         side = js("document.querySelector('.lm-title').textContent + ' | ' + [...document.querySelectorAll('.lm-chiprow, .lm-results .lm-card-sub, .lm-results [data-hours]')].map(e => e.textContent).join(' | ')")
         english = re.findall(r"in the view|Or search for|Sushi Fast Food|Outdoor Seating|Food Court|\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d", side)
         check("Kartenausschnitt" in side and "Schnellimbiss" in side and not english, f"the Restaurants bubble in German: German words ({english or side[:120]})")
+        # the other readings ("Or search for") under the list, above the query
+        order = js("(() => { const r = document.querySelector('.lm-results'), a = document.querySelector('.lm-alt-chips'), q = document.querySelector('.lm-query');"
+                   " return !!a?.querySelector('.lm-chip') && !!(r.compareDocumentPosition(a) & 4) && !!(a.compareDocumentPosition(q) & 4)"
+                   " && !document.querySelector('.lm-chips:not(.lm-alt-chips)')?.textContent.includes(a.querySelector('.lm-chipname').textContent); })()")
+        check(order is True, "the other readings under the list, above the query")
         # a place of the list, in the view: a short glide, no flight out
         time.sleep(1.5)
         moves()

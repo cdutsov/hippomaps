@@ -16,6 +16,13 @@ adds what a browser tab lacks:
   in the page history, then leaves the app; while navigating it puts the app in the background
 - a native screen when the page cannot load, which loads the page again once the phone is online
 
+## Install
+
+The APK of each version is on the releases page of GitLab:
+https://gitlab.com/cdutsov/hippomaps/-/releases (`hippomaps-<version>.apk`, signed with our key). The app is
+not yet on F-Droid: its inclusion policy asks for three months of development, so the request follows in
+February 2027 (the recipe and the steps are ready, below). Google Play: in review.
+
 ## Compass
 
 While the page shows the location in view and does not navigate, it watches the heading of the
@@ -98,8 +105,8 @@ adb install -r android/dist/hippomaps.apk
 
 ## F-Droid
 
-F-Droid builds the app from the tag `v<versionName>` (recipe `metadata/ch.hippomaps.app.yml` in
-fdroiddata) and publishes it with our signature: the build is reproducible, so F-Droid copies the
+Not published there yet (Install above). Once the recipe is in fdroiddata, F-Droid builds the app from
+the tag `v<versionName>` (recipe `metadata/ch.hippomaps.app.yml`) and publishes it with our signature: the build is reproducible, so F-Droid copies the
 signature of our APK onto its own build and publishes only when the two are the same. Users can
 switch between the F-Droid APK and ours, and `assetlinks.json` needs no second fingerprint. The
 texts, icon, screenshots and changelogs are in `fastlane/metadata/android/` at the top of the

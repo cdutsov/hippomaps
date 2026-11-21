@@ -206,7 +206,9 @@ The page has MapLibre check neither the styles nor its own layers (`validateStyl
 ## Android
 
 `android/` holds the app (Kotlin, one activity, AndroidX only, no Google Play services). `android/build.sh` builds the
-signed APK and AAB in Docker; the build is reproducible, and F-Droid publishes it with the same signature. Google Play:
+signed APK and AAB in Docker; the build is reproducible, so F-Droid can publish it with the same signature. The APK of
+each version is on the [GitLab releases](https://gitlab.com/cdutsov/hippomaps/-/releases); F-Droid from February 2027
+(its rule of three months of development), Google Play in review. Google Play:
 [android/PLAY.md](android/PLAY.md). Store texts and
 screenshots are in `fastlane/`. Details: [android/README.md](android/README.md).
 

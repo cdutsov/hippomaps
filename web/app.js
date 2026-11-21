@@ -3335,6 +3335,8 @@ window.addEventListener("popstate", () => {
 const title = el("h1", "lm-title");
 const notes = el("p", "lm-notes");
 const chips = el("div", "lm-chips");
+// the other readings of the search ("Or search for"): under the list, above the query
+const altChips = el("div", "lm-chips lm-alt-chips");
 const count = el("p", "lm-count");
 const results = el("ol", "lm-results");
 const moreBtn = el("button", "lm-more", { type: "button" }, T.more);
@@ -3379,7 +3381,7 @@ const startList = el("ul", "lm-start-list");
 const startHead = el("p", "lm-start-head", {}, T.startArea);
 startBox.append(startHead, startList);
 startBox.hidden = true;
-listView.append(startBox, head, placePic, chips, count, results, moreBtn, query, dl);
+listView.append(startBox, head, placePic, chips, count, results, moreBtn, altChips, query, dl);
 qCopy.addEventListener("click", () => navigator.clipboard?.writeText(qPre.textContent).then(() => {
   qCopy.textContent = T.copied;
   setTimeout(() => { qCopy.textContent = T.copy; }, 1500);
@@ -3427,6 +3429,7 @@ function clear() {
   state.byId = new Map();
   state.selected = null;
   chips.innerHTML = "";
+  altChips.innerHTML = "";
   results.innerHTML = "";
   count.textContent = "";
   moreBtn.hidden = true;
@@ -3439,11 +3442,11 @@ const chip = (label, onClick, cls = "") => {
   b.addEventListener("click", onClick);
   return b;
 };
-const chipRow = (name, items) => {
+const chipRow = (name, items, box = chips) => {
   if (!items.length) return;
   const row = el("div", "lm-chiprow");
   row.append(el("span", "lm-chipname", {}, name), ...items);
-  chips.append(row);
+  box.append(row);
 };
 function showReading(p) {
   clear();
@@ -3791,7 +3794,7 @@ function show(d, sel) {
   title.textContent = place ? place.properties.name || d.text : d.understood;
   notes.textContent = [place?.properties.detail, ...(d.notes || [])].filter(Boolean).join(" ");
   chipRow(T.tryHere, (d.try || []).map((x) => chip(x.label, () => run(x.q, {}))));
-  chipRow(T.otherReadings, (d.alternatives || []).map((a) => chip(a.label, () => run(state.text, { ...state.extra, what: a.what }))));
+  chipRow(T.otherReadings, (d.alternatives || []).map((a) => chip(a.label, () => run(state.text, { ...state.extra, what: a.what }))), altChips);
   const where = (p) => [p.label, (p.detail || "").split(" · ")[0]].filter(Boolean).join(", ");
   chipRow(T.otherPlaces, (d.places || []).slice(0, 4).map((p) => {
     const c = chip(where(p), () => run(state.text, { ...state.extra, place: p.place }), "lm-chip-place");
