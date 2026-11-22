@@ -10,13 +10,13 @@ navigation, on OpenStreetMap data.
 [**hippomaps.ch**](https://hippomaps.ch) · [Android app](android/README.md) · [Changelog](CHANGELOG.md) ·
 [Licence](#licence)
 
-<img src="docs/img/desktop.webp" width="900" alt="hippomaps on a computer: the search "peaks over 4000 m in Switzerland" with the list of results and their pictures beside the map">
+<img src="docs/img/desktop.webp" width="900" alt="hippomaps on a computer: the search for peaks over 4000 m in Switzerland with the list of results and their pictures beside the map">
 
 </div>
 
 <table>
   <tr>
-    <td width="20%"><img src="docs/img/search.webp" width="165" alt="The search "cafés in Zurich by the Limmat" on a phone: the river drawn and the cafés along it"></td>
+    <td width="20%"><img src="docs/img/search.webp" width="165" alt="The search for cafés in Zurich by the Limmat on a phone: the river drawn and the cafés along it"></td>
     <td width="20%"><img src="docs/img/place.webp" width="165" alt="The page of a museum with its opening hours and a photo"></td>
     <td width="20%"><img src="docs/img/route.webp" width="165" alt="A route by bike from Zurich main station to the Uetliberg"></td>
     <td width="20%"><img src="docs/img/navigation.webp" width="165" alt="Navigation by car: the next turn, the speed limit and the car in 3D"></td>
@@ -215,6 +215,6 @@ Maps, search and elevation by
 
 <a href="https://overpass.ch"><img src="docs/img/overpass-logo.png" width="220" alt="overpass.ch"></a>
 
-<a href="https://certnudge.dev/?ref=badge"><img src="https://certnudge.dev/badge/hippomaps.ch.svg" alt="SSL: hippomaps.ch"></a>
-
 </div>
+
+<p align="right">SSL status check by CertNudge: <a href="https://certnudge.dev/?ref=badge"><img src="https://certnudge.dev/badge/hippomaps.ch.svg" alt="SSL: hippomaps.ch" align="absmiddle"></a></p>
