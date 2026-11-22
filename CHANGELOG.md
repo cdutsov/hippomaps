@@ -68,6 +68,8 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Fixed
 
+- Safari on the iPhone: with the keyboard open, the panel and its search bar no longer scroll off the top of the
+  screen; the page fits the part of the screen above the keyboard.
 - A search for places open at a time ("bakeries open on Sunday") said it in English on a page in German, French or
   Italian, above the list and in the count of places open then.
 - The map opens where you were the last time the page knew your location (kept on the device to about 100 m), not at the

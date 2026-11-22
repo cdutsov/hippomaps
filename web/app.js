@@ -2521,8 +2521,22 @@ side.addEventListener("touchcancel", swipeEnd);
 // screen on a phone), the sheet keeps its top where it is on the screen at that moment and moves on from there
 // to its height in the new page: one movement, not a jump with the keyboard and back.
 // The resize events come before the page is drawn anew; the observer of the page catches a change without one.
+// Safari on the iPhone keeps the page at its full height under the keyboard (no interactive-widget) and pans it to
+// the field: the sheet, its search bar with it, went off the top of the screen. On a phone the page is fitted to the
+// part of the screen in view (the visual viewport) and moved with it, as the other browsers resize it.
+function fitViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const h = Math.round(vv.height), top = Math.max(0, Math.round(vv.offsetTop));
+  const on = phone() && Math.abs(vv.scale - 1) < 0.01 && (h < innerHeight - 1 || top > 0);
+  root.style.bottom = on ? "auto" : "";
+  root.style.height = on ? `${h}px` : "";
+  root.style.transform = on && top ? `translateY(${top}px)` : "";
+}
+window.visualViewport?.addEventListener("scroll", fitViewport);
 let pageH = 0;
 function pageResized() {
+  fitViewport();
   const H = pageHeight(), dh = pageH ? H - pageH : 0;
   pageH = H;
   if (phone() && dh && !side.classList.contains("lm-dragging")) {
