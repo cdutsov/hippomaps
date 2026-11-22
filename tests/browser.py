@@ -1553,18 +1553,19 @@ try:
     check(sheet() == "half" and at_height(), f"the keyboard going in two steps: the panel at half of the whole page ({panel()})")
     # Safari on the iPhone: the keyboard covers the page (it keeps its height) and the page is panned to the field. A
     # stand-in visual viewport 300 px lower and panned 250 px down: the page fitted to it and moved with it, the
-    # panel at its bottom, the search bar in view; the keyboard gone, the page whole again
+    # panel at its bottom, the field tapped (the search box, or in directions their field) in view; the keyboard gone, the page whole again
     vv_set = ("(h, top) => { for (const [k, v] of [['height', h], ['offsetTop', top]]) Object.defineProperty(visualViewport, k, { configurable: true, get: () => v });"
               " visualViewport.dispatchEvent(new Event('resize')); visualViewport.dispatchEvent(new Event('scroll')); }")
-    tap(".lm-input")
+    field = ".lm-input" if js("!!document.querySelector('.lm-input').offsetParent") else ".lm-end-to input"  # (directions: their fields)
+    tap(field)
     time.sleep(0.3)
     js(f"({vv_set})(innerHeight - 300, 250)")
     time.sleep(1)
-    safari = js("(() => { const a = document.getElementById('app').getBoundingClientRect(), f = document.querySelector('.lm-form').getBoundingClientRect(),"
+    safari = js("(() => { const a = document.getElementById('app').getBoundingClientRect(), f = (document.activeElement?.matches?.('input, textarea') ? document.activeElement : document.querySelector('.lm-form')).getBoundingClientRect(),"
                 " s = document.querySelector('.lm-side').getBoundingClientRect();"
                 " return [Math.round(a.top), Math.round(a.height), Math.round(f.top), Math.round(f.bottom), Math.round(s.bottom), innerHeight, document.getElementById('app').dataset.sheet]; })()")
-    check(safari[0] == 250 and safari[1] == safari[5] - 300 and safari[2] >= 250 and safari[3] <= 250 + safari[1] and abs(safari[4] - (250 + safari[1])) <= 1,
-          f"Safari: the keyboard over the page, the page panned: the page fitted to the part in view, the search bar in view ({safari})")
+    check(safari[0] == 250 and safari[1] == safari[5] - 300 and safari[3] > safari[2] >= 250 and safari[3] <= 250 + safari[1] and abs(safari[4] - (250 + safari[1])) <= 1,
+          f"Safari: the keyboard over the page, the page panned: the page fitted to the part in view, the field in view ({safari})")
     js("document.activeElement.blur(); delete visualViewport.height; delete visualViewport.offsetTop;"
        " visualViewport.dispatchEvent(new Event('resize')); visualViewport.dispatchEvent(new Event('scroll'))")
     time.sleep(1.5)
