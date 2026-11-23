@@ -1038,7 +1038,7 @@ map.on("load", turnNeedle);
 compassBtn.addEventListener("click", () => map.easeTo({ bearing: 0, pitch: look.threeD ? map.getPitch() : 0, duration: 500 }));
 
 const empty = { type: "FeatureCollection", features: [] };
-const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, routealt: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty, measure: empty, reach: empty };
+const sources = { night: nightSide(), transit: empty, stars: empty, me: empty, results: empty, respts: empty, lines: empty, selected: empty, hover: empty, pin: empty, area: empty, route: empty, routealt: empty, journey: empty, traffic: empty, routetraffic: empty, along: empty, turns: empty, measure: empty, reach: empty };
 const ACCENT = "#e8590c"; // the warm complement of the hippo blue (--warm)
 const STOP_COLOUR = "#e8590c"; // stops on a route, and the places along it
 // POIs earlier: each POI of the tiles has a min_zoom (restaurants and cafés 16, bus stops 18), and the
@@ -1454,6 +1454,8 @@ const pinLayer = (id, source, filter, icon = "lm-pin-icon", more = {}) => ({ id,
   layout: { "icon-image": icon, "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true, ...more } });
 // PIN_HEAD is how far above its point the middle of the head of a pin is (px), PIN_R its radius
 const PIN_HEAD = 26, PIN_R = 12;
+// CLUSTER_R: pins nearer each other than this (px) gather into one circle with their number
+const CLUSTER_R = 40;
 
 // the time of another route in its pill (addAltPills), by theme
 const altPillLayout = () => ({ "text-field": ["get", "text"], "text-font": ["Noto Sans Medium"], "text-size": 13, "icon-image": altPill(),
@@ -1485,7 +1487,9 @@ map.on("style.load", () => {
   const add = (l, before) => { if (!map.getLayer(l.id)) addLayer(l, before); };
   // tiles of our layers up to zoom 14 only, drawn larger beyond (0.3 m steps there, a pixel or two at zoom 19): tiles
   // to zoom 18 cost the phone much work while the camera moves, and empty sources too
-  for (const [name, d] of Object.entries(sources)) if (!map.getSource(`lm-${name}`)) addSource(`lm-${name}`, { type: "geojson", data: d, maxzoom: 14, tolerance: 0.1 });
+  // the pins of the results (lm-respts) gather into a circle with their number where they would crowd (lm-cluster)
+  for (const [name, d] of Object.entries(sources)) if (!map.getSource(`lm-${name}`)) addSource(`lm-${name}`, { type: "geojson", data: d, maxzoom: 14, tolerance: 0.1,
+    ...(name === "respts" ? { cluster: true, clusterRadius: CLUSTER_R, clusterMaxZoom: 13 } : {}) });
   const below = order().find((l) => l.type === "symbol")?.id;
   const dashed = ["in", ["get", "kind"], ["literal", ["border", "circle"]]];
   const pts = ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]];
@@ -1512,8 +1516,17 @@ map.on("style.load", () => {
   const place = ["boolean", ["get", "place"], false];
   add({ id: "lm-place", type: "circle", source: "lm-results", filter: ["all", pts, ["!", ["has", "dot"]], place], paint: {
     "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 8, 15, 10], "circle-color": "#1f5fbf", "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
-  add({ ...pinLayer("lm-dot", "lm-results", ["all", pts, ["has", "dot"]], "lm-pin-found"), maxzoom: 16 });
-  add(pinLayer("lm-point", "lm-results", ["all", pts, ["!", ["has", "dot"]], ["!", place]], "lm-pin-found"));
+  const alone = ["!", ["has", "point_count"]];
+  add({ ...pinLayer("lm-dot", "lm-respts", ["all", alone, ["has", "dot"]], "lm-pin-found"), maxzoom: 16 });
+  add(pinLayer("lm-point", "lm-respts", ["all", alone, ["!", ["has", "dot"]]], "lm-pin-found"));
+  // pins too close together: one circle in the colour of the results with their number, larger for more
+  add({ id: "lm-cluster", type: "circle", source: "lm-respts", filter: ["has", "point_count"], paint: {
+    "circle-radius": ["step", ["get", "point_count"], 13, 10, 16, 100, 20, 1000, 24], "circle-color": ACCENT,
+    "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+  add({ id: "lm-cluster-n", type: "symbol", source: "lm-respts", filter: ["has", "point_count"],
+    layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": ["Noto Sans Medium"], "text-size": 12,
+      "text-allow-overlap": true, "text-ignore-placement": true },
+    paint: { "text-color": "#fff" } });
   // the one under the pointer or of the list: its pin larger, or the circle of a place
   add({ id: "lm-hover-place", type: "circle", source: "lm-hover", filter: ["all", pts, place],
     paint: { "circle-radius": 12, "circle-color": "#1f5fbf", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 } });
@@ -1630,7 +1643,7 @@ map.on("style.load", () => {
       "text-allow-overlap": true, "text-ignore-placement": true },
     paint: { "text-color": MEASURE, "text-halo-color": "#fff", "text-halo-width": 2 } });
   add(pinLayer("lm-pin", "lm-pin"));
-  add({ id: "lm-label", type: "symbol", source: "lm-results", minzoom: 14, filter: ["all", ["has", "name"], pts],
+  add({ id: "lm-label", type: "symbol", source: "lm-respts", minzoom: 14, filter: ["all", ["has", "name"], ["!", ["has", "point_count"]]],
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
       "text-max-width": 10, "text-optional": true },
     paint: { ...textPaint("lm-label"), "text-halo-width": 1.5 } });
@@ -1638,10 +1651,28 @@ map.on("style.load", () => {
 // dots adds a point in the middle of each area of the results (lm-dot)
 const dots = (d) => ({ ...d, features: d.features.concat(d.features.filter((f) => /Polygon$/.test(f.geometry?.type)).map((f) =>
   ({ type: "Feature", geometry: { type: "Point", coordinates: center(f) }, properties: { id: f.properties.id, dot: true } }))) });
+// pinsOf: the points of the results drawn as pins (not the places, which are circles), each point of a MultiPoint
+// on its own (clustering takes single points)
+const pinsOf = (d) => ({ type: "FeatureCollection", features: d.features.flatMap((f) =>
+  f.properties?.place ? [] : f.geometry?.type === "Point" ? [f]
+    : f.geometry?.type === "MultiPoint" ? f.geometry.coordinates.map((c) => ({ ...f, geometry: { type: "Point", coordinates: c } })) : []) });
 const setSource = (name, d) => {
   sources[name] = name === "results" && d ? dots(d) : d || empty;
   map.getSource(`lm-${name}`)?.setData(sources[name]);
+  if (name === "results") setSource("respts", pinsOf(sources.results));
 };
+// a tap on a circle of pins: the map in to where they part (null when the point is on none)
+function clusterAt(pt) {
+  if (!map.getLayer("lm-cluster")) return null;
+  const r = phone() ? 6 : 2;
+  const c = map.queryRenderedFeatures([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], { layers: ["lm-cluster"] })[0];
+  if (!c) return null;
+  map.getSource("lm-respts").getClusterExpansionZoom(c.properties.cluster_id)
+    .then((z) => map.easeTo({ center: c.geometry.coordinates, zoom: Math.min(z + 0.5, 16), duration: 500 })).catch(() => {});
+  return c;
+}
+map.on("mouseenter", "lm-cluster", () => { map.getCanvas().style.cursor = "pointer"; });
+map.on("mouseleave", "lm-cluster", () => { map.getCanvas().style.cursor = ""; });
 setInterval(() => setSource("night", nightSide()), 5 * 60e3); // the night moves 1.25° in five minutes
 const one = (f) => ({ type: "FeatureCollection", features: f ? [f] : [] });
 for (const layer of ["lm-point", "lm-place", "lm-dot", "lm-line", "lm-fill"]) {
@@ -4334,6 +4365,7 @@ function onTap(e) {
     setSheet(state.answer || !hereView.hidden ? "half" : "peek");
     return;
   }
+  if (clusterAt(e.point)) return;
   const hit = resultAt(e.point);
   // in directions a tap fills in a start or destination still missing; with both, it shows the place
   if (!routeView.hidden && (!route.from || !route.to)) {
@@ -4514,6 +4546,8 @@ function hoverAt() {
     setPoiCursor(false);
     return hidePop("hover");
   }
+  // a circle of pins: no popup (a click zooms in)
+  if (map.getLayer("lm-cluster") && map.queryRenderedFeatures(pt, { layers: ["lm-cluster"] }).length) { setPoiCursor(true); return hidePop("hover"); }
   let f = null, tile = null, ll = null, name = "";
   const layers = ["lm-point", "lm-place", "lm-dot"].filter((l) => map.getLayer(l));
   const r = layers.length ? map.queryRenderedFeatures([[pt.x - 8, pt.y - 8], [pt.x + 8, pt.y + 8]], { layers }).map((x) => state.byId.get(x.properties.id)).find(Boolean) : null;

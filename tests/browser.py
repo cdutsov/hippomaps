@@ -25,7 +25,8 @@ directions at their top when the keyboard goes; up and down in one movement when
 directions takes it to the top); a place searched in navigation as the destination; a ride by bike with the location of the device (fixes at 5 m/s): each turn far
 enough from the one before said ahead with its distance ("In 150 meters, …"), then at the turn, no sentence
 twice (the voice answered with silence in the test); German texts after the language of the menu, also the words of
-the search; the search box on one or two lines, Enter searching; the list of results after a move of the map: those in view, the map keeps all; the results as CSV and GeoJSON; without a connection the note over the map (after 5 s only its sign, a tap opens and closes it), a search, navigation off the route (no new route asked), the
+the search; the search box on one or two lines, Enter searching; the list of results after a move of the map: those in view, the map keeps all; pins close together as a circle
+with their number, a click on it zooming in; the results as CSV and GeoJSON; without a connection the note over the map (after 5 s only its sign, a tap opens and closes it), a search, navigation off the route (no new route asked), the
 map of a route saved at Start and shown from the device, the page opening (the service worker); the suggestions of
 directions in their field, the panel at the height of its state when the keyboard goes; the signs along a route by car
 (speed cameras in the Netherlands, none in Switzerland, stop signs in Berkeley) drawn beside it; the search box without the
@@ -862,11 +863,14 @@ try:
     first = count_text()
     check(first and "in view" not in first and len(listed()) > 0, f"the list after a search: all results ({first})")
     # the ids drawn in the map above the panel, the edges `m` pixels in (m < 0: out)
-    drawn = lambda m: js("(() => { const w = hmMap.getContainer().clientWidth, s = document.querySelector('.lm-side').getBoundingClientRect().top;"
-                         f" const fs = hmMap.queryRenderedFeatures([[{m}, {m}], [w - {m}, s - {m}]], {{ layers: ['lm-point', 'lm-place', 'lm-dot', 'lm-line', 'lm-fill'].filter((l) => hmMap.getLayer(l)) }})"
+    # (the pins gathered in a circle with their number count too, each at its own point)
+    drawn = lambda m: js("(async () => { const w = hmMap.getContainer().clientWidth, s = document.querySelector('.lm-side').getBoundingClientRect().top;"
+                         f" const fs = hmMap.queryRenderedFeatures([[{m}, {m}], [w - {m}, s - {m}]], {{ layers: ['lm-point', 'lm-place', 'lm-dot', 'lm-line', 'lm-fill', 'lm-cluster'].filter((l) => hmMap.getLayer(l)) }});"
+                         " const all = [];"
+                         " for (const f of fs) { if (f.properties.cluster) all.push(...await hmMap.getSource('lm-respts').getClusterLeaves(f.properties.cluster_id, Infinity, 0)); else all.push(f); }"
                          # a pin is drawn above its point: the point itself in the box
-                         f"   .filter((f) => {{ if (f.geometry.type !== 'Point') return true; const q = hmMap.project(f.geometry.coordinates); return q.x >= {m} && q.x <= w - {m} && q.y >= {m} && q.y <= s - {m}; }});"
-                         " return [...new Set(fs.map((f) => f.properties.id))]; })()")
+                         f" const inb = all.filter((f) => {{ if (f.geometry.type !== 'Point') return true; const q = hmMap.project(f.geometry.coordinates); return q.x >= {m} && q.x <= w - {m} && q.y >= {m} && q.y <= s - {m}; }});"
+                         " return [...new Set(inb.map((f) => f.properties.id))]; })()")
     on_map = lambda: js("hmMap.getSource('lm-results').getData().then((d) => d.features.length)")
     all_drawn = on_map()
     call("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 260, "y": 300}])
@@ -928,7 +932,7 @@ try:
     check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '')", 60)
           and wait("!hmMap.isMoving() && hmMap.queryRenderedFeatures({ layers: ['lm-target'] }).length > 0"
                    " && hmMap.queryRenderedFeatures({ layers: ['lm-drawn-dashed'] }).some((f) => f.properties.kind === 'circle')"
-                   " && hmMap.queryRenderedFeatures({ layers: ['lm-point'] }).length > 0", 20),
+                   " && hmMap.queryRenderedFeatures({ layers: ['lm-point', 'lm-cluster'] }).length > 0", 20),
           "Migros near a bus stop: the shops, the stops near them and a circle of 300 m around each stop")
     # a point found is a pin in the colour of the results, the size of the blue pin of a tap; a click on its head opens it
     pin = js("(() => { const l = hmMap.getLayer('lm-point'), a = hmMap.getImage('lm-pin-found'), b = hmMap.getImage('lm-pin-icon');"
@@ -948,8 +952,30 @@ try:
     # areas found are dots until they are large enough to see (zoom 16); a tap on a dot opens the area
     js("(() => { const i = document.querySelector('.lm-input'); i.value = 'church buildings in Zurich'; document.querySelector('.lm-form').requestSubmit() })()")
     check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '')", 60)
-          and wait("!hmMap.isMoving() && hmMap.getZoom() < 16 && hmMap.queryRenderedFeatures({ layers: ['lm-dot'] }).length > 0", 20),
-          "church buildings in Zurich: a dot for each building at the zoom of the city")
+          and wait("!hmMap.isMoving() && hmMap.getZoom() < 16 && hmMap.queryRenderedFeatures({ layers: ['lm-dot', 'lm-cluster'] }).length > 0", 20),
+          "church buildings in Zurich: a dot for each building at the zoom of the city (or a circle of them)")
+    js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
+
+    # many results: pins too close together gather into a circle with their number; the numbers and the lone pins add
+    # up to the points found; a click on a circle zooms in until they part
+    js("(() => { const i = document.querySelector('.lm-input'); i.value = 'restaurants in Zurich'; document.querySelector('.lm-form').requestSubmit() })()")
+    check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '')", 60)
+          and wait("!hmMap.isMoving() && hmMap.queryRenderedFeatures({ layers: ['lm-cluster'] }).length > 0", 20),
+          "restaurants in Zurich: circles of pins")
+    # (the largest circle not under the panel)
+    cl = js("(async () => { const src = hmMap.getSource('lm-respts'), r = hmMap.getCanvas().getBoundingClientRect();"
+            " const at = (f) => { const q = hmMap.project(f.geometry.coordinates); return [Math.round(r.left + q.x), Math.round(r.top + q.y)]; };"
+            " const big = hmMap.queryRenderedFeatures({ layers: ['lm-cluster'] }).filter((f) => document.elementFromPoint(...at(f))?.classList.contains('maplibregl-canvas'))"
+            "   .sort((a, b) => b.properties.point_count - a.properties.point_count)[0];"
+            " const label = hmMap.queryRenderedFeatures({ layers: ['lm-cluster-n'] }).some((f) => f.properties.cluster_id === big?.properties.cluster_id);"
+            " const leaves = big ? (await src.getClusterLeaves(big.properties.cluster_id, Infinity, 0)).length : 0;"
+            " return { n: big?.properties.point_count || 0, leaves, label, zoom: hmMap.getZoom(), at: big ? at(big) : null }; })()")
+    check(cl.get("n") > 1 and cl.get("leaves") == cl.get("n") and cl.get("label"), f"a circle of pins: its number, the pins in it ({cl})")
+    if cl.get("at"):
+        for t in ("mousePressed", "mouseReleased"):
+            call("Input.dispatchMouseEvent", type=t, x=cl["at"][0], y=cl["at"][1], button="left", clickCount=1)
+    check(cl.get("at") and wait(f"!hmMap.isMoving() && hmMap.getZoom() > {cl['zoom'] + 0.5}", 5)
+          and js("document.querySelector('.lm-detail').hidden"), f"a click on a circle of pins: the map zooms in, no place opened (zoom {js('hmMap.getZoom()')})")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
 
     # a town: its photo, and no second Directions beside the search

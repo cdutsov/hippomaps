@@ -7,6 +7,7 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Added
 
+- Results close together on the map gather into a circle with their number; a click on it zooms in until they part.
 - Reachable area, from the menu (at the location of the device, else the middle of the map) or the menu of a right
   click (Reachable from here): how far one gets by car (up to an hour, leaving now with live traffic), by bike or on foot
   (up to two hours). The steps of time are bands from green near the start to red, each with its area; a click on the
