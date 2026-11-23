@@ -962,12 +962,13 @@ try:
     check(wait(r"/\d+ /.test(document.querySelector('.lm-count')?.textContent || '')", 60)
           and wait("!hmMap.isMoving() && hmMap.queryRenderedFeatures({ layers: ['lm-cluster'] }).length > 0", 20),
           "restaurants in Zurich: circles of pins")
-    # (the largest circle not under the panel)
+    # (the largest circle not under the panel; the numbers are placed a moment after the circles)
+    wait("!hmMap.isMoving() && hmMap.queryRenderedFeatures({ layers: ['lm-cluster-n'] }).length > 0", 10)
     cl = js("(async () => { const src = hmMap.getSource('lm-respts'), r = hmMap.getCanvas().getBoundingClientRect();"
             " const at = (f) => { const q = hmMap.project(f.geometry.coordinates); return [Math.round(r.left + q.x), Math.round(r.top + q.y)]; };"
             " const big = hmMap.queryRenderedFeatures({ layers: ['lm-cluster'] }).filter((f) => document.elementFromPoint(...at(f))?.classList.contains('maplibregl-canvas'))"
             "   .sort((a, b) => b.properties.point_count - a.properties.point_count)[0];"
-            " const label = hmMap.queryRenderedFeatures({ layers: ['lm-cluster-n'] }).some((f) => f.properties.cluster_id === big?.properties.cluster_id);"
+            " const label = hmMap.queryRenderedFeatures({ layers: ['lm-cluster-n'] }).some((f) => f.properties.cluster_id === big?.properties.cluster_id && f.properties.point_count_abbreviated == big.properties.point_count_abbreviated);"
             " const leaves = big ? (await src.getClusterLeaves(big.properties.cluster_id, Infinity, 0)).length : 0;"
             " return { n: big?.properties.point_count || 0, leaves, label, zoom: hmMap.getZoom(), at: big ? at(big) : null }; })()")
     check(cl.get("n") > 1 and cl.get("leaves") == cl.get("n") and cl.get("label"), f"a circle of pins: its number, the pins in it ({cl})")
