@@ -7,6 +7,9 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Added
 
+- A saved place can be renamed and given an icon (home, work, heart, restaurant, café, shop, park, mountain, flag, car,
+  station, airport, pin or the star): Edit beside Saved on its card. The icon shows on the map and in the lists of saved
+  places.
 - `api/reach` by public transport takes `leave`, a time of leaving within a week (RFC 3339); the site checks ask for 08:00
   of the next working day, so a deploy at night no longer fails for want of trains.
 - Pages about Reachable area, Live traffic and the app for Android, and the guide Where can I live within 30 minutes of

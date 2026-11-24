@@ -577,6 +577,21 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-place-acts { display: flex; gap: .4rem; }
 .lm-place-acts .lm-star span { display: none; }
 .lm-place-acts .lm-star { padding: .35rem .45rem; }
+/* a saved place: Edit beside its star, and the dialog of its name and icon */
+.lm-star-box { display: contents; }
+.lm-place-acts .lm-star-editbtn span { display: none; }
+.lm-place-acts .lm-star-editbtn { padding: .35rem .45rem; }
+.lm-star-edit { width: min(24rem, calc(100vw - 2rem)); padding: 1rem 1.1rem 1.1rem; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--bg); color: var(--fg); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+.lm-star-edit::backdrop { background: rgba(0,0,0,.35); }
+.lm-star-form { display: flex; flex-direction: column; gap: .6rem; }
+.lm-star-form .lm-fb-title { margin: 0 0 .2rem; }
+.lm-star-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: .4rem; }
+.lm-star-pick { display: grid; place-items: center; height: 40px; border: 1px solid var(--line); border-radius: 50%; background: var(--bg);
+  color: var(--c); cursor: pointer; padding: 0; }
+.lm-star-pick:hover { background: var(--hot); }
+.lm-star-pick[aria-checked=true] { background: var(--c); border-color: var(--c); color: #fff; }
+.lm-star-acts { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .4rem; }
 .lm-forget { margin: .8rem 0 .2rem; }
 .lm-forget:disabled { opacity: .5; }
 /* below it in the menu: HippoMaps is free software, and a donation in francs */

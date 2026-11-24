@@ -1047,10 +1047,20 @@ try:
     js("document.querySelector('.lm-place-acts .lm-star').click()")
     check(js("document.querySelector('.lm-place-acts .lm-star').getAttribute('aria-pressed') === 'true' && JSON.parse(localStorage.getItem('hm-stars') || '[]').some(s => s.name === 'Thun')"),
           "a place starred and kept")
+    # a saved place renamed and given an icon: kept, drawn on the map with it, listed with it
+    js("document.querySelector('.lm-place-acts .lm-star-editbtn').click()")
+    check(wait("document.querySelector('.lm-star-edit').open && document.querySelector('.lm-star-name').value === 'Thun'"
+               " && document.querySelector('.lm-star-pick[data-icon=star]').getAttribute('aria-checked') === 'true'", 5),
+          "Edit of a saved place: its name and the star")
+    js("(() => { document.querySelector('.lm-star-name').value = 'Aunt Anna'; document.querySelector('.lm-star-pick[data-icon=home]').click();"
+       " document.querySelector('.lm-star-ok').click(); })()")
+    check(wait("!document.querySelector('.lm-star-edit').open && JSON.parse(localStorage.getItem('hm-stars')).some(s => s.name === 'Aunt Anna' && s.icon === 'home')"
+               " && hmMap.getSource('lm-stars')._data.features.some(f => f.properties.img === 'lm-star-home') && hmMap.hasImage('lm-star-home')", 5),
+          "a saved place renamed with the icon Home: kept, on the map with it")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
     js("document.querySelector('.lm-input').focus()")
-    check(wait("[...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-star .lm-opt-label')].some(e => e.textContent === 'Thun') && [...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-recent .lm-opt-label')].some(e => e.textContent === 'Thun')", 5),
-          "the empty search box offers the starred place and the last search")
+    check(wait("[...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-star')].some(e => e.querySelector('.lm-opt-label').textContent === 'Aunt Anna' && e.querySelector('path').getAttribute('d').startsWith('M3 11 12 3')) && [...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-recent .lm-opt-label')].some(e => e.textContent === 'Thun')", 5),
+          "the empty search box offers the saved place (its name and icon) and the last search")
     js("document.querySelector('.lm-input').blur()")
 
     # the bubbles: a search of the map view; Transit switches its lines

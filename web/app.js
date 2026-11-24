@@ -93,6 +93,14 @@ const EN = {
   close: "Close",
   save: "Save",
   saved: "Saved",
+  // a saved place: its name and its icon on the map and in the lists (editStar)
+  editStar: "Edit",
+  editStarTitle: "Saved place",
+  starName: "Name",
+  starIcon: "Icon",
+  starIcons: { star: "Star", home: "Home", work: "Work", heart: "Favourite", dish: "Restaurant", cafe: "Café", shop: "Shop",
+    tree: "Park", mountain: "Mountain", flag: "Flag", car: "Car", train: "Station", plane: "Airport", pin: "Pin" },
+  starSave: "Done",
   forgetRecent: "Forget recent searches",
   // the menu, below Forget recent searches: [ ] marks the link to the source code
   aboutApp: "HippoMaps is [free open-source software]. It doesn't track you or sell your data.",
@@ -407,8 +415,19 @@ const ICON = {
   tram: "M7 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM5 12h14M9 3h6M12 3v3M8.5 15h.01M15.5 15h.01M8 18l-1.5 3M16 18l1.5 3",
   cable: "M3 6l18-3M12 4.5V9M7 9h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM5 14h14",
   plane: "M10.5 4.5a1.5 1.5 0 0 1 3 0V9l7 4v2l-7-2v4l2 1.5V20L12 19l-3.5 1v-1.5l2-1.5v-4l-7 2v-2l7-4z",
+  edit: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
+  home: "M3 11 12 3l9 8M5 9.5V21h5v-6h4v6h5V9.5",
+  work: "M3 8h18v12H3zM8 8V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V8M3 13h18",
+  heart: "M12 20s-7.5-4.6-9-9.6A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 9 4.4C19.5 15.4 12 20 12 20z",
+  cafe: "M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM16 10h1.5a2.5 2.5 0 0 1 0 5H16M8 3v3M12 3v3",
+  shop: "M5 8h14l-1 13H6zM9 8V6a3 3 0 0 1 6 0v2",
+  tree: "M12 3 6 11h3l-4 6h14l-4-6h3zM12 17v4",
   offline: "M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5-2.7M19 13a10 10 0 0 0-2-1.5M2 9a15 15 0 0 1 4-2.6M22 9a15 15 0 0 0-11.3-3.8M12 20h.01",
 };
+// the icons a saved place can have (editStar), each with its colour on the map; star: the star of old, drawn apart
+const STAR_ICONS = { star: "#f5b301", home: "#1971c2", work: "#7c4a1e", heart: "#e03131", dish: "#e8590c", cafe: "#8a5a2b", shop: "#7048e8",
+  tree: "#2f9e44", mountain: "#5c6b3a", flag: "#c2255c", car: "#495057", train: "#1864ab", plane: "#0b7285", pin: "#0369a1" };
+const starIconOf = (x) => (x && STAR_ICONS[x.icon] ? x.icon : "star");
 const human = (v) => (v ? v.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "");
 const tagsOf = (p) => (typeof p.tags === "string" ? JSON.parse(p.tags) : p.tags) || {};
 // the kind of a place: its name in the language of the page when the server knows it (kind), else its tag
@@ -1379,6 +1398,17 @@ const addIcons = () => {
     g.shadowColor = "transparent";
     g.lineJoin = "round"; g.lineWidth = 1.8; g.strokeStyle = "#fff"; g.stroke();
   });
+  // the other icons of saved places: the icon in white on a disc of its colour, 26 by 26 px
+  for (const [k, colour] of Object.entries(STAR_ICONS)) if (k !== "star") drawIcon(`lm-star-${k}`, 26, 26, (g) => {
+    g.beginPath(); g.arc(13, 13, 11, 0, 2 * Math.PI);
+    g.shadowColor = "rgba(0,0,0,.3)"; g.shadowBlur = 2; g.shadowOffsetY = 1;
+    g.fillStyle = colour; g.fill();
+    g.shadowColor = "transparent";
+    g.lineWidth = 1.8; g.strokeStyle = "#fff"; g.stroke();
+    g.translate(6.5, 6.5); g.scale(13 / 24, 13 / 24);
+    g.lineWidth = 2.4; g.lineCap = "round"; g.lineJoin = "round";
+    g.stroke(new Path2D(ICON[k]));
+  });
   // the pin of a point tapped (blue) and of a point found (in the colour of the results), 32 by 42 px
   for (const [name, colour] of [["lm-pin-icon", "#0369a1"], ["lm-pin-found", ACCENT]]) drawIcon(name, 32, 42, (g) => {
     g.beginPath();
@@ -1563,7 +1593,7 @@ map.on("style.load", () => {
     "circle-color": ["match", ["get", "t"], "closed", "#7f1d1d", "closure", "#6b7280", "jam", "#dc2626", "accident", "#dc2626", "#f08c00"] } });
   add({ id: "lm-traffic-works-pt", type: "circle", source: "lm-traffic", minzoom: 11, filter: ["all", tpt, ["==", ["get", "t"], "works"]], paint: {
     "circle-radius": 6, "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-color": "#f08c00" } });
-  add({ id: "lm-stars", type: "symbol", source: "lm-stars", layout: { "icon-image": "lm-star-icon",
+  add({ id: "lm-stars", type: "symbol", source: "lm-stars", layout: { "icon-image": ["get", "img"],
     "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 15, 1], "icon-allow-overlap": true, "icon-ignore-placement": true } });
   // the other routes of directions (route.alts): paler under the route, how much longer they take at a point of their
   // own; a tap picks one
@@ -2607,7 +2637,71 @@ function toggleStar(place) {
   drawStars();
 }
 function drawStars() {
-  setSource("stars", { type: "FeatureCollection", features: saved.stars.map((x) => ({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { name: x.name } })) });
+  setSource("stars", { type: "FeatureCollection", features: saved.stars.map((x) => ({ type: "Feature", geometry: { type: "Point", coordinates: x.ll }, properties: { name: x.name, img: starIconOf(x) === "star" ? "lm-star-icon" : `lm-star-${x.icon}` } })) });
+}
+// a saved place changed (editStar): its name and icon kept, the map and an open card of the point with its new name
+function setStar(ll, name, icon) {
+  const x = saved.stars.find((s) => starKey(s.ll) === starKey(ll));
+  if (!x) return;
+  x.name = name.trim() || x.name;
+  if (icon === "star") delete x.icon; else x.icon = icon;
+  store.set("hm-stars", JSON.stringify(saved.stars));
+  drawStars();
+  const hp = state.herePoint;
+  if (!hereView.hidden && hp && starKey(hp.ll) === starKey(ll)) { const h = hereView.querySelector(".lm-dname"); if (h) h.textContent = x.name; }
+}
+// the dialog of a saved place: its name, and its icon among STAR_ICONS
+const starDialog = el("dialog", "lm-star-edit");
+document.body.append(starDialog);
+starDialog.addEventListener("click", (e) => { if (e.target === starDialog) starDialog.close(); }); // a tap outside it
+function editStar(ll, done) {
+  const x = saved.stars.find((s) => starKey(s.ll) === starKey(ll));
+  if (!x) return;
+  let icon = starIconOf(x);
+  starDialog.innerHTML = "";
+  const form = el("form", "lm-star-form", { method: "dialog" });
+  const nameLabel = el("label", "lm-fb-label", { for: "lm-star-name" }, T.starName);
+  const name = el("input", "lm-fb-email lm-star-name", { id: "lm-star-name", type: "text", maxlength: "120", autocomplete: "off" });
+  name.value = x.name;
+  const iconLabel = el("p", "lm-fb-label", { id: "lm-star-icon-label" }, T.starIcon);
+  const icons = el("div", "lm-star-icons", { role: "radiogroup", "aria-labelledby": "lm-star-icon-label" });
+  const mark = () => icons.querySelectorAll("button").forEach((b) => {
+    const on = b.dataset.icon === icon;
+    b.setAttribute("aria-checked", String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+  for (const [k, colour] of Object.entries(STAR_ICONS)) {
+    const b = el("button", "lm-star-pick", { type: "button", role: "radio", "data-icon": k, title: T.starIcons[k], "aria-label": T.starIcons[k] });
+    b.style.setProperty("--c", colour);
+    b.innerHTML = svg(ICON[k], 20);
+    b.addEventListener("click", () => { icon = k; mark(); });
+    icons.append(b);
+  }
+  icons.addEventListener("keydown", (e) => { // the arrows move the choice, as in a group of radio buttons
+    const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const ks = Object.keys(STAR_ICONS);
+    icon = ks[(ks.indexOf(icon) + d + ks.length) % ks.length];
+    mark();
+    icons.querySelector(`[data-icon="${icon}"]`).focus();
+  });
+  mark();
+  const acts = el("div", "lm-star-acts");
+  const cancel = el("button", "lm-chip", { type: "button" }, T.close);
+  cancel.addEventListener("click", () => starDialog.close());
+  const ok = el("button", "lm-donate-btn lm-star-ok", { type: "submit" }, T.starSave);
+  acts.append(cancel, ok);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    setStar(x.ll, name.value, icon);
+    starDialog.close();
+    done?.();
+  });
+  form.append(el("h2", "lm-fb-title", {}, T.editStarTitle), nameLabel, name, iconLabel, icons, acts);
+  starDialog.append(form);
+  starDialog.showModal();
+  if (!softKeys()) name.select();
 }
 function addRecent(text, extra) {
   const t = text.trim();
@@ -2619,9 +2713,14 @@ function addRecent(text, extra) {
 // function giving it (the name of a tapped point comes later)
 function starButton(place) {
   const get = typeof place === "function" ? place : () => place;
+  const box = el("span", "lm-star-box");
   const b = el("button", "lm-action lm-star", { type: "button" });
+  const ed = el("button", "lm-action lm-star-editbtn", { type: "button", title: T.editStar });
+  ed.innerHTML = svg(ICON.edit, 18);
+  ed.append(el("span", "", {}, T.editStar));
   const show = () => {
     const on = isStarred(get().ll);
+    ed.hidden = !on;
     b.classList.toggle("lm-on", on);
     b.setAttribute("aria-pressed", String(on));
     b.innerHTML = svg(ICON.star, 18);
@@ -2630,7 +2729,9 @@ function starButton(place) {
   };
   show();
   b.addEventListener("click", () => { toggleStar(get()); show(); });
-  return b;
+  ed.addEventListener("click", () => editStar(get().ll, show));
+  box.append(b, ed);
+  return box;
 }
 // ------------------------------------------------------------------ sharing
 // Share: the share sheet of the phone, else the link copied. Links: a point or place
@@ -2729,7 +2830,7 @@ const renderList = (items) => {
   items.forEach((s, i) => {
     const li = el("li", `lm-opt lm-opt-${s.kind}`, { role: "option", id: `lm-opt-${i}`, "aria-selected": "false" });
     const ic = el("span", "lm-opt-icon");
-    ic.innerHTML = svg(s.kind === "place" ? ICON.pin : s.kind === "star" ? ICON.star : s.kind === "recent" ? ICON.recent : ICON.search, 16);
+    ic.innerHTML = svg(s.kind === "place" ? ICON.pin : s.kind === "star" ? ICON[starIconOf(s.star)] : s.kind === "recent" ? ICON.recent : ICON.search, 16);
     const txt = el("span", "lm-opt-text");
     txt.append(el("span", "lm-opt-label", {}, s.label));
     if (s.detail) txt.append(el("span", "lm-opt-detail", {}, s.detail));
@@ -5261,7 +5362,7 @@ function placeField(which) {
     list.forEach((it, i) => {
       const li = el("li", "lm-opt", { role: "option", id: `${id}-${i}`, "aria-selected": "false" });
       const ic = el("span", "lm-opt-icon");
-      ic.innerHTML = svg(it.me ? ICON.locate : it.star ? ICON.star : ICON.pin, 16);
+      ic.innerHTML = svg(it.me ? ICON.locate : it.star ? ICON[it.icon] : ICON.pin, 16);
       const txt = el("span", "lm-opt-text");
       txt.append(el("span", "lm-opt-label", {}, it.label));
       if (it.detail) txt.append(el("span", "lm-opt-detail", {}, it.detail));
@@ -5274,7 +5375,7 @@ function placeField(which) {
     mark(-1);
   };
   const meItem = [...(navigator.geolocation && !v?.me ? [{ me: true, label: T.myPlace }] : []),
-    ...saved.stars.slice(0, 6).map((x) => ({ star: true, label: x.name, detail: x.detail, ll: x.ll }))];
+    ...saved.stars.slice(0, 6).map((x) => ({ star: true, icon: starIconOf(x), label: x.name, detail: x.detail, ll: x.ll }))];
   const ask = async () => {
     const q = field.value.trim();
     ctl?.abort();
