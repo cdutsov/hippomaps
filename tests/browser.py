@@ -1055,7 +1055,7 @@ try:
     js("(() => { document.querySelector('.lm-star-name').value = 'Aunt Anna'; document.querySelector('.lm-star-pick[data-icon=home]').click();"
        " document.querySelector('.lm-star-ok').click(); })()")
     check(wait("!document.querySelector('.lm-star-edit').open && JSON.parse(localStorage.getItem('hm-stars')).some(s => s.name === 'Aunt Anna' && s.icon === 'home')"
-               " && hmMap.getSource('lm-stars')._data.features.some(f => f.properties.img === 'lm-star-home') && hmMap.hasImage('lm-star-home')", 5),
+               " && hmMap.getSource('lm-stars').serialize().data.features.some(f => f.properties.img === 'lm-star-home') && hmMap.hasImage('lm-star-home')", 5),
           "a saved place renamed with the icon Home: kept, on the map with it")
     check(js("document.querySelector('.lm-place-acts .lm-star').dataset.icon === 'home' && document.querySelector('.lm-place-acts .lm-star path').getAttribute('d').startsWith('M3 11 12 3')"),
           "the button Saved shows the icon of the place (Home)")
