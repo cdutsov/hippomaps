@@ -1,0 +1,36 @@
+{{define "title"}}Live-Verkehr in der Schweiz, den Niederlanden und Frankreich{{end}}
+{{define "desc"}}Eine freie Verkehrskarte für die Schweiz, die Niederlande und Frankreich: Sperrungen, Stau, Baustellen, Unfälle und stockender Verkehr von den Strassenbehörden, gezählt in der Zeit jeder Route mit dem Auto.{{end}}
+{{define "image"}}traffic{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Funktionen</a></p>
+<h1>Live-Verkehr</h1>
+<p class="pg-lead">In der Schweiz, den Niederlanden und Frankreich liest hippomaps alle paar Minuten, was die Strassenbehörden über die Strassen melden. Die Karte zeigt es, und Routen mit dem Auto zählen es.</p>
+<ul class="pg-try">
+<li><a href="{{view "11/47.40000/8.55000"}}">Die Karte bei Zürich öffnen</a>, dann Verkehr im Menü einschalten</li>
+<li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "46.94898,7.43913" "tn" "Bern" "mode" "car"}}">Mit dem Auto von Zürich nach Bern</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "traffic"}}" width="1280" height="800" alt="Verkehr um Zürich: Sperrungen, Stau und Baustellen auf den Autobahnen"><figcaption>Sperrungen, Stau und Baustellen um Zürich.</figcaption></figure>
+<div class="pg-text">
+<h2>Auf der Karte</h2>
+<p>Verkehr im Menü zeichnet Sperrungen, Stau, Baustellen, Unfälle, Hindernisse, Wetterwarnungen, Veranstaltungen und stockenden Verkehr auf die Strassen. Tippen Sie auf eine Meldung, um sie zu lesen, mit der Strasse, der Länge des Staus, der Verzögerung und der Quelle mit der Zeit ihrer Meldung.</p>
+<h2>In Routen mit dem Auto</h2>
+<p>Die Zeit einer Route mit dem Auto zählt die auf den Strassen gemessenen Geschwindigkeiten und meidet gesperrte Strassen. Die anderen Routen neben der schnellsten werden gleich berechnet.</p>
+<p>Auch das <a href="{{link "/features/reachable-area"}}">erreichbare Gebiet</a> mit dem Auto zählt den Verkehr.</p>
+<h2>Woher die Daten kommen</h2>
+<table class="pg-table">
+<thead><tr><th>Land</th><th>Quelle</th><th>Geschwindigkeiten</th></tr></thead>
+<tbody>
+<tr><td>Schweiz</td><td>Bundesamt für Strassen (ASTRA), Traffic Data Platform</td><td>jede Minute, von Zählern auf den Autobahnen</td></tr>
+<tr><td>Niederlande</td><td>NDW (Nationaal Dataportaal Wegverkeer)</td><td>jede Minute, von rund 14’000 Messstellen</td></tr>
+<tr><td>Frankreich</td><td>Bison Futé</td><td>alle 6 Minuten, auf den Nationalstrassen ohne Maut</td></tr>
+</tbody>
+</table>
+<h2>Zeichen auf der Route</h2>
+<p>Eine Route mit dem Auto zeigt auch Stoppschilder und Bodenwellen. Radarkameras erscheinen nur in Ländern, in denen eine Navigations-App sie zeigen darf, also nicht in der Schweiz, in Deutschland oder in Frankreich. Eine Warnung über Start sagt, wenn die Route eine Fähre oder einen Autozug nimmt.</p>
+<p class="pg-note">In anderen Ländern rechnen Routen mit den üblichen Geschwindigkeiten jeder Strasse, ohne Live-Verkehr.</p>
+</div>
+</div>
+{{end}}

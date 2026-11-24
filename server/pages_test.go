@@ -26,8 +26,8 @@ func TestPages(t *testing.T) {
 	}
 	sitemap := get(own, "/sitemap.xml").Body.String()
 	href := regexp.MustCompile(`(?:href|src)="([^"]+)"`)
-	// words of AI writing (the owner list and Wikipedia: Signs of AI writing), and "verb no noun" (shows no ads, braucht kein Konto)
-	banned := regexp.MustCompile(`(?i)\b(seamless|robust|leverage|honestly|exactly|simply|load-bearing|delve|crucial|boasts?|vibrant|showcase|testament|pivotal|nestled|additionally|ensures?|enhances?|effortless(?:ly)?)\b|Here is how|in the heart of|stands as|’s (?:page|plan|map)\b|\b(?:needs|shows|has|finds|gives|takes|keeps|sends|uses|braucht|zeigt|hat|findet|gibt|nimmt) (?:no|kein\w*)\b|\b(?:New to|Neu bei) hippomaps\?`)
+	// words of AI writing (the owner list and Wikipedia: Signs of AI writing, with the em dash), and "verb no noun" (shows no ads, braucht kein Konto)
+	banned := regexp.MustCompile(`(?i)\b(seamless|robust|leverage|honestly|exactly|simply|load-bearing|delve|crucial|boasts?|vibrant|showcase|testament|pivotal|nestled|additionally|ensures?|enhances?|effortless(?:ly)?|highlights?|underscores?|tapestry|intricate|garners?|foster(?:s|ing)?|meticulous(?:ly)?|furthermore|moreover|notably|comprehensive|powerful|unlocks?|stunning|plethora|myriad|realm)\b|Here is how|in the heart of|stands as|important to note|[Ii]n summary|[Ww]hether you|not only|not just|at your fingertips|—|’s (?:page|plan|map)\b|\b(?:needs|shows|has|finds|gives|takes|keeps|sends|uses|braucht|zeigt|hat|findet|gibt|nimmt) (?:no|kein\w*)\b|\b(?:New to|Neu bei) hippomaps\?`)
 	for u, pg := range own.pages {
 		w := get(own, u)
 		body := w.Body.String()
@@ -35,11 +35,13 @@ func TestPages(t *testing.T) {
 			t.Errorf("%s: %d %v", u, w.Code, w.Header())
 			continue
 		}
-		if strings.Contains(body, "<script") || !strings.Contains(w.Header().Get("Content-Security-Policy"), "default-src 'none'") {
+		// no script but the data for search engines (JSON-LD), which browsers do not run
+		if strings.Contains(regexp.MustCompile(`<script type="application/ld\+json">[^<]*</script>`).ReplaceAllString(body, ""), "<script") || !strings.Contains(w.Header().Get("Content-Security-Policy"), "default-src 'none'") {
 			t.Errorf("%s: a script, or no CSP", u)
 		}
 		for _, want := range []string{`<html lang="` + pg.Lang + `">`, `<link rel="canonical" href="https://hippomaps.example` + u + `">`,
 			`hreflang="en" href="https://hippomaps.example` + pageURL("", "en", pg.Path) + `"`, `hreflang="de" href="https://hippomaps.example` + pageURL("", "de", pg.Path) + `"`,
+			`hreflang="x-default" href="https://hippomaps.example` + pageURL("", "en", pg.Path) + `"`,
 			`<meta name="description" content="`, `<meta property="og:image" content="https://hippomaps.example/static/pages/img/`, "<h1>"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: no %s", u, want)
@@ -71,9 +73,43 @@ func TestPages(t *testing.T) {
 			}
 		}
 	}
-	// the sitemap: the other language of each page
-	if !strings.Contains(sitemap, `<url><loc>https://hippomaps.example/guides/gpx</loc><xhtml:link rel="alternate" hreflang="en" href="https://hippomaps.example/guides/gpx"/><xhtml:link rel="alternate" hreflang="de" href="https://hippomaps.example/de/guides/gpx"/></url>`) {
+	// the sitemap: the other language of each page and x-default, the English page before the German one; the privacy
+	// policy and the licences with theirs; robots.txt and the sitemap without noindex
+	gpx := `<xhtml:link rel="alternate" hreflang="en" href="https://hippomaps.example/guides/gpx"/><xhtml:link rel="alternate" hreflang="de" href="https://hippomaps.example/de/guides/gpx"/><xhtml:link rel="alternate" hreflang="x-default" href="https://hippomaps.example/guides/gpx"/></url>`
+	if !strings.Contains(sitemap, `<url><loc>https://hippomaps.example/guides/gpx</loc>`+gpx+"\n"+`<url><loc>https://hippomaps.example/de/guides/gpx</loc>`+gpx) ||
+		!strings.Contains(sitemap, `<url><loc>https://hippomaps.example/de/privacy</loc><xhtml:link rel="alternate" hreflang="en" href="https://hippomaps.example/privacy"/><xhtml:link rel="alternate" hreflang="de" href="https://hippomaps.example/de/privacy"/><xhtml:link rel="alternate" hreflang="x-default" href="https://hippomaps.example/privacy"/></url>`) ||
+		!strings.Contains(sitemap, "<url><loc>https://hippomaps.example/</loc></url>") {
 		t.Errorf("sitemap: %s", sitemap)
+	}
+	if n := strings.Count(sitemap, "<url>"); n != len(own.pages)+5 {
+		t.Errorf("sitemap: %d addresses for %d pages", n, len(own.pages))
+	}
+	for _, u := range []string{"/sitemap.xml", "/robots.txt"} {
+		if w := get(own, u); w.Code != 200 || w.Header().Get("X-Robots-Tag") != "" {
+			t.Errorf("%s: %d %v", u, w.Code, w.Header())
+		}
+	}
+	// each address of the sitemap is a page open to search engines, whose links to its languages are those of the sitemap
+	for _, m := range regexp.MustCompile(`<loc>https://hippomaps.example([^<]*)</loc>`).FindAllStringSubmatch(sitemap, -1) {
+		w := get(own, m[1])
+		if w.Code != 200 || w.Header().Get("X-Robots-Tag") != "" || !strings.Contains(w.Body.String(), `<link rel="canonical" href="https://hippomaps.example`+m[1]+`">`) {
+			t.Errorf("sitemap %s: %d %v", m[1], w.Code, w.Header())
+		}
+		if strings.Contains(m[1], "privacy") || strings.Contains(m[1], "licences") {
+			en := strings.TrimPrefix(m[1], "/de")
+			for _, want := range []string{`hreflang="en" href="https://hippomaps.example` + en + `"`, `hreflang="de" href="https://hippomaps.example/de` + en + `"`, `hreflang="x-default" href="https://hippomaps.example` + en + `"`} {
+				if !strings.Contains(w.Body.String(), want) {
+					t.Errorf("%s: no %s", m[1], want)
+				}
+			}
+		}
+	}
+	// the place of a page under its section, for search engines
+	if body := get(own, "/de/features/reachable-area").Body.String(); !strings.Contains(body, `<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Funktionen","item":"https://hippomaps.example/de/features"},{"@type":"ListItem","position":2,"name":"Erreichbares Gebiet: wie weit Sie in 30 Minuten kommen","item":"https://hippomaps.example/de/features/reachable-area"}]}</script>`) {
+		t.Errorf("no breadcrumbs: %s", body[:min(len(body), 2000)])
+	}
+	if strings.Contains(get(own, "/features").Body.String(), "BreadcrumbList") {
+		t.Error("breadcrumbs on /features")
 	}
 	// every picture of web/pages/img is used by a page
 	used := ""

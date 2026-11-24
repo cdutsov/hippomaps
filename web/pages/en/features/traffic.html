@@ -1,0 +1,36 @@
+{{define "title"}}Live traffic in Switzerland, the Netherlands and France{{end}}
+{{define "desc"}}A free live traffic map for Switzerland, the Netherlands and France: closures, queues, roadworks, accidents and slow roads from the road authorities, counted in the time of each route by car.{{end}}
+{{define "image"}}traffic{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>Live traffic</h1>
+<p class="pg-lead">In Switzerland, the Netherlands and France, hippomaps reads what the road authorities report about the roads every few minutes. The map shows it, and routes by car count it.</p>
+<ul class="pg-try">
+<li><a href="{{view "11/47.40000/8.55000"}}">Open the map at Zurich</a>, then turn on Traffic in the menu</li>
+<li><a href="{{app "from" "47.37795,8.54032" "fn" "Zürich HB" "to" "46.94898,7.43913" "tn" "Bern" "mode" "car"}}">By car from Zurich to Bern</a></li>
+</ul>
+</section>
+<figure class="pg-shot"><img src="{{img "traffic"}}" width="1280" height="800" alt="Traffic around Zurich: closures, queues and roadworks on the motorways"><figcaption>Closures, queues and roadworks around Zurich.</figcaption></figure>
+<div class="pg-text">
+<h2>On the map</h2>
+<p>Traffic in the menu draws closures, queues, roadworks, accidents, obstacles, weather warnings, events and slow traffic on the roads. Tap one to read its message, with the road, the length of the queue, the delay, and the source with the time of its report.</p>
+<h2>In routes by car</h2>
+<p>The time of a route by car counts the speeds measured on the roads and avoids closed roads. Other routes offered beside the fastest are timed the same way.</p>
+<p>The <a href="{{link "/features/reachable-area"}}">reachable area</a> by car counts the traffic too.</p>
+<h2>Where it comes from</h2>
+<table class="pg-table">
+<thead><tr><th>Country</th><th>Source</th><th>Speeds</th></tr></thead>
+<tbody>
+<tr><td>Switzerland</td><td>Federal Roads Office (FEDRO), Traffic Data Platform</td><td>every minute, from counters on the motorways</td></tr>
+<tr><td>Netherlands</td><td>NDW (Nationaal Dataportaal Wegverkeer)</td><td>every minute, from about 14,000 measuring points</td></tr>
+<tr><td>France</td><td>Bison Futé</td><td>every 6 minutes, on the national roads without tolls</td></tr>
+</tbody>
+</table>
+<h2>Signs on the route</h2>
+<p>A route by car also marks stop signs and speed bumps. Speed cameras are marked only in countries where a navigation app may show them, so not in Switzerland, Germany or France. A warning above Start tells when the route takes a ferry or a car train.</p>
+<p class="pg-note">In other countries routes use the usual speeds of each road, without live traffic.</p>
+</div>
+</div>
+{{end}}

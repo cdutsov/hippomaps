@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html"
 	"html/template"
@@ -119,6 +120,23 @@ func (s *Server) servePage(pg *page) http.HandlerFunc {
 			data["Image"] = strings.TrimSpace(buf.String())
 			buf.Reset()
 		}
+		// the place of the page under Features or Guides, for search engines (schema.org BreadcrumbList)
+		if pub := data["Public"].(string); pub != "" && strings.Contains(strings.TrimPrefix(pg.Path, "/"), "/") {
+			var title bytes.Buffer
+			if pg.tmpl.ExecuteTemplate(&title, "title", data) == nil {
+				names := map[string]map[string]string{"features": {"en": "Features", "de": "Funktionen"}, "guides": {"en": "Guides", "de": "Anleitungen"}}
+				type item struct {
+					Type     string `json:"@type"`
+					Position int    `json:"position"`
+					Name     string `json:"name"`
+					Item     string `json:"item"`
+				}
+				ld, _ := json.Marshal(map[string]any{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": []item{
+					{"ListItem", 1, names[section][pg.Lang], pub + pageURL(base, pg.Lang, "/"+section)},
+					{"ListItem", 2, html.UnescapeString(strings.TrimSpace(title.String())), pub + pageURL(base, pg.Lang, pg.Path)}}})
+				data["Crumbs"] = template.JS(ld)
+			}
+		}
 		if err := pg.tmpl.ExecuteTemplate(&buf, "layout.html", data); err != nil {
 			s.log.Error("page", "page", pg.file, "err", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -133,35 +151,50 @@ func (s *Server) servePage(pg *page) http.HandlerFunc {
 	}
 }
 
-// sitemapXML: the page, the pages about it (with their other language), the privacy policy and the licences
+// sitemapXML: the page, the pages about it and the privacy policy and the licences, each with its other language and
+// x-default (English), in the order of the pages: English first, then German
 func (s *Server) sitemapXML() string {
 	pub := strings.TrimRight(s.cfg.PublicURL, "/")
 	base := strings.TrimRight(s.cfg.Base, "/")
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n")
+	abs := func(u string) string { return html.EscapeString(pub + strings.TrimPrefix(u, base)) }
 	loc := func(u string, alts map[string]string) {
-		fmt.Fprintf(&b, "<url><loc>%s</loc>", html.EscapeString(pub+strings.TrimPrefix(u, base)))
+		fmt.Fprintf(&b, "<url><loc>%s</loc>", abs(u))
 		if len(alts) > 1 {
 			for _, l := range pageLangs {
 				if a, ok := alts[l]; ok {
-					fmt.Fprintf(&b, `<xhtml:link rel="alternate" hreflang="%s" href="%s"/>`, l, html.EscapeString(pub+strings.TrimPrefix(a, base)))
+					fmt.Fprintf(&b, `<xhtml:link rel="alternate" hreflang="%s" href="%s"/>`, l, abs(a))
 				}
 			}
+			fmt.Fprintf(&b, `<xhtml:link rel="alternate" hreflang="x-default" href="%s"/>`, abs(alts["en"]))
 		}
 		b.WriteString("</url>\n")
 	}
 	loc(base+"/", nil)
-	var urls []string
-	for u := range s.pages {
-		urls = append(urls, u)
+	// the pages by their path (/features before /features/search), each in its languages
+	paths := map[string]bool{}
+	for _, pg := range s.pages {
+		paths[pg.Path] = true
 	}
-	sort.Strings(urls)
-	for _, u := range urls {
-		loc(u, s.alternates(s.pages[u].Path))
+	var sorted []string
+	for p := range paths {
+		sorted = append(sorted, p)
 	}
-	for _, p := range []string{"/privacy", "/de/privacy", "/licences", "/de/licences"} {
-		loc(base+p, nil)
+	sort.Strings(sorted)
+	for _, p := range sorted {
+		alts := s.alternates(p)
+		for _, l := range pageLangs {
+			if u, ok := alts[l]; ok {
+				loc(u, alts)
+			}
+		}
+	}
+	for _, p := range []string{"/privacy", "/licences"} {
+		alts := map[string]string{"en": base + p, "de": base + "/de" + p}
+		loc(alts["en"], alts)
+		loc(alts["de"], alts)
 	}
 	b.WriteString("</urlset>\n")
 	return b.String()

@@ -305,7 +305,8 @@ func (s *Server) Close() { s.stats.Close() }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
-	if s.cfg.PublicURL == "" || !s.listed(r.URL.Path) { // only the pages are for search engines, not the API
+	// only the pages are for search engines, not the API; robots.txt and the sitemap are read by them as they are
+	if s.cfg.PublicURL == "" || !s.listed(r.URL.Path) && r.URL.Path != "/robots.txt" && r.URL.Path != "/sitemap.xml" {
 		h.Set("X-Robots-Tag", "noindex")
 	}
 	s.mux.ServeHTTP(w, r)

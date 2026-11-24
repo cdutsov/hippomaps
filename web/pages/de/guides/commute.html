@@ -1,0 +1,26 @@
+{{define "title"}}Wo wohnen, 30 Minuten von der Arbeit?{{end}}
+{{define "desc"}}Finden Sie die Orte und Quartiere, die mit Auto, Velo oder ÖV in 30 Minuten bei Ihrer Arbeit oder Schule sind, mit Erreichbares Gebiet von hippomaps, vergleichen Sie sie und speichern Sie die Gebiete als GeoJSON oder KML.{{end}}
+{{define "image"}}reach-car{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Anleitungen</a></p>
+<h1>Wo wohnen, 30 Minuten von der Arbeit?</h1>
+<p class="pg-lead">Bei der Suche nach einer Wohnung wissen Sie vielleicht, wie lange Sie zur Arbeit fahren möchten, aber nicht, welche Orte damit in Frage kommen. <a href="{{link "/features/reachable-area"}}">Erreichbares Gebiet</a> in hippomaps zeichnet sie auf die Karte.</p>
+<ul class="pg-try"><li><a href="{{view "13/46.94898/7.43913"}}">Die Karte beim Bundesplatz in Bern öffnen</a></li></ul>
+</section>
+<figure class="pg-shot"><img src="{{img "reach-car"}}" width="1280" height="800" alt="Erreichbares Gebiet mit dem Auto vom Bundesplatz in Bern: die Stufen in 10, 20 und 30 Minuten entlang der Autobahnen"><figcaption>Mit dem Auto von Bern: Die Stufen reichen entlang der Autobahnen am weitesten.</figcaption></figure>
+<div class="pg-text">
+<h2>1. Bei der Arbeit beginnen</h2>
+<p>Suchen Sie Ihre Arbeit oder Schule auf der Karte, mit dem Suchfeld oder durch Verschieben der Karte. Klicken Sie mit der rechten Maustaste auf das Gebäude (am Handy lange drücken) und wählen Sie Von hier erreichbar.</p>
+<h2>2. Das Verkehrsmittel wählen</h2>
+<p>Wählen Sie oben Auto, Velo, Zu Fuss oder ÖV und die Zeit unter Bis. Mit 30 Minuten zeigt die Karte drei Stufen: in 10, 20 und 30 Minuten.</p>
+<p>Mit dem ÖV hat das Gebiet keine runde Form. Orte an einer schnellen Bahnlinie können darin liegen, während ein näheres Dorf ohne gute Verbindung draussen bleibt. Die Zeiten zählen ab jetzt; schauen Sie die Gebiete deshalb um die Zeit an, zu der Sie zur Arbeit fahren würden: Eine Linie, die morgens alle 10 Minuten fährt, fährt nachts vielleicht einmal pro Stunde.</p>
+<h2>3. Orte vergleichen</h2>
+<p>Ziehen Sie die Nadel in den Ort einer Wohnung, die Sie gesehen haben, um zu sehen, wie weit Sie von dort kommen. Suchen Sie, was Ihnen in der Nähe wichtig ist, etwa <a href="{{app "q" "Schulen in Bern"}}">Schulen in Bern</a> oder <a href="{{app "q" "Supermärkte in Bern"}}">Supermärkte in Bern</a>. Eine Route gibt den Weg ab einer einzelnen Adresse.</p>
+<h2>4. Die Gebiete speichern</h2>
+<p>Herunterladen gibt die Gebiete als GeoJSON oder KML. Öffnen Sie sie in QGIS, geojson.io oder Google Earth neben den Inseraten einer Immobilienseite, oder legen Sie die Gebiete mit Auto und ÖV nebeneinander.</p>
+<p class="pg-note">Zwei Personen, die an verschiedenen Orten arbeiten, können je ihr Gebiet speichern und beide in QGIS öffnen: Wo sie sich überlagern, kommen beide rechtzeitig zur Arbeit.</p>
+</div>
+</div>
+{{end}}

@@ -1,0 +1,40 @@
+{{define "title"}}Reachable area: how far you get in 30 minutes{{end}}
+{{define "desc"}}A free travel time map (isochrone) on OpenStreetMap: how far you get from a point by car, bike, on foot or by public transport in 10 minutes to two hours, with the area of each band, as GeoJSON or KML.{{end}}
+{{define "image"}}reach{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>Reachable area</h1>
+<p class="pg-lead">Reachable area colours the part of the map you can reach from a point in a given time: by car, by bike, on foot or by public transport. Maps like this are also called travel time maps or isochrones.</p>
+<ul class="pg-try"><li><a href="{{view "11.2/47.37795/8.54032"}}">Open the map at Zurich main station</a>, then right-click it (long press on a phone) and choose Reachable from here</li></ul>
+</section>
+<figure class="pg-shot"><img src="{{img "reach"}}" width="1280" height="800" alt="Reachable area by bike from Zurich main station: green within 10 minutes, yellow within 20, red within 30, with the area of each band"><figcaption>By bike from Zurich main station: 11 km² within 10 minutes, 118 km² within half an hour.</figcaption></figure>
+<div class="pg-text">
+<h2>Open it</h2>
+<ul>
+<li>from the menu: Reachable area starts at your location, or at the middle of the map when the location is off</li>
+<li>from a right click on the map (a long press on a phone): Reachable from here starts at that point</li>
+</ul>
+<p>Click the map or drag the pin to move the start. The areas are drawn again for the new start.</p>
+<h2>Ways to travel and times</h2>
+<table class="pg-table">
+<thead><tr><th>By</th><th>Up to</th></tr></thead>
+<tbody>
+<tr><td>Car</td><td>10, 15, 30, 45 or 60 minutes</td></tr>
+<tr><td>Bike</td><td>15, 30, 60 or 120 minutes</td></tr>
+<tr><td>On foot</td><td>15, 30, 60 or 120 minutes</td></tr>
+<tr><td>Public transport</td><td>15, 30, 45 or 60 minutes</td></tr>
+</tbody>
+</table>
+<p>The time under Up to is cut into bands: up to 30 minutes gives bands of 10, 20 and 30 minutes, up to an hour bands of 15 minutes, up to two hours bands of 30 minutes. Each band has its colour, from green near the start to red, and its area in km².</p>
+<h2>By car</h2>
+<p>By car you leave now. In Switzerland, the Netherlands and France the areas count the <a href="{{link "/features/traffic"}}">live traffic</a>: closures, queues and slow roads make them smaller.</p>
+<h2>By public transport</h2>
+<p>By public transport you leave now, by the timetables of the trains, trams, buses and boats of Europe. The walk to the first stop is timed to end 3 minutes before a departure. From each stop reached, the area goes on on foot for the rest of the time, up to 15 minutes.</p>
+<h2>Save the areas</h2>
+<p>Download saves the areas as GeoJSON, with their colours, minutes and areas (geojson.io and QGIS show the colours), or as KML for Google Earth. The guide <a href="{{link "/guides/commute"}}">Where can I live within 30 minutes of work?</a> uses them to compare places to live.</p>
+<p class="pg-note">The areas are calculated by <a href="https://github.com/valhalla/valhalla">Valhalla</a> on OpenStreetMap data, and by <a href="https://github.com/motis-project/motis">MOTIS</a> with the timetables published by <a href="https://transitous.org">Transitous</a>. In the Android app, use hippomaps.ch in the browser to save the files.</p>
+</div>
+</div>
+{{end}}

@@ -10,6 +10,9 @@
 <link rel="stylesheet" href="{{asset "pages/pages.css"}}">
 {{if .Public}}<link rel="canonical" href="{{.Public}}{{.URL}}">
 {{range .Alts}}<link rel="alternate" hreflang="{{.Lang}}" href="{{$.Public}}{{.URL}}">
+{{if eq .Lang "en"}}<link rel="alternate" hreflang="x-default" href="{{$.Public}}{{.URL}}">
+{{end}}{{end}}<meta property="og:locale" content="{{if eq .Lang "de"}}de_CH{{else}}en_GB{{end}}">
+{{with .Crumbs}}<script type="application/ld+json">{{.}}</script>
 {{end}}<meta property="og:type" content="website">
 <meta property="og:site_name" content="hippomaps">
 <meta property="og:title" content="{{template "title" .}}">

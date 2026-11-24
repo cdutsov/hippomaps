@@ -1,0 +1,40 @@
+{{define "title"}}Erreichbares Gebiet: wie weit Sie in 30 Minuten kommen{{end}}
+{{define "desc"}}Eine freie Reisezeitkarte (Isochrone) auf OpenStreetMap: wie weit Sie von einem Punkt mit Auto, Velo, zu Fuss oder mit dem ÖV in 10 Minuten bis zwei Stunden kommen, mit der Fläche jeder Stufe, als GeoJSON oder KML.{{end}}
+{{define "image"}}reach{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Funktionen</a></p>
+<h1>Erreichbares Gebiet</h1>
+<p class="pg-lead">Erreichbares Gebiet färbt den Teil der Karte, den Sie von einem Punkt aus in einer bestimmten Zeit erreichen: mit dem Auto, dem Velo, zu Fuss oder mit dem ÖV. Solche Karten heissen auch Reisezeitkarten oder Isochronen.</p>
+<ul class="pg-try"><li><a href="{{view "11.2/47.37795/8.54032"}}">Die Karte beim Zürich HB öffnen</a>, dann mit der rechten Maustaste darauf klicken (am Handy lange drücken) und Von hier erreichbar wählen</li></ul>
+</section>
+<figure class="pg-shot"><img src="{{img "reach"}}" width="1280" height="800" alt="Erreichbares Gebiet mit dem Velo vom Zürich HB: grün in 10 Minuten, gelb in 20, rot in 30, mit der Fläche jeder Stufe"><figcaption>Mit dem Velo vom Zürich HB: 11 km² in 10 Minuten, 118 km² in einer halben Stunde.</figcaption></figure>
+<div class="pg-text">
+<h2>Öffnen</h2>
+<ul>
+<li>im Menü: Erreichbares Gebiet beginnt bei Ihrem Standort, oder in der Mitte der Karte, wenn der Standort aus ist</li>
+<li>mit einem Rechtsklick auf die Karte (am Handy langes Drücken): Von hier erreichbar beginnt bei diesem Punkt</li>
+</ul>
+<p>Ein Klick auf die Karte oder die gezogene Nadel verschiebt den Start. Die Gebiete werden für den neuen Start neu gezeichnet.</p>
+<h2>Verkehrsmittel und Zeiten</h2>
+<table class="pg-table">
+<thead><tr><th>Mit</th><th>Bis</th></tr></thead>
+<tbody>
+<tr><td>Auto</td><td>10, 15, 30, 45 oder 60 Minuten</td></tr>
+<tr><td>Velo</td><td>15, 30, 60 oder 120 Minuten</td></tr>
+<tr><td>zu Fuss</td><td>15, 30, 60 oder 120 Minuten</td></tr>
+<tr><td>ÖV</td><td>15, 30, 45 oder 60 Minuten</td></tr>
+</tbody>
+</table>
+<p>Die Zeit unter Bis wird in Stufen geteilt: bis 30 Minuten gibt Stufen von 10, 20 und 30 Minuten, bis eine Stunde Stufen von 15 Minuten, bis zwei Stunden Stufen von 30 Minuten. Jede Stufe hat ihre Farbe, von Grün nahe am Start bis Rot, und ihre Fläche in km².</p>
+<h2>Mit dem Auto</h2>
+<p>Mit dem Auto fahren Sie jetzt ab. In der Schweiz, den Niederlanden und Frankreich zählt der <a href="{{link "/features/traffic"}}">Live-Verkehr</a>: Sperrungen, Stau und stockender Verkehr machen die Gebiete kleiner.</p>
+<h2>Mit dem ÖV</h2>
+<p>Mit dem ÖV fahren Sie jetzt ab, nach den Fahrplänen der Züge, Trams, Busse und Schiffe Europas. Der Weg zur ersten Haltestelle endet 3 Minuten vor einer Abfahrt. Von jeder erreichten Haltestelle geht das Gebiet für den Rest der Zeit zu Fuss weiter, bis 15 Minuten.</p>
+<h2>Gebiete speichern</h2>
+<p>Herunterladen speichert die Gebiete als GeoJSON, mit ihren Farben, Minuten und Flächen (geojson.io und QGIS zeigen die Farben), oder als KML für Google Earth. Die Anleitung <a href="{{link "/guides/commute"}}">Wo wohnen, 30 Minuten von der Arbeit?</a> vergleicht damit Wohnorte.</p>
+<p class="pg-note">Die Gebiete berechnen <a href="https://github.com/valhalla/valhalla">Valhalla</a> auf Daten von OpenStreetMap und <a href="https://github.com/motis-project/motis">MOTIS</a> mit den Fahrplänen, die <a href="https://transitous.org">Transitous</a> veröffentlicht. In der Android-App speichern Sie die Dateien mit hippomaps.ch im Browser.</p>
+</div>
+</div>
+{{end}}

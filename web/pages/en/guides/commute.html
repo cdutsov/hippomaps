@@ -1,0 +1,26 @@
+{{define "title"}}Where can I live within 30 minutes of work?{{end}}
+{{define "desc"}}Find the towns and neighbourhoods within 30 minutes of your work or school by car, bike or public transport with the Reachable area of hippomaps, then compare them and save the areas as GeoJSON or KML.{{end}}
+{{define "image"}}reach-car{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/guides"}}">Guides</a></p>
+<h1>Where can I live within 30 minutes of work?</h1>
+<p class="pg-lead">When you look for a flat, you may know how long you want to travel to work, but not which towns that leaves. The <a href="{{link "/features/reachable-area"}}">Reachable area</a> of hippomaps draws them on the map.</p>
+<ul class="pg-try"><li><a href="{{view "13/46.94898/7.43913"}}">Open the map at the Bundesplatz in Bern</a></li></ul>
+</section>
+<figure class="pg-shot"><img src="{{img "reach-car"}}" width="1280" height="800" alt="Reachable area by car from the Bundesplatz in Bern: the bands within 10, 20 and 30 minutes along the motorways"><figcaption>By car from Bern: the bands reach furthest along the motorways.</figcaption></figure>
+<div class="pg-text">
+<h2>1. Start at your work</h2>
+<p>Find your work or school on the map, with the search box or by moving the map. Right-click the building (long press on a phone) and choose Reachable from here.</p>
+<h2>2. Choose how you travel</h2>
+<p>Pick Car, Bike, Walk or Transit at the top of the panel, and the time under Up to. With 30 minutes the map shows three bands: within 10, 20 and 30 minutes.</p>
+<p>By public transport the area is not one round shape. Towns along a fast train line can fall inside while a village closer by, without a good connection, stays outside. The times count from leaving now, so look at the areas around the hour you would leave for work: a line that runs every 10 minutes in the morning may run once an hour at night.</p>
+<h2>3. Compare places</h2>
+<p>Drag the pin to the town of a flat you have seen to see how far you get from there. Search for what matters to you next to it, such as <a href="{{app "q" "schools in Bern"}}">schools in Bern</a> or <a href="{{app "q" "supermarkets in Bern"}}">supermarkets in Bern</a>. Directions give the route from a single address.</p>
+<h2>4. Save the areas</h2>
+<p>Download gives the areas as GeoJSON or KML. Open them in QGIS, geojson.io or Google Earth beside the listings of a property site, or keep the areas by car and by public transport side by side.</p>
+<p class="pg-note">Two people who work in different places can each save their area and open both in QGIS: where they overlap, both get to work in time.</p>
+</div>
+</div>
+{{end}}

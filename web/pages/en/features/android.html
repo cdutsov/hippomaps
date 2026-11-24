@@ -1,0 +1,35 @@
+{{define "title"}}hippomaps for Android: a free, open source map app{{end}}
+{{define "desc"}}The free hippomaps app for Android: the map of hippomaps.ch with navigation that goes on with the screen locked, the compass of the phone, and location without Google Play services. Open source.{{end}}
+{{define "image"}}phone-navigation{{end}}
+{{define "body"}}
+<div class="pg-wrap">
+<section class="pg-intro">
+<p class="pg-crumb"><a href="{{link "/features"}}">Features</a></p>
+<h1>hippomaps for Android</h1>
+<p class="pg-lead">The app for Android opens the same map as hippomaps.ch and adds what a browser tab cannot do, such as spoken navigation with the screen locked.</p>
+<p><a class="pg-btn" href="https://gitlab.com/cdutsov/hippomaps/-/releases">Download the APK</a></p>
+</section>
+<div class="pg-split">
+<figure class="pg-shot pg-phone"><img src="{{img "phone-navigation"}}" width="390" height="844" alt="Navigation by car in the hippomaps app: the next turn, the lanes, the speed limit and the route ahead"></figure>
+<div>
+<h2>What the app adds</h2>
+<ul>
+<li>navigation goes on with the screen locked or another app in front, with the next turn in a notification</li>
+<li>the compass of the phone: a cone shows where the phone points, and the map can turn with it</li>
+<li>location from the GPS of the phone, without Google Play services</li>
+<li>links to hippomaps.ch from other apps open in the app</li>
+<li>the back button closes the menu, a place or directions before it leaves the app</li>
+<li>a screen of its own when there is no connection, which loads the map again once the phone is online</li>
+</ul>
+<h2>Install</h2>
+<p>Download the APK of the newest version from the <a href="https://gitlab.com/cdutsov/hippomaps/-/releases">releases page</a> and open it on the phone. Android asks once to allow installs from the browser. The app runs on Android 8 and newer.</p>
+</div>
+</div>
+<div class="pg-text">
+<h2>Privacy</h2>
+<p>The app asks for the location when you first use it and for notifications at the first navigation. It does not ask for background location: navigation runs as a service started while the app is in front. hippomaps works without an account and without advertising. The source code is free software under the GPL, on <a href="https://gitlab.com/cdutsov/hippomaps">GitLab</a> and <a href="https://github.com/cdutsov/hippomaps">GitHub</a>.</p>
+<h2>In the browser</h2>
+<p>Everything else works the same in the browser of any phone: open hippomaps.ch. To save or open GPX, KML and GeoJSON files, use the browser, since the app does not handle files yet. The guide <a href="{{link "/guides/offline"}}">Navigate without a connection</a> explains what is kept on the phone for tunnels and valleys.</p>
+</div>
+</div>
+{{end}}

@@ -86,7 +86,8 @@ for pr in "licences|Licences and sources" "de/licences|Lizenzen und Quellen"; do
 done
 # the pages about the app (web/pages): features and guides in English and German, for search engines, in the sitemap
 # with each other language; their pictures there; the page of the app links them without JavaScript
-for pr in "features|Features of hippomaps" "de/features|Funktionen von hippomaps" "guides/gpx|Put a route on a GPS device" "de/guides/gpx|Eine Route aufs GPS-Gerät bringen"; do
+for pr in "features|Features of hippomaps" "de/features|Funktionen von hippomaps" "guides/gpx|Put a route on a GPS device" "de/guides/gpx|Eine Route aufs GPS-Gerät bringen" \
+	"features/reachable-area|<h1>Reachable area</h1>" "de/guides/commute|Wo wohnen, 30 Minuten von der Arbeit?"; do
 	code=$(get "$PAGE/${pr%%|*}")
 	img=$(grep -o '/static/pages/img/[a-z]*/[a-z-]*\.webp?v=[0-9a-f]*' "$TMP/b" | head -n1)
 	[[ $code == 200 ]] && grep -qF "${pr#*|}" "$TMP/b" && grep -qF "<link rel=\"canonical\" href=\"$PAGE/${pr%%|*}\">" "$TMP/b" && [[ -z $(hdr X-Robots-Tag) ]] &&
@@ -99,6 +100,10 @@ font=$(curl -s "$PAGE$(grep -o '/static/pages/pages.css?v=[0-9a-f]*' "$TMP/b" | 
 	ok "the font Overpass of the pages" || ko "the font of the pages: CSP, pages.css or the file"
 code=$(get "$PAGE/sitemap.xml")
 grep -qF '<xhtml:link rel="alternate" hreflang="de" href="'"$PAGE"'/de/guides/gpx"/>' "$TMP/b" && ok "the guides in the sitemap, with their German pages" || ko "the sitemap does not list the guides"
+# the sitemap for search engines (no noindex), each page with its other language and x-default, the privacy policy too
+[[ -z $(hdr X-Robots-Tag) ]] && grep -qF '<loc>'"$PAGE"'/de/privacy</loc><xhtml:link rel="alternate" hreflang="en" href="'"$PAGE"'/privacy"/>' "$TMP/b" &&
+	grep -qF '<xhtml:link rel="alternate" hreflang="x-default" href="'"$PAGE"'/features/reachable-area"/>' "$TMP/b" &&
+	ok "the sitemap: no noindex, the other language and x-default of each page" || ko "the sitemap: noindex $(hdr X-Robots-Tag), or no other languages"
 code=$(get "$PAGE/")
 grep -qF '"@type":"WebApplication"' "$TMP/b" && grep -qF '<meta property="og:image"' "$TMP/b" && grep -qF 'href="/guides">Guides</a>' "$TMP/b" && ok "the page: its description for search engines and links, and the guides" || ko "the page: no description for search engines"
 # the app for Android opens links of the site: its signing key in assetlinks.json

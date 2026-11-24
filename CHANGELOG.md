@@ -7,6 +7,12 @@ version numbers are the releases of the Android app (`android/`), which shows th
 
 ### Added
 
+- Pages about Reachable area, Live traffic and the app for Android, and the guide Where can I live within 30 minutes of
+  work? (English and German), linked from Features, Guides, Measure, Directions and The map.
+- The sitemap lists each page in English and then German, each with its other language and x-default, the privacy
+  policy and the licences too; robots.txt and the sitemap are open to search engines (no noindex). The pages carry
+  x-default, og:locale and their place under Features or Guides (schema.org BreadcrumbList); the privacy policy and the
+  licences full links to their languages.
 - Results close together on the map gather into a circle with their number; a click on it zooms in until they part.
 - Reachable area, from the menu (at the location of the device, else the middle of the map) or the menu of a right
   click (Reachable from here): how far one gets by car (up to an hour, leaving now with live traffic), by bike or on foot

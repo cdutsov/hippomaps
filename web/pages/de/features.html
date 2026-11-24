@@ -1,5 +1,5 @@
 {{define "title"}}Funktionen{{end}}
-{{define "desc"}}hippomaps ist eine freie Karte fürs Web und für Android: Suche in Alltagssprache, Ortsseiten mit Fotos und Öffnungszeiten, Routen, ÖV in Europa, gesprochene Navigation und GPS-Dateien.{{end}}
+{{define "desc"}}hippomaps ist eine freie Karte fürs Web und für Android: Suche in Alltagssprache, Ortsseiten mit Fotos und Öffnungszeiten, Routen mit Live-Verkehr, ÖV in Europa, Reisezeitkarten, gesprochene Navigation und GPS-Dateien.{{end}}
 {{define "body"}}
 <div class="pg-wrap">
 <section class="pg-intro">
@@ -15,13 +15,16 @@
 <li><a class="pg-card" href="{{link "/features/public-transport"}}"><img src="{{img "transit"}}" alt="" loading="lazy" width="1280" height="800"><span>Öffentlicher Verkehr</span><small>Zug, Tram, Bus, Schiff und Seilbahn in ganz Europa, mit Gleisen, Fusswegen zu den Haltestellen und Verspätungen.</small></a></li>
 <li><a class="pg-card" href="{{link "/features/navigation"}}"><img src="{{img "phone-navigation"}}" alt="" loading="lazy" width="390" height="844"><span>Gesprochene Navigation</span><small>Abbiegung für Abbiegung in 18 Sprachen, mit Fahrspuren und Tempolimits. Die Karte entlang der Route liegt für Täler und Tunnel auf dem Handy.</small></a></li>
 <li><a class="pg-card" href="{{link "/features/measure"}}"><img src="{{img "measure"}}" alt="" loading="lazy" width="1280" height="800"><span>Messen und GPS-Dateien</span><small>Distanzen, Flächen und Höhenprofile; Routen, Linien und Orte als GPX, KML oder GeoJSON.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/reachable-area"}}"><img src="{{img "reach"}}" alt="" loading="lazy" width="1280" height="800"><span>Erreichbares Gebiet</span><small>Wie weit Sie von einem Punkt in 10 Minuten bis zwei Stunden kommen, mit Auto, Velo, zu Fuss oder mit dem ÖV.</small></a></li>
 <li><a class="pg-card" href="{{link "/features/map"}}"><img src="{{img "terrain"}}" alt="" loading="lazy" width="1280" height="800"><span>Die Karte</span><small>Stile für Tag und Nacht, Gelände und Gebäude in 3D, ÖV-Linien, Verkehr in der Schweiz, den Niederlanden und Frankreich und der Kompass des Handys.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/traffic"}}"><img src="{{img "traffic"}}" alt="" loading="lazy" width="1280" height="800"><span>Live-Verkehr</span><small>Sperrungen, Stau und Baustellen in der Schweiz, den Niederlanden und Frankreich, gezählt in Routen mit dem Auto.</small></a></li>
+<li><a class="pg-card" href="{{link "/features/android"}}"><img src="{{img "phone-search"}}" alt="" loading="lazy" width="390" height="844"><span>App für Android</span><small>Navigation bei gesperrtem Bildschirm, der Kompass des Handys, der Standort ohne Google-Play-Dienste.</small></a></li>
 </ul>
 <div class="pg-text">
 <h2>Konto und Datenschutz</h2>
 <p>hippomaps ist kostenlos, ohne Konto und ohne Werbung. Einstellungen, markierte Orte und letzte Suchen liegen in Ihrem Browser. Der Quellcode ist freie Software unter der GPL, auf <a href="https://gitlab.com/cdutsov/hippomaps">GitLab</a> und <a href="https://github.com/cdutsov/hippomaps">GitHub</a>. Karten, Suche und Höhen kommen von <a href="https://overpass.ch/de/">overpass.ch</a>, das die Dienste in der Schweiz betreibt.</p>
 <h2>Auf dem Handy</h2>
-<p>hippomaps.ch läuft im Browser jedes Handys. Die App für Android navigiert auch bei gesperrtem Bildschirm und öffnet Links auf Orte aus anderen Karten-Apps. Sie steht auf der <a href="https://gitlab.com/cdutsov/hippomaps/-/releases">Release-Seite</a> des Projekts.</p>
+<p>hippomaps.ch läuft im Browser jedes Handys. Die App für Android navigiert auch bei gesperrtem Bildschirm und öffnet Links auf Orte aus anderen Karten-Apps. Sie steht auf der <a href="https://gitlab.com/cdutsov/hippomaps/-/releases">Release-Seite</a> des Projekts; mehr dazu auf der Seite <a href="{{link "/features/android"}}">hippomaps für Android</a>.</p>
 <p>Die <a href="{{link "/guides"}}">Anleitungen</a> zeigen häufige Aufgaben Schritt für Schritt.</p>
 </div>
 </div>
