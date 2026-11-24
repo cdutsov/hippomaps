@@ -2723,7 +2723,12 @@ function starButton(place) {
     ed.hidden = !on;
     b.classList.toggle("lm-on", on);
     b.setAttribute("aria-pressed", String(on));
-    b.innerHTML = svg(ICON.star, 18);
+    // saved: the icon of the place in its colour (the star filled, the others drawn in their colour)
+    const k = on ? starIconOf(saved.stars.find((x) => starKey(x.ll) === starKey(get().ll))) : "star";
+    b.classList.toggle("lm-star-own", k !== "star");
+    b.style.color = k !== "star" ? STAR_ICONS[k] : "";
+    b.dataset.icon = k;
+    b.innerHTML = svg(ICON[k], 18);
     b.append(el("span", "", {}, on ? T.saved : T.save));
     b.title = on ? T.saved : T.save;
   };

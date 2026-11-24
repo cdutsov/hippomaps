@@ -1057,6 +1057,8 @@ try:
     check(wait("!document.querySelector('.lm-star-edit').open && JSON.parse(localStorage.getItem('hm-stars')).some(s => s.name === 'Aunt Anna' && s.icon === 'home')"
                " && hmMap.getSource('lm-stars')._data.features.some(f => f.properties.img === 'lm-star-home') && hmMap.hasImage('lm-star-home')", 5),
           "a saved place renamed with the icon Home: kept, on the map with it")
+    check(js("document.querySelector('.lm-place-acts .lm-star').dataset.icon === 'home' && document.querySelector('.lm-place-acts .lm-star path').getAttribute('d').startsWith('M3 11 12 3')"),
+          "the button Saved shows the icon of the place (Home)")
     js("document.querySelector('.lm-clear').hidden = false; document.querySelector('.lm-clear').click()")
     js("document.querySelector('.lm-input').focus()")
     check(wait("[...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-star')].some(e => e.querySelector('.lm-opt-label').textContent === 'Aunt Anna' && e.querySelector('path').getAttribute('d').startsWith('M3 11 12 3')) && [...document.querySelectorAll('.lm-suggest:not([hidden]) .lm-opt-recent .lm-opt-label')].some(e => e.textContent === 'Thun')", 5),

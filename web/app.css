@@ -572,7 +572,7 @@ button.lm-action { border: 0; background: none; padding: 0; font: inherit; font-
 .lm-place-pic img { border-radius: 10px; }
 /* the star of a place: yellow when saved; beside a town found, the star alone */
 .lm-star.lm-on { color: #b77900; }
-.lm-star.lm-on svg path { fill: #f5b301; stroke: #b77900; }
+.lm-star.lm-on:not(.lm-star-own) svg path { fill: #f5b301; stroke: #b77900; }
 :root[data-theme=dark] .lm-star.lm-on { color: #f5b301; }
 .lm-place-acts { display: flex; gap: .4rem; }
 .lm-place-acts .lm-star span { display: none; }
