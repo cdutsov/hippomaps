@@ -152,7 +152,7 @@ Under `{base}/api/`; errors are `{"error":{"code","message"}}`.
 | `GET journey?from=lat,lon&to=…&time=…&arrive=1&page=&lang=` | public transport connections: legs with line, tracks, stops and delays; `earlier` and `later` page through them |
 | `POST along` `{"line","cat","mode","lang"}` | places of a kind near a route, in route order |
 | `POST heights` `{"line":[[lon,lat],…]}` | height profile of a line: `up`, `down`, `min`, `max`, `pts`; 2 to 5000 points, 2000 km at most. Needs `ELEVATION_KEY` |
-| `GET reach?at=lat,lon&mode=car\|bike\|walk\|transit&min=15,30,45,60` | isochrones as GeoJSON, a MultiPolygon per time; up to 60 minutes (bike and on foot 120), leaving now |
+| `GET reach?at=lat,lon&mode=car\|bike\|walk\|transit&min=15,30,45,60&leave=` | isochrones as GeoJSON, a MultiPolygon per time; up to 60 minutes (bike and on foot 120), leaving now; `leave` (transit only, RFC 3339, within a week) sets the time of leaving |
 | `GET transit?tile=10/x/y` | transit lines of a tile as GeoJSON |
 | `GET say?lang=&text=` | spoken sentence (audio/mpeg) |
 | `GET traffic` | traffic incidents |

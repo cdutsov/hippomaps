@@ -244,9 +244,12 @@ if grep -q "data-route=" "$TMP/page"; then
 	fi
 	code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=car&min=15")
 	[[ $code == 200 ]] && jq -e '.features[0].properties.mode == "car"' "$TMP/b" >/dev/null && ok "Zurich by car in 15 min" || ko "reachable by car: HTTP $code $(head -c 200 "$TMP/b")"
-	# by public transport (with MOTIS): Zurich main station in 15 and 30 minutes, the longer reaching past 8 km (by train)
+	# by public transport (with MOTIS): Zurich main station in 15 and 30 minutes, the longer reaching past 8 km (by train);
+	# leaving at 08:00 of the next working day in Zurich, so the check holds at any hour (at night no trains run)
 	if grep -q 'data-journey="[^"]' "$TMP/page"; then
-		code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=transit&min=15,30")
+		d=1; while (( $(TZ=Europe/Zurich date -d "+$d day" +%u) > 5 )); do d=$((d + 1)); done
+		leave=$(TZ=Europe/Zurich date -d "$(TZ=Europe/Zurich date -d "+$d day" +%F) 08:00" +%Y-%m-%dT%H:%M:%S%:z | sed 's/+/%2B/')
+		code=$(get "$PAGE/api/reach?at=47.3779,8.5403&mode=transit&min=15,30&leave=$leave")
 		if [[ $code == 200 ]] && jq -e '(.features | length) == 2 and .features[1].properties.mode == "transit"
 			and ([.features[1].geometry.coordinates | flatten | . as $c | range(0; length; 2) | $c[.]] | (max - min) > 0.2)' "$TMP/b" >/dev/null; then
 			ok "Zurich by public transport in 15 and 30 min"

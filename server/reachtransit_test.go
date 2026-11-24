@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -304,6 +305,25 @@ func TestReachTransit(t *testing.T) {
 	// the walk to Bahnhof A (4 min), a set wait of 3 and the ride of 12: 19 minutes, within 20, not 15
 	if !east(fc.Features[1]) || east(fc.Features[0]) || !east(fc.Features[2]) {
 		t.Errorf("around the stop reached in 19 minutes: within 20 %v, within 15 %v", east(fc.Features[1]), east(fc.Features[0]))
+	}
+	// leaving at a set time (the checks of the site: a working morning, whatever the hour of the deploy)
+	runs = nil
+	later := time.Now().Add(50 * time.Hour).Truncate(time.Minute)
+	if w := get(s, "/labs/maps/api/reach?at=47.39,8.53&mode=transit&min=15,20,30&leave="+url.QueryEscape(later.Format(time.RFC3339))); w.Code != 200 || len(runs) == 0 {
+		t.Fatalf("leave: %d %s", w.Code, w.Body)
+	}
+	for _, r := range runs {
+		at, _ := time.Parse(time.RFC3339, r)
+		if d := at.Sub(later); d < 7*time.Minute || d > 45*time.Minute {
+			t.Errorf("a ride %v after the time of leaving", d)
+		}
+	}
+	// a time not RFC 3339, more than a week ahead, or for another mode: 400
+	for _, q := range []string{"mode=transit&min=15&leave=tomorrow", "mode=transit&min=15&leave=" + url.QueryEscape(time.Now().Add(8*24*time.Hour).Format(time.RFC3339)),
+		"mode=walk&min=15&leave=" + url.QueryEscape(later.Format(time.RFC3339))} {
+		if w := get(s, "/labs/maps/api/reach?at=47.39,8.53&"+q); w.Code != 400 {
+			t.Errorf("%s: %d", q, w.Code)
+		}
 	}
 	if w := get(s, "/labs/maps/api/reach?at=47.39,8.53&mode=transit&min=90"); w.Code != 400 {
 		t.Errorf("90 minutes: %d", w.Code)

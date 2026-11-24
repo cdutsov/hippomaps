@@ -82,8 +82,16 @@ func (s *Server) reach(w http.ResponseWriter, r *http.Request) {
 	}
 	most := reachMaxMin[name]
 	mins, okt := readMinutes(q.Get("min"), most)
-	if !ok || !okm || most == 0 || !okt {
-		routeError(w, http.StatusBadRequest, "bad_request", "at as lat,lon, mode car, bike, walk or transit, and min as 1 to 4 rising minutes (car and transit up to 60, bike and walk up to 120)")
+	// leave (transit only): the time of leaving, RFC 3339, from an hour ago to a week ahead; else now. The checks of the
+	// site ask for a morning of a working day, which has trains at any hour of the deploy.
+	leave, okl := time.Now(), true
+	if v := q.Get("leave"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		okl = err == nil && name == "transit" && t.After(leave.Add(-time.Hour)) && t.Before(leave.Add(7*24*time.Hour))
+		leave = t
+	}
+	if !ok || !okm || most == 0 || !okt || !okl {
+		routeError(w, http.StatusBadRequest, "bad_request", "at as lat,lon, mode car, bike, walk or transit, and min as 1 to 4 rising minutes (car and transit up to 60, bike and walk up to 120); leave (transit only) as RFC 3339 within a week")
 		return
 	}
 	if !s.reachPerIP.allow(visitor(r), time.Now()) {
@@ -102,7 +110,7 @@ func (s *Server) reach(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if name == "transit" {
-		b, status, code := s.reachTransit(ctx, lat, lon, mins)
+		b, status, code := s.reachTransit(ctx, lat, lon, mins, leave)
 		switch status {
 		case http.StatusOK:
 			w.Header().Set("Content-Type", "application/geo+json")

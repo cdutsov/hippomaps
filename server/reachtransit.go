@@ -222,9 +222,9 @@ func spreadTimes(all []time.Time, n int) []time.Time {
 	return out
 }
 
-// reachTransit answers /api/reach?mode=transit for the minutes mins (rising)
-func (s *Server) reachTransit(ctx context.Context, lat, lon float64, mins []int) ([]byte, int, string) {
-	fc, status, code := s.transitFC(ctx, lat, lon, mins, transitRuns, time.Now())
+// reachTransit answers /api/reach?mode=transit for the minutes mins (rising), leaving at leave
+func (s *Server) reachTransit(ctx context.Context, lat, lon float64, mins []int, leave time.Time) ([]byte, int, string) {
+	fc, status, code := s.transitFC(ctx, lat, lon, mins, transitRuns, leave)
 	if status != http.StatusOK {
 		return nil, status, code
 	}
